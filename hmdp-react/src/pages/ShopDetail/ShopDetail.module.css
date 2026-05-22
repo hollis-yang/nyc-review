@@ -1,0 +1,271 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+}
+
+.header {
+  width: 100%;
+  height: 7%;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #ff6633, #ff7a4d);
+  flex-shrink: 0;
+}
+
+.backBtn {
+  width: 12%;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.backBtn:active {
+  transform: scale(0.9);
+}
+
+.title {
+  flex: 1;
+  text-align: center;
+  color: #fff;
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.share {
+  width: 12%;
+  text-align: center;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.infoBox {
+  background: #fff;
+  padding: 14px;
+  margin: 8px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.shopTitle {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: var(--color-text-dark);
+}
+
+.shopRate {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.rateInfo {
+  color: #666;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.shopRank {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 12px;
+  background: #fafafa;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+}
+
+.shopImages {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.shopImages img {
+  width: 110px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.shopAddress {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #333;
+  padding-top: 8px;
+}
+
+.divider {
+  height: 8px;
+  background: #f5f5f5;
+}
+
+.openTime {
+  display: flex;
+  align-items: center;
+  padding: 14px;
+  background: #fff;
+  margin: 0 8px 8px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  gap: 6px;
+  font-size: 13px;
+}
+
+.lineRight {
+  color: #999;
+  font-size: 12px;
+}
+
+.voucherSection {
+  background: #fff;
+  padding: 14px;
+  margin: 0 8px 8px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.voucherIcon {
+  background: #F63;
+  color: #fff;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 12px;
+  margin-right: 6px;
+}
+
+.comments {
+  background: #fff;
+  padding: 14px;
+  margin: 0 8px 8px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.commentsHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.commentsHead span {
+  font-size: 13px;
+  color: #999;
+  font-weight: normal;
+}
+
+.commentTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tag {
+  background: #fafafa;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: #666;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  cursor: pointer;
+}
+
+.tag:active {
+  background: #fff5f3;
+  color: #F63;
+}
+
+.commentList {
+  border-top: 1px solid #f1f1f1;
+  padding-top: 12px;
+}
+
+.commentBox {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.commentIcon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.commentIcon img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.commentInfo {
+  flex: 1;
+}
+
+.commentUser {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.commentUser span {
+  background: #F63;
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.commentImages {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.commentImages img {
+  width: 75px;
+  height: 75px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.viewAll {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0 4px;
+  border-top: 1px solid #f1f1f1;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+}
+
+.copyright {
+  text-align: center;
+  padding: 20px;
+  color: #999;
+  font-size: 12px;
+}
+
+.loadingFull {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+}

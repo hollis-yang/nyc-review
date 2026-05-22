@@ -1,0 +1,118 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.searchBar {
+  background: linear-gradient(135deg, #ff6633, #ff7a4d);
+  color: white;
+  display: flex;
+  justify-content: space-around;
+  height: 7%;
+  align-items: center;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.cityBtn {
+  font-size: 14px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.searchInput {
+  width: 70%;
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  padding: 4px 8px;
+  height: 28px;
+  transition: background var(--transition-fast);
+}
+
+.inputWrapper:active {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.headerIcon {
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.headerIcon:active {
+  transform: scale(0.9);
+}
+
+.typeList {
+  height: 25%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  align-content: center;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.typeBox {
+  width: 17%;
+  text-align: center;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.typeBox:active {
+  transform: scale(0.93);
+}
+
+.typeBox img {
+  width: 100%;
+}
+
+.typeView {
+  width: 100%;
+  background: #fafafa;
+  border-radius: var(--radius-md);
+  padding: 6px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: box-shadow var(--transition-fast);
+}
+
+.typeBox:active .typeView {
+  box-shadow: 0 2px 8px rgba(255, 102, 51, 0.2);
+}
+
+.typeText {
+  color: #333;
+  font-size: 11px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  font-weight: 500;
+}
+
+.blogList {
+  flex: 1;
+  background-color: #f5f5f5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  align-content: flex-start;
+  overflow-y: auto;
+  padding: 8px 6px 8px 6px;
+}
+
+.loading {
+  width: 100%;
+  text-align: center;
+  padding: 16px;
+  color: #999;
+  font-size: 13px;
+}

@@ -1,0 +1,52 @@
+.foot {
+  width: 100%;
+  height: var(--footer-height);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  flex-shrink: 0;
+}
+
+.addBtn {
+  width: 40px;
+  height: 40px;
+  background: var(--color-primary-gradient);
+  box-shadow: 0 2px 8px rgba(255, 102, 51, 0.3);
+  border-radius: 20px;
+  transition: transform var(--transition-fast);
+}
+
+.addBtn:active {
+  transform: scale(0.9);
+}
+
+.footBox {
+  width: 20%;
+  color: #82848a;
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.footBox:active {
+  transform: scale(0.92);
+}
+
+.footView {
+  font-size: 26px;
+  display: flex;
+  justify-content: center;
+}
+
+.footText {
+  font-size: 10px;
+  margin-top: 2px;
+  text-align: center;
+}
+
+.active {
+  color: #ff6633;
+}
