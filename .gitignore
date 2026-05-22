@@ -4,6 +4,22 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+
+### Logs ###
+*.log
+nohup.out
+
+### Temp ###
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
 ### STS ###
 .apt_generated
 .classpath
