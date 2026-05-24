@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -33,7 +34,10 @@ public class CacheClient {
     public void setWithLogicalExpire(String key, Object value, Long time, TimeUnit timeUnit) {
         RedisData redisData = new RedisData();
         redisData.setData(value);
-        redisData.setExpireTime(LocalDateTime.now().plusSeconds(timeUnit.toSeconds(time)));
+        // 逻辑过期时间加随机偏移，避免大量 key 同时触发重建
+        long seconds = timeUnit.toSeconds(time);
+        long offset = ThreadLocalRandom.current().nextLong(seconds / 5 + 1);
+        redisData.setExpireTime(LocalDateTime.now().plusSeconds(seconds + offset));
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(redisData));
     }
 
@@ -110,7 +114,9 @@ public class CacheClient {
                 stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
                 return null;
             }
-            this.set(key, r, time, timeUnit);
+            // TTL 加随机偏移，避免大量缓存同时过期（雪崩）
+            long ttl = time + ThreadLocalRandom.current().nextLong(time / 5 + 1);
+            this.set(key, r, ttl, timeUnit);
             return r;
         } finally {
             unlock(lockKey);

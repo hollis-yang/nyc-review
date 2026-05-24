@@ -61,7 +61,15 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         updateById(shop);
 
-        cacheClient.setWithLogicalExpire(CACHE_SHOP_KEY + id, shop, CACHE_LOGICAL_EXPIRE, TimeUnit.SECONDS);
+        // 方案A：删除缓存，等下次 queryWithMutex 回源重建（简单可靠）
+        // stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
+
+        // 方案B：直接更新缓存
+        cacheClient.set(CACHE_SHOP_KEY + id, shop, CACHE_SHOP_TTL, TimeUnit.MINUTES);
+
+        // 方案C：逻辑过期（需配合 queryWithLogicalExpire 使用）
+        // cacheClient.setWithLogicalExpire(CACHE_SHOP_KEY + id, shop, CACHE_LOGICAL_EXPIRE, TimeUnit.SECONDS);
+
         return Result.ok();
     }
 }
