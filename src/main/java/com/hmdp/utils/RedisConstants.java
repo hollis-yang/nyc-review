@@ -19,6 +19,9 @@ public class RedisConstants {
 
     public static final Long CACHE_LOGICAL_EXPIRE = 20L;
 
+    public static final String CACHE_SHOP_REVIEW_KEY = "cache:shop-review:";
+    public static final Long CACHE_SHOP_REVIEW_TTL = 30L;
+
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
