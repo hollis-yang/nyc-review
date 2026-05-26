@@ -54,6 +54,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1") // set stock = stock - 1
                 .eq("voucher_id", voucherId) // where voucher_id = ?
+                .gt("stock", 0) // and stock > 0 防止超卖
                 .update();
         // 6.创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
