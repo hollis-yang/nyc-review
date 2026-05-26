@@ -48,7 +48,7 @@ export default function ShopReviews() {
         setReviews((prev) => [...prev, ...list]);
         setCurrent((prev) => prev + 1);
       }
-      if (res.total && reviews.length + list.length >= res.total) {
+      if ((res as any).total && reviews.length + list.length >= (res as any).total) {
         setHasMore(false);
       }
     } catch {

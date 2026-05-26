@@ -53,7 +53,7 @@ export default function ShopDetail() {
       getShopReviews(id).then((res) => {
         const list = res.data ?? [];
         setReviews(list);
-        setReviewTotal(res.total ?? list.length);
+        setReviewTotal((res as any).total ?? list.length);
       }),
     ]).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
