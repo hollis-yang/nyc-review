@@ -1,18 +1,14 @@
 package com.hmdp.service.impl;
 
 import com.hmdp.dto.Result;
-import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
-import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.concurrent.*;
 
@@ -43,9 +38,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
-
-    @Resource
-    private RedissonClient redissonClient;
 
     @Resource
     private ISeckillVoucherService seckillVoucherService;
@@ -75,30 +67,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         public void run() {
             while (true) {
                 try {
-                    // 1.获取队列中的订单信息
                     VoucherOrder voucherOrder = orderTasks.take();
-                    // 2.创建订单
-                    handleVoucherOrder(voucherOrder);
+                    proxy.createVoucherOrder(voucherOrder);
                 } catch (Exception e) {
                     log.error("处理订单异常", e);
                 }
             }
-        }
-    }
-
-    private void handleVoucherOrder(VoucherOrder voucherOrder) {
-        // 获取用户
-        Long userId = voucherOrder.getUserId();
-        // 创建锁对象
-        RLock lock = redissonClient.getLock("lock:order:" + userId);
-        // 获取锁（阻塞直到成功）
-        lock.lock();
-        try {
-            // 获取代理对象（事务）
-            proxy.createVoucherOrder(voucherOrder);
-        } finally {
-            // 释放锁
-            lock.unlock();
         }
     }
 
@@ -148,16 +122,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
         // 5.扣减库存
-        // stock > 0 乐观锁
-        boolean success = seckillVoucherService.update()
-                .setSql("stock = stock - 1") // set stock = stock - 1
-                .eq("voucher_id", voucherOrder.getVoucherId()) // where voucher_id = ?
-                .gt("stock", 0) // and stock > 0 防止超卖
+        seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", voucherOrder.getVoucherId())
                 .update();
-        if (!success) {
-            log.error("库存不足");
-            return;
-        }
 
         save(voucherOrder);
     }
