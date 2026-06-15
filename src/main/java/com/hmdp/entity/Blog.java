@@ -50,6 +50,7 @@ public class Blog implements Serializable {
      */
     @TableField(exist = false)
     private String name;
+
     /**
      * 是否点赞过了
      */
