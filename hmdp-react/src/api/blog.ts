@@ -28,6 +28,10 @@ export function getBlogsOfUser(id: number | string, current: number = 1) {
   return client.get('/blog/of/user', { params: { id, current } });
 }
 
+export function getBlogComments(blogId: number | string) {
+  return client.get('/blog-comments', { params: { blogId } });
+}
+
 export function createBlog(data: {
   title: string;
   content: string;
