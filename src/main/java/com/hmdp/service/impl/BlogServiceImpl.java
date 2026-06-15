@@ -110,20 +110,26 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         // 2.解析出用户id（保持ZSet返回的顺序）
         List<Long> ids = top5.stream().map(Long::valueOf).collect(Collectors.toList());
-        // 3.根据用户id查询出用户，并按原顺序重排
-        List<User> users = userService.listByIds(ids);
-        Map<Long, UserDTO> userMap = users.stream()
+        // 3.根据用户id查询出用户，MySQL ORDER BY FIELD 保持原顺序
+        String idsStr = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+        List<UserDTO> userDTOS = userService.query()
+                .in("id", ids)
+                .last("ORDER BY FIELD(id, " + idsStr + ")")
+                .list()
+                .stream()
                 .map(u -> BeanUtil.copyProperties(u, UserDTO.class))
-                .collect(Collectors.toMap(UserDTO::getId, dto -> dto));
-        List<UserDTO> userDTOS = ids.stream()
-                .map(userMap::get)
                 .collect(Collectors.toList());
         return Result.ok(userDTOS);
     }
 
     private void isBlogLiked(Blog blog) {
         // 1.获取登录用户
-        Long userId = UserHolder.getUser().getId();
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            // 用户未登录，无需查询是否点赞
+            return;
+        }
+        Long userId = user.getId();
         // 2.判断当前用户是否点赞
         String key = BLOG_LIKED_KEY + blog.getId();
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
