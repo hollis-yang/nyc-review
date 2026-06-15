@@ -10,13 +10,14 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.util.Collections;
 import java.util.concurrent.*;
@@ -55,8 +56,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     private IVoucherOrderService proxy;
 
-    @PostConstruct
-    private void init() {
+    @EventListener(ApplicationReadyEvent.class)
+    void init() {
         SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
         // 获取代理对象
         proxy = (IVoucherOrderService) AopContext.currentProxy();
@@ -106,7 +107,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 3.返回订单id
         return Result.ok(orderId);
     }
-
 
     @Transactional
     public void createVoucherOrder(VoucherOrder voucherOrder) {
