@@ -2,21 +2,26 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f5f5f5;
+  background: var(--color-bg-page);
 }
 
+/* ===== Header ===== */
 .header {
-  width: 100%;
-  height: 7%;
+  height: 48px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
-  background: linear-gradient(135deg, #ff6633, #ff7a4d);
+  background: var(--color-primary-gradient);
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .backBtn {
-  width: 12%;
+  width: 40px;
+  height: 40px;
   display: flex;
+  align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: transform var(--transition-fast);
@@ -26,50 +31,85 @@
   transform: scale(0.9);
 }
 
-.title {
+.headerTitle {
   flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+  padding-right: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.basic {
+/* ===== Scroll 区域 ===== */
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 64px;
+}
+
+/* ===== 个人信息卡片 ===== */
+.profileCard {
   display: flex;
-  align-items: center;
-  padding: 16px 14px;
-  gap: 12px;
-  background: #fff;
-  margin: 8px;
+  flex-direction: column;
+  margin: 0 12px 8px;
+  background: var(--color-bg-card);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
-  flex-shrink: 0;
+  overflow: hidden;
 }
 
-.basicIcon {
-  width: 56px;
-  height: 56px;
-  flex-shrink: 0;
+.profileTop {
+  display: flex;
+  align-items: center;
+  padding: 16px 14px 12px;
+  gap: 12px;
 }
 
-.basicIcon img {
-  width: 100%;
-  height: 100%;
+.avatar {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
   border-radius: 50%;
+  overflow: hidden;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
 }
 
-.basicInfo {
-  flex: 1;
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
-.name {
+.profileInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.userName {
   font-size: 17px;
-  font-weight: bold;
+  font-weight: 700;
   color: var(--color-text-dark);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+.userMeta {
+  font-size: 12px;
+  color: var(--color-text-hint);
+  line-height: 1.5;
 }
 
 .followBtn {
-  background: linear-gradient(135deg, #ff6633, #ff7a4d);
+  flex-shrink: 0;
+  background: var(--color-primary-gradient);
   color: #fff;
-  padding: 5px 18px;
+  border: none;
   border-radius: 14px;
+  padding: 6px 18px;
   font-size: 13px;
   cursor: pointer;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
@@ -79,65 +119,78 @@
   transform: scale(0.93);
 }
 
-.introduce {
-  padding: 10px 14px;
+.followBtnUnfollow {
+  background: var(--color-text-hint);
+}
+
+/* ===== 简介区域（在卡片底部） ===== */
+.introRow {
+  padding: 0 14px 14px;
   font-size: 13px;
-  color: #999;
-  background: #fff;
-  margin: 0 8px;
+  color: var(--color-text-hint);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* ===== 内容卡片（Tabs） ===== */
+.contentCard {
+  margin: 0 12px 8px;
+  background: var(--color-bg-card);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
-  flex-shrink: 0;
-}
-
-.content {
-  flex: 1;
   overflow: hidden;
-  margin: 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
-.content :global(.adm-tabs) {
+.contentCard :global(.adm-tabs) {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.content :global(.adm-tabs-content) {
-  flex: 1;
-  overflow: hidden;
+.contentCard :global(.adm-tabs-header) {
+  flex-shrink: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--color-divider);
 }
 
-.content :global(.adm-tabs-header) {
-  flex-shrink: 0;
-  background: #fff;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+.contentCard :global(.adm-tabs-content) {
+  flex: 1;
+  overflow: hidden;
 }
 
 .tabContent {
   height: 100%;
   overflow-y: auto;
-  padding: 8px;
-  background: #fff;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  padding: 4px 14px 12px;
 }
 
+/* ===== 笔记列表项 ===== */
 .blogItem {
   display: flex;
   gap: 10px;
-  padding: 12px 4px;
-  border-bottom: 1px solid #f5f5f5;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-divider);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
+.blogItem:last-child {
+  border-bottom: none;
+}
+
 .blogItem:active {
-  background: #fafafa;
+  background: var(--color-bg-page);
 }
 
 .blogItemImg {
-  width: 84px;
-  height: 64px;
+  width: 96px;
+  height: 72px;
   flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .blogItemImg img {
@@ -149,67 +202,101 @@
 
 .blogItemInfo {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 }
 
 .blogItemTitle {
-  font-size: 14px;
-  color: #333;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text-dark);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .blogItemMeta {
   display: flex;
+  align-items: center;
+  gap: 12px;
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-hint);
+}
+
+/* ===== 共同关注列表项 ===== */
+.commonFollowHint {
+  font-size: 12px;
+  color: var(--color-text-hint);
+  margin-bottom: 4px;
+  padding-top: 4px;
 }
 
 .followItem {
   display: flex;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--color-divider);
   gap: 10px;
 }
 
+.followItem:last-child {
+  border-bottom: none;
+}
+
 .followIcon {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .followIcon img {
   width: 100%;
   height: 100%;
   border-radius: 50%;
+  object-fit: cover;
 }
 
 .followName {
   flex: 1;
-}
-
-.loadingFull {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  color: #999;
+  min-width: 0;
   font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-dark);
 }
 
 .followVisitBtn {
-  background: #fff;
-  color: #F63;
-  border: 1px solid #F63;
+  flex-shrink: 0;
+  background: var(--color-bg-card);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 14px;
   padding: 5px 14px;
   font-size: 12px;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
 
 .followVisitBtn:active {
-  background: #F63;
+  background: var(--color-primary);
   color: #fff;
+  transform: scale(0.95);
+}
+
+/* ===== 加载 / 错误 ===== */
+.loadingFull {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-hint);
+  font-size: 14px;
 }

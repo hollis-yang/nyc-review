@@ -34,6 +34,13 @@ export default function OtherProfile() {
 
   useEffect(() => {
     if (!id) return;
+    setUser(null);
+    setInfo({});
+    setBlogs([]);
+    setFollowed(false);
+    setCommonFollows([]);
+    setActiveTab('1');
+    setError(null);
     Promise.all([
       getUserById(id).then((res) => {
         const u = res.data ?? res;
@@ -86,85 +93,94 @@ export default function OtherProfile() {
         <div className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={18} color="white" />
         </div>
-        <div className={styles.title}></div>
+        <div className={styles.headerTitle}>
+          {user ? `${user.nickName} 的主页` : ''}
+        </div>
       </div>
 
       {error && <div className={styles.loadingFull}>{error}</div>}
       {!error && !user && <div className={styles.loadingFull}>加载中...</div>}
       {user && (
-        <div className={styles.basic}>
-          <div className={styles.basicIcon}>
-            <img src={user.icon || '/imgs/icons/default-icon.png'} alt="" />
+        <div className={styles.scroll}>
+          {/* 个人信息卡片 */}
+          <div className={styles.profileCard}>
+            <div className={styles.profileTop}>
+              <div className={styles.avatar}>
+                <img src={user.icon || '/imgs/icons/default-icon.png'} alt="" />
+              </div>
+              <div className={styles.profileInfo}>
+                <div className={styles.userName}>{user.nickName}</div>
+                <div className={styles.userMeta}>
+                  {info.city || '杭州'}
+                  {info.introduce ? ` · ${info.introduce}` : ''}
+                </div>
+              </div>
+              <div
+                className={`${styles.followBtn} ${followed ? styles.followBtnUnfollow : ''}`}
+                onClick={handleFollow}
+              >
+                {followed ? '已关注' : '+ 关注'}
+              </div>
+            </div>
+            {!info.introduce && !info.city && (
+              <div className={styles.introRow}>这个人很懒，什么都没有留下</div>
+            )}
           </div>
-          <div className={styles.basicInfo}>
-            <div className={styles.name}>{user.nickName}</div>
-            <span style={{ fontSize: 11, color: '#999' }}>杭州</span>
-          </div>
-          <div className={styles.followBtn} onClick={handleFollow}>
-            {followed ? '取消关注' : '关注'}
+
+          {/* 内容卡片（笔记 / 共同关注） */}
+          <div className={styles.contentCard}>
+            <Tabs activeKey={activeTab} onChange={handleTabChange}>
+              <Tabs.Tab title="笔记" key="1">
+                <div className={styles.tabContent}>
+                  {blogs.map((b) => (
+                    <div
+                      key={b.id}
+                      className={styles.blogItem}
+                      onClick={() => navigate(`/blog-detail/${b.id}`)}
+                    >
+                      <div className={styles.blogItemImg}>
+                        <img
+                          src={b.images ? b.images.split(',')[0] : ''}
+                          alt=""
+                        />
+                      </div>
+                      <div className={styles.blogItemInfo}>
+                        <div className={styles.blogItemTitle}>{b.title}</div>
+                        <div className={styles.blogItemMeta}>
+                          <span>👍 {b.liked}</span>
+                          <span>💬 {b.comments ?? 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Tabs.Tab>
+              <Tabs.Tab title="共同关注" key="2">
+                <div className={styles.tabContent}>
+                  <div className={styles.commonFollowHint}>你们都关注了：</div>
+                  {commonFollows.map((u) => (
+                    <div key={u.id} className={styles.followItem}>
+                      <div
+                        className={styles.followIcon}
+                        onClick={() => navigate(`/user/${u.id}`)}
+                      >
+                        <img src={u.icon || '/imgs/icons/default-icon.png'} alt="" />
+                      </div>
+                      <div className={styles.followName}>{u.nickName}</div>
+                      <div
+                        className={styles.followVisitBtn}
+                        onClick={() => navigate(`/user/${u.id}`)}
+                      >
+                        去主页看看
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Tabs.Tab>
+            </Tabs>
           </div>
         </div>
       )}
-
-      <div className={styles.introduce}>
-        <span>{info.introduce || '这个人很懒，什么都没有留下'}</span>
-      </div>
-
-      <div className={styles.content}>
-        <Tabs activeKey={activeTab} onChange={handleTabChange}>
-          <Tabs.Tab title="笔记" key="1">
-            <div className={styles.tabContent}>
-              {blogs.map((b) => (
-                <div
-                  key={b.id}
-                  className={styles.blogItem}
-                  onClick={() => navigate(`/blog-detail/${b.id}`)}
-                >
-                  <div className={styles.blogItemImg}>
-                    <img
-                      src={b.images ? b.images.split(',')[0] : ''}
-                      alt=""
-                    />
-                  </div>
-                  <div className={styles.blogItemInfo}>
-                    <div className={styles.blogItemTitle}>{b.title}</div>
-                    <div className={styles.blogItemMeta}>
-                      <span>👍 {b.liked}</span>
-                      <span style={{ marginLeft: 10 }}>💬 {(b as any).comments ?? 0}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Tabs.Tab>
-          <Tabs.Tab title="共同关注" key="2">
-            <div className={styles.tabContent}>
-              <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
-                你们都关注了：
-              </div>
-              {commonFollows.map((u) => (
-                <div key={u.id} className={styles.followItem}>
-                  <div
-                    className={styles.followIcon}
-                    onClick={() => navigate(`/user/${u.id}`)}
-                  >
-                    <img src={u.icon || '/imgs/icons/default-icon.png'} alt="" />
-                  </div>
-                  <div className={styles.followName}>
-                    <div className={styles.name}>{u.nickName}</div>
-                  </div>
-                  <div
-                    className={styles.followVisitBtn}
-                    onClick={() => navigate(`/user/${u.id}`)}
-                  >
-                    去主页看看
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Tabs.Tab>
-        </Tabs>
-      </div>
 
       <FootBar activeBtn={0} />
     </div>
