@@ -12,7 +12,7 @@ export default function MyProfile() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
-  const [info, setInfo] = useState<{ introduce?: string }>({});
+  const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number }>({});
   const [blogs, setBlogs] = useState<BlogData[]>([]);
   const [followBlogs, setFollowBlogs] = useState<BlogData[]>([]);
   const [activeTab, setActiveTab] = useState('1');
@@ -144,7 +144,7 @@ export default function MyProfile() {
             </div>
             <div className={styles.statDivider} />
             <div className={styles.statItem}>
-              <div className={styles.statNum}>{followBlogs.length || 0}</div>
+              <div className={styles.statNum}>{info.followee || 0}</div>
               <div className={styles.statLabel}>关注</div>
             </div>
           </div>

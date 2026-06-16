@@ -3,9 +3,11 @@ package com.hmdp;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.SeckillVoucher;
+import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IFollowService;
 import com.hmdp.service.ISeckillVoucherService;
+import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.impl.ShopServiceImpl;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWorker;
@@ -43,6 +45,9 @@ class HmDianPingApplicationTests {
 
     @Resource
     private IFollowService followService;
+
+    @Resource
+    private IUserInfoService userInfoService;
 
     private ExecutorService executorService = Executors.newFixedThreadPool(500);
 
@@ -226,6 +231,21 @@ class HmDianPingApplicationTests {
             if (size != null && size > 0) {
                 System.out.printf("  follows:%d → SCARD = %d\n", uid, size);
             }
+        }
+
+        // 6. 同步 tb_user_info 的 followee 和 fans 计数器
+        System.out.println("\n========== 同步 tb_user_info 计数器 ==========");
+        for (long uid = 1; uid <= 15; uid++) {
+            UserInfo info = userInfoService.getById(uid);
+            if (info == null) {
+                info = new UserInfo();
+                info.setUserId(uid);
+                info.setCity("杭州");
+            }
+            info.setFollowee(followeeCount.getOrDefault(uid, 0L).intValue());
+            info.setFans(fansCount.getOrDefault(uid, 0L).intValue());
+            userInfoService.saveOrUpdate(info);
+            System.out.printf("  用户 %-2d: followee=%d, fans=%d\n", uid, info.getFollowee(), info.getFans());
         }
     }
 }
