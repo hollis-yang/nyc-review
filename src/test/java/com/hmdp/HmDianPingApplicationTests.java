@@ -120,7 +120,7 @@ class HmDianPingApplicationTests {
         System.out.println("已清空旧关注数据 (MySQL)");
 
         // 1b. 清空旧数据 — Redis
-        for (long uid = 1; uid <= 15; uid++) {
+        for (long uid = 1; uid <= 13; uid++) {
             stringRedisTemplate.delete(RedisConstants.FOLLOW_KEY + uid);
         }
         System.out.println("已清空旧关注数据 (Redis)");
@@ -154,10 +154,6 @@ class HmDianPingApplicationTests {
             {12, 6}, {12, 7}, {12, 8}, {12, 9}, {12, 13},
             // ──── 用户 13 (核心测试用户) 关注 ────
             {13, 1}, {13, 2}, {13, 4}, {13, 5}, {13, 7}, {13, 8}, {13, 10}, {13, 12},
-            // ──── 用户 14 关注 ────
-            {14, 1}, {14, 5}, {14, 13},
-            // ──── 用户 15 关注 ────
-            {15, 2}, {15, 8}, {15, 12}, {15, 13},
         };
 
         List<Follow> followList = new ArrayList<>();
@@ -200,7 +196,7 @@ class HmDianPingApplicationTests {
                 .collect(Collectors.toList());
         System.out.println("\n用户13关注了: " + user13Follows);
         System.out.println("========== 用户13与其他用户的共同关注 ==========");
-        for (long uid = 1; uid <= 15; uid++) {
+        for (long uid = 1; uid <= 13; uid++) {
             if (uid == 13) continue;
             final long targetUid = uid;
             List<Long> theirFollows = followList.stream()
@@ -226,7 +222,7 @@ class HmDianPingApplicationTests {
 
         // SCARD 验证每个用户的关注数
         System.out.println("\nRedis Set 大小验证:");
-        for (long uid = 1; uid <= 15; uid++) {
+        for (long uid = 1; uid <= 13; uid++) {
             Long size = stringRedisTemplate.opsForSet().size(RedisConstants.FOLLOW_KEY + uid);
             if (size != null && size > 0) {
                 System.out.printf("  follows:%d → SCARD = %d\n", uid, size);
@@ -235,7 +231,7 @@ class HmDianPingApplicationTests {
 
         // 6. 同步 tb_user_info 的 followee 和 fans 计数器
         System.out.println("\n========== 同步 tb_user_info 计数器 ==========");
-        for (long uid = 1; uid <= 15; uid++) {
+        for (long uid = 1; uid <= 13; uid++) {
             UserInfo info = userInfoService.getById(uid);
             if (info == null) {
                 info = new UserInfo();
@@ -247,5 +243,32 @@ class HmDianPingApplicationTests {
             userInfoService.saveOrUpdate(info);
             System.out.printf("  用户 %-2d: followee=%d, fans=%d\n", uid, info.getFollowee(), info.getFans());
         }
+    }
+
+    @Test
+    void testBackfillFeed() {
+        List<Blog> blogs = blogService.list();
+        if (blogs.isEmpty()) {
+            System.out.println("没有博客数据");
+            return;
+        }
+        // 清空旧的 feed 数据
+        for (long uid = 1; uid <= 13; uid++) {
+            stringRedisTemplate.delete(RedisConstants.FEED_KEY + uid);
+        }
+
+        int totalPushed = 0;
+        for (Blog blog : blogs) {
+            List<Follow> follows = followService.query()
+                    .eq("follow_user_id", blog.getUserId())
+                    .list();
+            for (Follow follow : follows) {
+                String key = RedisConstants.FEED_KEY + follow.getUserId();
+                stringRedisTemplate.opsForZSet().add(
+                        key, blog.getId().toString(), System.currentTimeMillis());
+                totalPushed++;
+            }
+        }
+        System.out.println("已为 " + blogs.size() + " 条笔记回填 feed，共推送 " + totalPushed + " 次");
     }
 }
