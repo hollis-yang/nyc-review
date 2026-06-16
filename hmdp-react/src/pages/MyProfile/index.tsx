@@ -5,7 +5,8 @@ import { Tabs } from 'antd-mobile';
 import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo } from '../../api/user';
 import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
-import BlogCard, { type BlogData } from '../../components/BlogCard';
+import FeedCard from '../../components/FeedCard';
+import type { BlogData } from '../../components/BlogCard';
 import styles from './MyProfile.module.css';
 
 export default function MyProfile() {
@@ -121,20 +122,24 @@ export default function MyProfile() {
 
       {user && (
         <div className={styles.profileCard}>
-          <div className={styles.avatarWrap}>
-            <img src={user.icon || '/imgs/icons/default-icon.png'} alt="" />
-          </div>
-          <div className={styles.nickName}>{user.nickName}</div>
-          <div className={styles.location}>杭州</div>
-          <div className={styles.intro}>
-            {info.introduce || '添加个人简介，让大家更好的认识你'}
-          </div>
-          <div className={styles.actions}>
-            <div className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
-              编辑资料
+          <div className={styles.profileTop}>
+            <div className={styles.avatarWrap}>
+              <img src={user.icon || '/imgs/icons/default-icon.png'} alt="" />
             </div>
-            <div className={styles.logoutBtn} onClick={handleLogout}>
-              退出登录
+            <div className={styles.profileInfo}>
+              <div className={styles.nickName}>{user.nickName}</div>
+              <div className={styles.city}>杭州</div>
+              <div className={styles.intro}>
+                {info.introduce || '添加个人简介，让大家更好的认识你'}
+              </div>
+              <div className={styles.actions}>
+                <div className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
+                  编辑资料
+                </div>
+                <div className={styles.logoutBtn} onClick={handleLogout}>
+                  退出登录
+                </div>
+              </div>
             </div>
           </div>
           <div className={styles.stats}>
@@ -188,7 +193,7 @@ export default function MyProfile() {
           <Tabs.Tab title="关注" key="4">
             <div className={styles.tabContent} onScroll={handleScroll} ref={containerRef}>
               {followBlogs.map((b) => (
-                <BlogCard
+                <FeedCard
                   key={b.id}
                   blog={b}
                   onLikeUpdate={() => handleLikeUpdate(b.id)}

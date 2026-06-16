@@ -5,11 +5,11 @@
 }
 
 .searchBar {
-  background: linear-gradient(135deg, #ff6633, #ff7a4d);
+  background: var(--color-primary-gradient);
   color: white;
   display: flex;
   justify-content: space-around;
-  height: 7%;
+  height: 48px;
   align-items: center;
   padding: 0 8px;
   flex-shrink: 0;
