@@ -12,6 +12,7 @@ export function getShopsByType(params: {
   typeId: number | string;
   current: number;
   sortBy?: string;
+  sortOrder?: string;
   x?: number;
   y?: number;
 }) {

@@ -11,6 +11,12 @@ interface ShopType {
   icon: string;
 }
 
+const SORT_OPTIONS = [
+  { label: '距离', field: '' },
+  { label: '人气', field: 'comments' },
+  { label: '评分', field: 'score' },
+] as const;
+
 export default function ShopList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -21,6 +27,7 @@ export default function ShopList() {
   const [shops, setShops] = useState<ShopData[]>([]);
   const [visible, setVisible] = useState(false);
   const [sortBy, setSortBy] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [current, setCurrent] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -40,6 +47,7 @@ export default function ShopList() {
         typeId,
         current,
         sortBy,
+        sortOrder,
         x: 120.149993,
         y: 30.334229,
       });
@@ -55,13 +63,13 @@ export default function ShopList() {
     } finally {
       setLoading(false);
     }
-  }, [typeId, current, sortBy, loading, hasMore]);
+  }, [typeId, current, sortBy, sortOrder, loading, hasMore]);
 
   useEffect(() => {
     setShops([]);
     setCurrent(1);
     setHasMore(true);
-  }, [typeId, sortBy]);
+  }, [typeId, sortBy, sortOrder]);
 
   useEffect(() => {
     if (shops.length === 0 && hasMore) {
@@ -79,7 +87,14 @@ export default function ShopList() {
   }, [loadShops, loading, hasMore]);
 
   const handleSort = (field: string) => {
-    setSortBy(field);
+    setVisible(false);
+    if (field === sortBy) {
+      // toggle direction
+      setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
     setShops([]);
     setCurrent(1);
     setHasMore(true);
@@ -107,35 +122,51 @@ export default function ShopList() {
       </div>
 
       <div className={styles.sortBar}>
-        <div className={styles.sortItem} onClick={() => setVisible(!visible)}>
-          <span>{typeName}</span>
-          <span style={{ fontSize: 10, marginLeft: 2 }}>&#9660;</span>
+        <div className={`${styles.sortItem} ${visible ? styles.sortActive : ''}`} onClick={() => setVisible(!visible)}>
+          <span>{typeName || '全部分类'}</span>
+          <span className={styles.sortArrow}>&#9660;</span>
         </div>
-        <div className={styles.sortItem} onClick={() => handleSort('')}>
-          距离
-        </div>
-        <div className={styles.sortItem} onClick={() => handleSort('comments')}>
-          人气
-        </div>
-        <div className={styles.sortItem} onClick={() => handleSort('score')}>
-          评分
-        </div>
-      </div>
-
-      <div className={styles.selectType} style={{ display: visible ? 'block' : 'none' }}>
-        {types.map((t) => (
+        {SORT_OPTIONS.map((opt) => (
           <div
-            key={t.id}
-            className={`${styles.typeOption} ${String(t.id) === typeId ? styles.activeType : ''}`}
-            onClick={() => {
-              handleTypeChange(t);
-              setVisible(false);
-            }}
+            key={opt.field}
+            className={`${styles.sortItem} ${sortBy === opt.field ? styles.sortActive : ''}`}
+            onClick={() => handleSort(opt.field)}
           >
-            {t.name}
+            <span>{opt.label}</span>
+            {sortBy === opt.field && (
+              <span className={styles.sortArrow}>
+                {sortOrder === 'desc' ? '▼' : '▲'}
+              </span>
+            )}
           </div>
         ))}
+
+        {visible && (
+          <div className={styles.selectType}>
+            {types.map((t) => (
+              <div
+                key={t.id}
+                className={`${styles.typeOption} ${String(t.id) === typeId ? styles.activeType : ''}`}
+                onClick={() => {
+                  handleTypeChange(t);
+                  setVisible(false);
+                }}
+              >
+                <img
+                  className={styles.typeIcon}
+                  src={`/imgs/${t.icon}`}
+                  alt={t.name}
+                />
+                <span className={styles.typeName}>{t.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {visible && (
+        <div className={styles.mask} onClick={() => setVisible(false)} />
+      )}
 
       <div className={styles.list} onScroll={handleScroll} ref={containerRef}>
         {shops.map((s) => (
