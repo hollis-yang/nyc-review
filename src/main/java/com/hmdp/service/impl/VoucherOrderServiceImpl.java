@@ -18,7 +18,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.concurrent.*;
 
@@ -114,7 +114,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = voucherOrder.getUserId();
 
         // (1) 查询订单
-        int count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
+        long count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
         // (2) 判断是否存在
         if (count > 0) {
             log.error("用户已经购买过一次了");

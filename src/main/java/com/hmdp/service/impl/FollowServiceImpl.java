@@ -13,7 +13,7 @@ import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -92,7 +92,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         // 1.获取用户
         Long userId = UserHolder.getUser().getId();
         // 2.查询是否关注
-        Integer count = query().eq("follow_user_id", followUserId).eq("user_id", userId).count();
+        long count = query().eq("follow_user_id", followUserId).eq("user_id", userId).count();
         // 3.count>0 -> 关注
         return Result.ok(count > 0);
     }

@@ -1,16 +1,24 @@
 package com.hmdp.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.CacheClient;
+import com.hmdp.utils.SystemConstants;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.geo.Distance;
+import org.springframework.data.geo.Metrics;
+import org.springframework.data.redis.connection.RedisGeoCommands.GeoSearchCommandArgs;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +38,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Resource
     private CacheClient cacheClient;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Result queryById(Long id) {
@@ -71,5 +81,35 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // cacheClient.setWithLogicalExpire(CACHE_SHOP_KEY + id, shop, CACHE_LOGICAL_EXPIRE, TimeUnit.SECONDS);
 
         return Result.ok();
+    }
+
+    @Override
+    public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+        // 1.判断是否需要根据坐标查询
+        if (x == null || y == null) {
+            // 不需要坐标查询，按数据库分页查询
+            Page<Shop> page = query()
+                    .eq("type_id", typeId)
+                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+            // 返回数据
+            return Result.ok(page.getRecords());
+        }
+        // 2.计算分页参数
+        int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
+        // 3.查询redis，按照距离排序、分页 -> shopId, distance
+        String geoKey = SHOP_GEO_KEY + typeId;
+        var results = stringRedisTemplate.opsForGeo()
+                .search(geoKey,
+                        GeoReference.fromCoordinate(x, y),
+                        new Distance(10, Metrics.KILOMETERS),
+                        GeoSearchCommandArgs.newGeoSearchArgs()
+                                .includeDistance()
+                                .sortAscending()
+                                .limit(end));
+        // 4.解析出shopId，根据id查店铺
+        // 5.返回结果
+
+        return null;
     }
 }
