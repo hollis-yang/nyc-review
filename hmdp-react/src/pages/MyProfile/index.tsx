@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
-import { Tabs } from 'antd-mobile';
+import { Tabs, Toast } from 'antd-mobile';
 import { useAuth } from '../../hooks/useAuth';
-import { getMe, getUserInfo } from '../../api/user';
+import { getMe, getUserInfo, sign, signCount } from '../../api/user';
 import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
 import FeedCard from '../../components/FeedCard';
 import type { BlogData } from '../../components/BlogCard';
@@ -19,6 +19,8 @@ export default function MyProfile() {
   const [activeTab, setActiveTab] = useState('1');
   const [params, setParams] = useState({ minTime: 0, offset: 0 });
   const [loading, setLoading] = useState(false);
+  const [signDays, setSignDays] = useState(0);
+  const [signedToday, setSignedToday] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,6 +45,18 @@ export default function MyProfile() {
         navigate('/login');
       });
   }, [navigate]);
+
+  useEffect(() => {
+    signCount()
+      .then((res) => {
+        const count = res.data ?? res;
+        if (typeof count === 'number' && count > 0) {
+          setSignDays(count);
+          setSignedToday(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const loadFollowBlogs = useCallback(async (clear = false) => {
     if (loading) return;
@@ -111,6 +125,17 @@ export default function MyProfile() {
     else navigate('/');
   };
 
+  const handleSign = async () => {
+    try {
+      await sign();
+      Toast.show({ icon: 'success', content: '签到成功！' });
+      setSignedToday(true);
+      setSignDays((prev) => prev + 1);
+    } catch (err: any) {
+      Toast.show({ icon: 'fail', content: String(err) });
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -152,6 +177,17 @@ export default function MyProfile() {
               <div className={styles.statNum}>{info.followee || 0}</div>
               <div className={styles.statLabel}>关注</div>
             </div>
+          </div>
+          <div className={styles.signSection}>
+            {signedToday ? (
+              <div className={styles.signedBadge}>
+                ✅ 已签到 <span className={styles.signDaysNum}>{signDays}</span> 天
+              </div>
+            ) : (
+              <div className={styles.signBtn} onClick={handleSign}>
+                ✍️ 签到
+              </div>
+            )}
           </div>
         </div>
       )}

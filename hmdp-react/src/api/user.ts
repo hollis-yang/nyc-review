@@ -11,3 +11,11 @@ export function getUserById(id: number | string) {
 export function getUserInfo(id: number | string) {
   return client.get(`/user/info/${id}`);
 }
+
+export function sign() {
+  return client.post('/user/sign');
+}
+
+export function signCount() {
+  return client.get('/user/sign/count');
+}

@@ -167,6 +167,41 @@
   background: var(--color-divider);
 }
 
+/* ===== 签到区域 ===== */
+.signSection {
+  border-top: 1px solid var(--color-divider);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.signBtn {
+  background: var(--color-primary-gradient);
+  color: #fff;
+  padding: 8px 28px;
+  border-radius: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.signBtn:active {
+  transform: scale(0.95);
+}
+
+.signedBadge {
+  font-size: 14px;
+  color: var(--color-text-hint);
+}
+
+.signDaysNum {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ff6633;
+  margin: 0 2px;
+}
+
 /* ===== 内容区域 ===== */
 .content {
   flex: 1;
