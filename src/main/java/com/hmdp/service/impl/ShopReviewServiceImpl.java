@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.PageCacheClient;
 import com.hmdp.utils.SystemConstants;
+import com.hmdp.utils.UserHolder;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
@@ -63,5 +64,23 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
 
         long total = query().eq("shop_id", shopId).count();
         return Result.ok(records, total);
+    }
+
+    @Override
+    public Result addReview(ShopReview review) {
+        if (review.getShopId() == null) {
+            return Result.fail("店铺ID不能为空");
+        }
+        if (review.getRating() == null || review.getRating() < 1 || review.getRating() > 5) {
+            return Result.fail("评分必须在1-5之间");
+        }
+        if (review.getContent() == null || review.getContent().trim().isEmpty()) {
+            return Result.fail("评价内容不能为空");
+        }
+        Long userId = UserHolder.getUser().getId();
+        review.setUserId(userId);
+        review.setLiked(0);
+        save(review);
+        return Result.ok(review.getId());
     }
 }

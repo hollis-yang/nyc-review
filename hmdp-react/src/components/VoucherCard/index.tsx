@@ -1,5 +1,6 @@
 import { Toast } from 'antd-mobile';
 import { formatPrice } from '../../utils';
+import { purchaseVoucher } from '../../api/voucher';
 import { useAuth } from '../../hooks/useAuth';
 import styles from './VoucherCard.module.css';
 
@@ -43,9 +44,9 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
 
   const discount = ((v.payValue * 10) / v.actualValue).toFixed(1);
   const price = formatPrice(v.payValue);
-  const disabled = isNotBegin(v) || v.stock < 1;
+  const disabled = isNotBegin(v) || (v.type === 1 && v.stock < 1);
 
-  const handleSeckill = () => {
+  const handleSeckill = async () => {
     if (!isAuthenticated) {
       Toast.show({ icon: 'fail', content: '请先登录' });
       setTimeout(() => {
@@ -61,11 +62,20 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
       Toast.show({ icon: 'fail', content: '优惠券抢购已经结束！' });
       return;
     }
-    if (v.stock < 1) {
+    if (v.type === 1 && v.stock < 1) {
       Toast.show({ icon: 'fail', content: '库存不足，请刷新再试试！' });
       return;
     }
-    onSeckill(v.id);
+    if (v.type === 1) {
+      onSeckill(v.id);
+    } else {
+      try {
+        const res = await purchaseVoucher(v.id);
+        Toast.show({ icon: 'success', content: '购买成功，订单id：' + (res.data ?? res) });
+      } catch (err: any) {
+        Toast.show({ icon: 'fail', content: String(err) });
+      }
+    }
   };
 
   return (
@@ -93,7 +103,7 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
             <div className={styles.time}>{formatTime(v)}</div>
           </div>
         ) : (
-          <div className={styles.btn}>抢购</div>
+          <div className={styles.btn} onClick={handleSeckill}>抢购</div>
         )}
       </div>
     </div>

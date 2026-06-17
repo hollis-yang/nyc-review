@@ -411,3 +411,52 @@
   color: var(--color-text-hint);
   font-size: 14px;
 }
+
+/* ===== 底部固定区域 ===== */
+.bottomSticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: #fff;
+}
+
+/* ===== 评论输入 ===== */
+.commentInputBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fff;
+  border-top: 1px solid var(--color-divider);
+}
+
+.commentInput {
+  flex: 1;
+  border: 1px solid #e8e8e8;
+  outline: none;
+  background: var(--color-bg-page);
+  border-radius: 22px;
+  padding: 10px 16px;
+  font-size: 13px;
+  transition: border-color 0.2s;
+}
+
+.commentInput:focus {
+  border-color: #F63;
+}
+
+.commentSubmit {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F63;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 16px;
+  background: #fff5f3;
+  transition: background 0.2s;
+}
+
+.commentSubmit:active {
+  background: #ffebe6;
+}

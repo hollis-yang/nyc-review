@@ -7,4 +7,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
 public interface IShopReviewService extends IService<ShopReview> {
 
     Result queryByShopId(Long shopId, Integer current);
+
+    Result addReview(ShopReview review);
 }

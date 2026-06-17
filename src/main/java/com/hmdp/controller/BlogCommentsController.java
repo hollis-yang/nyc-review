@@ -2,6 +2,7 @@ package com.hmdp.controller;
 
 
 import com.hmdp.dto.Result;
+import com.hmdp.entity.BlogComments;
 import com.hmdp.service.IBlogCommentsService;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,5 +26,10 @@ public class BlogCommentsController {
     @GetMapping
     public Result queryComments(@RequestParam("blogId") Long blogId) {
         return blogCommentsService.queryCommentsByBlogId(blogId);
+    }
+
+    @PostMapping
+    public Result addComment(@RequestBody BlogComments comment) {
+        return blogCommentsService.addComment(comment);
     }
 }

@@ -7,6 +7,7 @@ import com.hmdp.mapper.BlogCommentsMapper;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IUserService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.UserHolder;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
@@ -55,5 +56,23 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         }
 
         return Result.ok(result);
+    }
+
+    @Override
+    public Result addComment(BlogComments comment) {
+        if (comment.getBlogId() == null) {
+            return Result.fail("博客ID不能为空");
+        }
+        if (comment.getContent() == null || comment.getContent().trim().isEmpty()) {
+            return Result.fail("评论内容不能为空");
+        }
+        Long userId = UserHolder.getUser().getId();
+        comment.setUserId(userId);
+        comment.setLiked(0);
+        comment.setStatus(false);
+        if (comment.getParentId() == null) comment.setParentId(0L);
+        if (comment.getAnswerId() == null) comment.setAnswerId(0L);
+        save(comment);
+        return Result.ok(comment.getId());
     }
 }

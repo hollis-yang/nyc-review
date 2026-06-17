@@ -16,4 +16,6 @@ import com.hmdp.dto.Result;
 public interface IBlogCommentsService extends IService<BlogComments> {
 
     Result queryCommentsByBlogId(Long blogId);
+
+    Result addComment(BlogComments comment);
 }

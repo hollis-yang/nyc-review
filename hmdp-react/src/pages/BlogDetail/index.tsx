@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Toast } from 'antd-mobile';
-import { getBlogById, getBlogLikes, likeBlog, getBlogComments } from '../../api/blog';
+import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment } from '../../api/blog';
 import { getShopById } from '../../api/shop';
 import { getMe } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
@@ -25,6 +25,7 @@ interface BlogInfo {
 }
 
 interface ShopInfo {
+  id: number;
   image: string;
   name: string;
   score: number;
@@ -51,6 +52,8 @@ export default function BlogDetail() {
   const [currentUser, setCurrentUser] = useState<{ id: number } | null>(null);
   const [followed, setFollowed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -117,6 +120,36 @@ export default function BlogDetail() {
     else navigate('/');
   };
 
+  const scrollToComments = () => {
+    document.getElementById('comments-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title: blog?.title ?? '笔记详情', url }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(url);
+      Toast.show({ icon: 'success', content: '链接已复制' });
+    }
+  };
+
+  const handleCommentSubmit = async () => {
+    if (!commentText.trim() || !id) return;
+    setSubmitting(true);
+    try {
+      await createBlogComment({ blogId: Number(id), content: commentText.trim() });
+      Toast.show({ icon: 'success', content: '评论成功' });
+      setCommentText('');
+      const res = await getBlogComments(id);
+      setComments(res.data ?? res);
+    } catch (err: any) {
+      Toast.show({ icon: 'fail', content: String(err) });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   /* ---- 渲染 ---- */
 
   if (error) {
@@ -179,7 +212,7 @@ export default function BlogDetail() {
           <LeftOutline fontSize={20} color="#fff" />
         </div>
         <div className={styles.title}>笔记详情</div>
-        <div className={styles.share}>
+        <div className={styles.share} onClick={handleShare}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="5" r="1.2" fill="rgba(255,255,255,0.85)" stroke="none" />
             <circle cx="12" cy="12" r="1.2" fill="rgba(255,255,255,0.85)" stroke="none" />
@@ -223,7 +256,7 @@ export default function BlogDetail() {
 
         {/* 关联商铺卡片 */}
         {shop && (
-          <div className={styles.shopBasic}>
+          <div className={styles.shopBasic} onClick={() => navigate(`/shop-detail/${shop.id}`)}>
             <div className={styles.shopIcon}>
               <img src={shop.image} alt="" />
             </div>
@@ -255,12 +288,12 @@ export default function BlogDetail() {
         </div>
 
         {/* 评论卡片 */}
-        <div className={styles.comments}>
+        <div className={styles.comments} id="comments-section">
           <div className={styles.commentsHead}>
             <div>
               网友评价 <span>（{comments.length}）</span>
             </div>
-            <div className={styles.commentsHeadArrow}>&gt;</div>
+            <div className={styles.commentsHeadArrow} onClick={scrollToComments}>&gt;</div>
           </div>
           {comments.length > 0 ? (
             comments.map((c) => (
@@ -284,18 +317,38 @@ export default function BlogDetail() {
         </div>
       </div>
 
-      {/* BottomBar */}
-      <div className={styles.bottomBar}>
-        <div className={styles.bottomBox} onClick={handleLike}>
-          <svg viewBox="0 0 1024 1024" width="26" height="26" fill={blog.isLike ? '#ff6633' : '#82848a'}>
-            <path d="M160 944c0 8.8-7.2 16-16 16h-32c-26.5 0-48-21.5-48-48V528c0-26.5 21.5-48 48-48h32c8.8 0 16 7.2 16 16v448zM96 416c-53 0-96 43-96 96v416c0 53 43 96 96 96h96c17.7 0 32-14.3 32-32V448c0-17.7-14.3-32-32-32H96zM505.6 64c16.2 0 26.4 8.7 31 13.9 4.6 5.2 12.1 16.3 10.3 32.4l-23.5 203.4c-4.9 42.2 8.6 84.6 36.8 116.4 28.3 31.7 68.9 49.9 111.4 49.9h271.2c6.6 0 10.8 3.3 13.2 6.1s5 7.5 4 14l-48 303.4c-6.9 43.6-29.1 83.4-62.7 112C815.8 944.2 773 960 728.9 960h-317c-33.1 0-59.9-26.8-59.9-59.9v-455c0-6.1 1.7-12 5-17.1 69.5-109 106.4-234.2 107-364h41.6z m0-64h-44.9C427.2 0 400 27.2 400 60.7c0 127.1-39.1 251.2-112 355.3v484.1c0 68.4 55.5 123.9 123.9 123.9h317c122.7 0 227.2-89.3 246.3-210.5l47.9-303.4c7.8-49.4-30.4-94.1-80.4-94.1H671.6c-50.9 0-90.5-44.4-84.6-95l23.5-203.4C617.7 55 568.7 0 505.6 0z" />
-          </svg>
-          <span className={blog.isLike ? styles.liked : ''}>{blog.liked}</span>
+      {/* 底部固定区域 */}
+      <div className={styles.bottomSticky}>
+        <div className={styles.commentInputBar}>
+          <input
+            type="text"
+            placeholder="说点什么..."
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCommentSubmit(); }}
+            className={styles.commentInput}
+          />
+          <div
+            className={styles.commentSubmit}
+            onClick={handleCommentSubmit}
+            style={{ opacity: commentText.trim() && !submitting ? 1 : 0.4 }}
+          >
+            发送
+          </div>
         </div>
-        <div className={styles.bottomBox}>
-          <svg viewBox="0 0 1024 1024" width="26" height="26" fill="#82848a">
-            <path d="M128 128h768v576H128V128zm0-64C92.8 64 64 92.8 64 128v576c0 35.2 28.8 64 64 64h256l128 192 128-192h256c35.2 0 64-28.8 64-64V128c0-35.2-28.8-64-64-64H128z" />
-          </svg>
+
+        <div className={styles.bottomBar}>
+          <div className={styles.bottomBox} onClick={handleLike}>
+            <svg viewBox="0 0 1024 1024" width="26" height="26" fill={blog.isLike ? '#ff6633' : '#82848a'}>
+              <path d="M160 944c0 8.8-7.2 16-16 16h-32c-26.5 0-48-21.5-48-48V528c0-26.5 21.5-48 48-48h32c8.8 0 16 7.2 16 16v448zM96 416c-53 0-96 43-96 96v416c0 53 43 96 96 96h96c17.7 0 32-14.3 32-32V448c0-17.7-14.3-32-32-32H96zM505.6 64c16.2 0 26.4 8.7 31 13.9 4.6 5.2 12.1 16.3 10.3 32.4l-23.5 203.4c-4.9 42.2 8.6 84.6 36.8 116.4 28.3 31.7 68.9 49.9 111.4 49.9h271.2c6.6 0 10.8 3.3 13.2 6.1s5 7.5 4 14l-48 303.4c-6.9 43.6-29.1 83.4-62.7 112C815.8 944.2 773 960 728.9 960h-317c-33.1 0-59.9-26.8-59.9-59.9v-455c0-6.1 1.7-12 5-17.1 69.5-109 106.4-234.2 107-364h41.6z m0-64h-44.9C427.2 0 400 27.2 400 60.7c0 127.1-39.1 251.2-112 355.3v484.1c0 68.4 55.5 123.9 123.9 123.9h317c122.7 0 227.2-89.3 246.3-210.5l47.9-303.4c7.8-49.4-30.4-94.1-80.4-94.1H671.6c-50.9 0-90.5-44.4-84.6-95l23.5-203.4C617.7 55 568.7 0 505.6 0z" />
+            </svg>
+            <span className={blog.isLike ? styles.liked : ''}>{blog.liked}</span>
+          </div>
+          <div className={styles.bottomBox} onClick={scrollToComments}>
+            <svg viewBox="0 0 1024 1024" width="26" height="26" fill="#82848a">
+              <path d="M128 128h768v576H128V128zm0-64C92.8 64 64 92.8 64 128v576c0 35.2 28.8 64 64 64h256l128 192 128-192h256c35.2 0 64-28.8 64-64V128c0-35.2-28.8-64-64-64H128z" />
+            </svg>
+          </div>
         </div>
       </div>
     </div>

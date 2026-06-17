@@ -30,3 +30,12 @@ export function getShopsByName(name: string, current: number = 1) {
 export function getShopReviews(shopId: number | string, current: number = 1) {
   return client.get(`/shop-review/${shopId}`, { params: { current } });
 }
+
+export function createShopReview(data: {
+  shopId: number;
+  rating: number;
+  content: string;
+  images?: string;
+}) {
+  return client.post('/shop-review', data);
+}

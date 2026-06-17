@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline, EnvironmentOutline } from 'antd-mobile-icons';
 import { Rate, Toast } from 'antd-mobile';
-import { getShopById, getShopReviews } from '../../api/shop';
+import { getShopById, getShopReviews, createShopReview } from '../../api/shop';
 import { getVoucherList, seckillVoucher } from '../../api/voucher';
 import VoucherCard, { type VoucherData } from '../../components/VoucherCard';
 import styles from './ShopDetail.module.css';
@@ -37,6 +37,10 @@ export default function ShopDetail() {
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [reviewTotal, setReviewTotal] = useState(0);
+  const [showHours, setShowHours] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewContent, setReviewContent] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +79,36 @@ export default function ShopDetail() {
     else navigate('/');
   };
 
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title: shop?.name ?? '店铺详情', url }); } catch {}
+    } else {
+      await navigator.clipboard.writeText(url);
+      Toast.show({ icon: 'success', content: '链接已复制' });
+    }
+  };
+
+  const handleReviewSubmit = async () => {
+    if (!reviewContent.trim() || !id) return;
+    setReviewSubmitting(true);
+    try {
+      await createShopReview({ shopId: Number(id), rating: reviewRating, content: reviewContent.trim() });
+      Toast.show({ icon: 'success', content: '评价发表成功' });
+      setReviewContent('');
+      setReviewRating(5);
+      setReviewTotal((prev) => prev + 1);
+      // refresh reviews
+      const res = await getShopReviews(id);
+      const records = res.data?.records ?? res.data ?? res;
+      setReviews(Array.isArray(records) ? records : []);
+    } catch (err: any) {
+      Toast.show({ icon: 'fail', content: String(err) });
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
   if (error) {
     return (
       <div className={styles.container}>
@@ -100,7 +134,7 @@ export default function ShopDetail() {
           <LeftOutline fontSize={18} color="white" />
         </div>
         <div className={styles.title}>{shop.name}</div>
-        <div className={styles.share}>...</div>
+        <div className={styles.share} onClick={handleShare}>...</div>
       </div>
       <div className={styles.scroll}>
         <div className={styles.infoBox}>
@@ -118,12 +152,6 @@ export default function ShopDetail() {
               {shop.comments}条
             </span>
           </div>
-          <div className={styles.rateInfo}>口味:4.9  环境:4.8  服务:4.7</div>
-          <div className={styles.shopRank}>
-            <img src="/imgs/bd.png" width="63" height="20" alt="" />
-            <span>拱墅区好评榜第3名</span>
-            <div>&gt;</div>
-          </div>
           <div className={styles.shopImages}>
             {shop.images.map((s: string, i: number) => (
               <div key={i}>
@@ -135,7 +163,10 @@ export default function ShopDetail() {
             <EnvironmentOutline fontSize={14} />
             <span style={{ marginLeft: 4 }}>{shop.address}</span>
             <span style={{ margin: '0 8px', color: '#e1e2e3' }}>|</span>
-            <span style={{ fontSize: 12 }}>导航</span>
+            <span style={{ fontSize: 12, cursor: 'pointer' }} onClick={() => {
+              const addr = encodeURIComponent(shop?.address ?? '');
+              window.open(`https://maps.apple.com/?q=${addr}`, '_blank');
+            }}>导航</span>
           </div>
         </div>
 
@@ -145,8 +176,15 @@ export default function ShopDetail() {
           <span>🕐</span>
           <div>营业时间</div>
           <div style={{ flex: 1, fontSize: 12 }}>{shop.openHours}</div>
-          <span className={styles.lineRight}>查看详情 &gt;</span>
+          <span className={styles.lineRight} onClick={() => setShowHours(!showHours)} style={{ cursor: 'pointer' }}>
+            {showHours ? '收起' : '查看详情'}
+          </span>
         </div>
+        {showHours && (
+          <div style={{ padding: '8px 0 0', fontSize: 12, color: '#666', width: '100%' }}>
+            {shop.openHours}
+          </div>
+        )}
 
         <div className={styles.divider} />
 
@@ -207,6 +245,42 @@ export default function ShopDetail() {
                 <div>&gt;</div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* 写评价 */}
+        <div className={styles.divider} />
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>写评价</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, color: '#666' }}>评分：</span>
+            <Rate
+              value={reviewRating}
+              onChange={setReviewRating}
+              style={{ '--star-size': '20px', '--active-color': '#F63' }}
+            />
+          </div>
+          <textarea
+            placeholder="分享你的体验..."
+            value={reviewContent}
+            onChange={(e) => setReviewContent(e.target.value)}
+            rows={3}
+            maxLength={500}
+            style={{
+              width: '100%', padding: '8px 12px', border: '1px solid #eee',
+              borderRadius: 8, fontSize: 13, resize: 'vertical', boxSizing: 'border-box',
+            }}
+          />
+          <div
+            onClick={handleReviewSubmit}
+            style={{
+              marginTop: 8, textAlign: 'center', background: 'var(--color-primary-gradient)',
+              color: '#fff', padding: '8px 0', borderRadius: 20, fontSize: 14,
+              cursor: reviewContent.trim() && !reviewSubmitting ? 'pointer' : 'default',
+              opacity: reviewContent.trim() && !reviewSubmitting ? 1 : 0.5,
+            }}
+          >
+            {reviewSubmitting ? '提交中...' : '发表评价'}
           </div>
         </div>
 

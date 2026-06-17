@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LeftOutline, SearchOutline } from 'antd-mobile-icons';
-import { getShopTypes, getShopsByType } from '../../api/shop';
+import { getShopTypes, getShopsByType, getShopsByName } from '../../api/shop';
 import ShopCard, { type ShopData } from '../../components/ShopCard';
 import styles from './ShopList.module.css';
 
@@ -22,6 +22,7 @@ export default function ShopList() {
   const [searchParams] = useSearchParams();
   const typeId = searchParams.get('type') || '0';
   const typeName = searchParams.get('name') || '';
+  const searchQuery = searchParams.get('query') || '';
 
   const [types, setTypes] = useState<ShopType[]>([]);
   const [shops, setShops] = useState<ShopData[]>([]);
@@ -43,14 +44,16 @@ export default function ShopList() {
     if (loading || !hasMore) return;
     setLoading(true);
     try {
-      const res = await getShopsByType({
-        typeId,
-        current,
-        sortBy,
-        sortOrder,
-        x: 120.149993,
-        y: 30.334229,
-      });
+      const res = searchQuery
+        ? await getShopsByName(searchQuery, current)
+        : await getShopsByType({
+            typeId,
+            current,
+            sortBy,
+            sortOrder,
+            x: 120.149993,
+            y: 30.334229,
+          });
       const data = res.data ?? res;
       if (!data || data.length === 0) {
         setHasMore(false);
@@ -63,13 +66,13 @@ export default function ShopList() {
     } finally {
       setLoading(false);
     }
-  }, [typeId, current, sortBy, sortOrder, loading, hasMore]);
+  }, [typeId, current, sortBy, sortOrder, searchQuery, loading, hasMore]);
 
   useEffect(() => {
     setShops([]);
     setCurrent(1);
     setHasMore(true);
-  }, [typeId, sortBy, sortOrder]);
+  }, [typeId, sortBy, sortOrder, searchQuery]);
 
   useEffect(() => {
     if (shops.length === 0 && hasMore) {

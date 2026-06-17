@@ -22,6 +22,7 @@ export default function Home() {
   const [hasMore, setHasMore] = useState(true);
   const loadingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     getShopTypes()
@@ -82,7 +83,18 @@ export default function Home() {
         <div className={styles.searchInput}>
           <div className={styles.inputWrapper}>
             <SearchOutline fontSize={14} style={{ margin: '0 4px' }} />
-            <span style={{ color: '#999', fontSize: 13 }}>请输入商户名、地点</span>
+            <input
+              type="text"
+              placeholder="请输入商户名、地点"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchText.trim()) {
+                  navigate(`/shop-list?query=${encodeURIComponent(searchText.trim())}`);
+                }
+              }}
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: '#333', width: '100%' }}
+            />
           </div>
         </div>
         <div className={styles.headerIcon} onClick={() => navigate('/profile')}>

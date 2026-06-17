@@ -1,6 +1,7 @@
 package com.hmdp.controller;
 
 import com.hmdp.dto.Result;
+import com.hmdp.entity.ShopReview;
 import com.hmdp.service.IShopReviewService;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,5 +19,10 @@ public class ShopReviewController {
             @PathVariable("shopId") Long shopId,
             @RequestParam(value = "current", defaultValue = "1") Integer current) {
         return shopReviewService.queryByShopId(shopId, current);
+    }
+
+    @PostMapping
+    public Result addReview(@RequestBody ShopReview review) {
+        return shopReviewService.addReview(review);
     }
 }

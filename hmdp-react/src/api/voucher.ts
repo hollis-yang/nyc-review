@@ -7,3 +7,7 @@ export function getVoucherList(shopId: number | string) {
 export function seckillVoucher(voucherId: number | string) {
   return client.post(`/voucher-order/seckill/${voucherId}`);
 }
+
+export function purchaseVoucher(voucherId: number | string) {
+  return client.post(`/voucher-order/purchase/${voucherId}`);
+}

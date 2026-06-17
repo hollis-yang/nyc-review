@@ -32,6 +32,15 @@ export function getBlogComments(blogId: number | string) {
   return client.get('/blog-comments', { params: { blogId } });
 }
 
+export function createBlogComment(data: {
+  blogId: number;
+  content: string;
+  parentId?: number;
+  answerId?: number;
+}) {
+  return client.post('/blog-comments', data);
+}
+
 export function createBlog(data: {
   title: string;
   content: string;

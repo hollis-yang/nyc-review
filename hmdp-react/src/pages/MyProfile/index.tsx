@@ -14,7 +14,7 @@ export default function MyProfile() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
-  const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number }>({});
+  const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
   const [blogs, setBlogs] = useState<BlogData[]>([]);
   const [followBlogs, setFollowBlogs] = useState<BlogData[]>([]);
   const [activeTab, setActiveTab] = useState('1');
@@ -48,15 +48,24 @@ export default function MyProfile() {
   }, [navigate]);
 
   useEffect(() => {
-    signCount()
-      .then((res) => {
-        const count = res.data ?? res;
-        if (typeof count === 'number' && count > 0) {
-          setSignDays(count);
-          setSignedToday(true);
-        }
-      })
-      .catch(() => {});
+    const checkSign = () => {
+      signCount()
+        .then((res) => {
+          const count = res.data ?? res;
+          if (typeof count === 'number' && count > 0) {
+            setSignDays(count);
+            setSignedToday(true);
+          } else {
+            setSignDays(0);
+            setSignedToday(false);
+          }
+        })
+        .catch(() => {});
+    };
+    checkSign();
+    const onVisible = () => { if (document.visibilityState === 'visible') checkSign(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   const loadFollowBlogs = useCallback(async (clear = false) => {
@@ -154,7 +163,7 @@ export default function MyProfile() {
             </div>
             <div className={styles.profileInfo}>
               <div className={styles.nickName}>{user.nickName}</div>
-              <div className={styles.city}>杭州</div>
+              <div className={styles.city}>{info.city || '未设置'}</div>
               <div className={styles.intro}>
                 {info.introduce || '添加个人简介，让大家更好的认识你'}
               </div>
