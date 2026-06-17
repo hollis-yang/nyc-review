@@ -10,6 +10,8 @@ import BlogEdit from './pages/BlogEdit';
 import MyProfile from './pages/MyProfile';
 import ProfileEdit from './pages/ProfileEdit';
 import OtherProfile from './pages/OtherProfile';
+import MapPage from './pages/Map';
+import Messages from './pages/Messages';
 import ProtectedRoute from './components/ProtectedRoute';
 import LegacyRedirect from './components/LegacyRedirect';
 
@@ -35,6 +37,8 @@ export default function App() {
             <ProtectedRoute><ProfileEdit /></ProtectedRoute>
           } />
           <Route path="/user/:id" element={<OtherProfile />} />
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/messages" element={<Messages />} />
           {/* 兼容旧版 .html URL 格式 */}
           <Route path="/index.html" element={<LegacyRedirect />} />
           <Route path="/login.html" element={<LegacyRedirect />} />

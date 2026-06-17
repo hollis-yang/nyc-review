@@ -10,6 +10,7 @@ import com.hmdp.utils.SystemConstants;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
+import java.util.List;
 
 /**
  * <p>
@@ -57,6 +58,16 @@ public class ShopController {
     @PutMapping
     public Result updateShop(@RequestBody Shop shop) {
         return shopService.update(shop);
+    }
+
+    /**
+     * 查询所有商铺（用于地图展示）
+     * @return 所有商铺列表
+     */
+    @GetMapping("/list")
+    public Result queryAllShops() {
+        List<Shop> shops = shopService.list();
+        return Result.ok(shops);
     }
 
     /**

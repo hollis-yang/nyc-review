@@ -22,6 +22,10 @@ export default function FootBar({ activeBtn }: FootBarProps) {
       navigate('/blog-edit');
     } else if (i === 1) {
       navigate('/');
+    } else if (i === 2) {
+      navigate('/map');
+    } else if (i === 3) {
+      navigate('/messages');
     } else if (i === 4) {
       navigate('/profile');
     }

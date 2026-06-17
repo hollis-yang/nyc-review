@@ -20,6 +20,7 @@ export default function Home() {
   const [current, setCurrent] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const loadingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,7 +32,8 @@ export default function Home() {
   }, []);
 
   const loadBlogs = useCallback(async () => {
-    if (loading || !hasMore) return;
+    if (loadingRef.current || !hasMore) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       const res = await getHotBlogs(current);
@@ -49,9 +51,10 @@ export default function Home() {
     } catch {
       // ignore
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  }, [current, loading, hasMore]);
+  }, [current, hasMore]);
 
   useEffect(() => {
     loadBlogs();
@@ -61,10 +64,10 @@ export default function Home() {
     const el = containerRef.current;
     if (!el) return;
     const { scrollTop, offsetHeight, scrollHeight } = el;
-    if (scrollTop + offsetHeight >= scrollHeight - 50 && !loading && hasMore) {
+    if (scrollTop + offsetHeight >= scrollHeight - 50 && !loadingRef.current && hasMore) {
       loadBlogs();
     }
-  }, [loadBlogs, loading, hasMore]);
+  }, [loadBlogs, hasMore]);
 
   const handleLikeUpdate = (blogId: number, liked: number, isLike: boolean) => {
     setBlogs((prev) =>

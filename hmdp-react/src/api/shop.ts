@@ -4,6 +4,10 @@ export function getShopTypes() {
   return client.get('/shop-type/list');
 }
 
+export function getAllShops() {
+  return client.get('/shop/list');
+}
+
 export function getShopById(id: number | string) {
   return client.get(`/shop/${id}`);
 }

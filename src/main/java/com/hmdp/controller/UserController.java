@@ -9,11 +9,14 @@ import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
 /**
@@ -34,6 +37,9 @@ public class UserController {
 
     @Resource
     private IUserInfoService userInfoService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 发送手机验证码
@@ -57,9 +63,16 @@ public class UserController {
      * @return 无
      */
     @PostMapping("/logout")
-    public Result logout(){
-        // TODO 实现登出功能
-        return Result.fail("功能未完成");
+    public Result logout(HttpServletRequest request){
+        // 1.获取token
+        String token = request.getHeader("authorization");
+        if (token != null && !token.isEmpty()) {
+            // 2.删除Redis中的用户信息
+            stringRedisTemplate.delete(RedisConstants.LOGIN_USER_KEY + token);
+        }
+        // 3.清除ThreadLocal
+        UserHolder.removeUser();
+        return Result.ok();
     }
 
     @GetMapping("/me")
@@ -103,5 +116,48 @@ public class UserController {
     @GetMapping("/sign/count")
     public Result signCount(){
         return userService.signCount();
+    }
+
+    /**
+     * 更新用户基本信息（昵称、头像）
+     */
+    @PutMapping("/me")
+    public Result updateMe(@RequestBody User user, HttpServletRequest request) {
+        UserDTO userDTO = UserHolder.getUser();
+        if (userDTO == null) {
+            return Result.fail("请先登录");
+        }
+        // 防止修改其他用户
+        user.setId(userDTO.getId());
+        user.setPhone(null);
+        user.setPassword(null);
+        userService.updateById(user);
+        // 更新Redis中的用户缓存
+        String token = request.getHeader("authorization");
+        if (token != null && !token.isEmpty()) {
+            String key = RedisConstants.LOGIN_USER_KEY + token;
+            if (user.getNickName() != null) {
+                stringRedisTemplate.opsForHash().put(key, "nickName", user.getNickName());
+            }
+            if (user.getIcon() != null) {
+                stringRedisTemplate.opsForHash().put(key, "icon", user.getIcon());
+            }
+        }
+        return Result.ok();
+    }
+
+    /**
+     * 更新用户详细信息（简介、性别、城市、生日）
+     */
+    @PutMapping("/info")
+    public Result updateInfo(@RequestBody UserInfo userInfo) {
+        UserDTO userDTO = UserHolder.getUser();
+        if (userDTO == null) {
+            return Result.fail("请先登录");
+        }
+        // 防止修改其他用户
+        userInfo.setUserId(userDTO.getId());
+        userInfoService.updateById(userInfo);
+        return Result.ok();
     }
 }

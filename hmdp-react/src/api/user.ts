@@ -19,3 +19,16 @@ export function sign() {
 export function signCount() {
   return client.get('/user/sign/count');
 }
+
+export function updateUser(data: { nickName?: string; icon?: string }) {
+  return client.put('/user/me', data);
+}
+
+export function updateUserInfo(data: {
+  introduce?: string;
+  gender?: boolean;
+  city?: string;
+  birthday?: string;
+}) {
+  return client.put('/user/info', data);
+}
