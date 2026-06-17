@@ -28,7 +28,7 @@ public class UploadController {
             image.transferTo(new File(SystemConstants.IMAGE_UPLOAD_DIR, fileName));
             // 返回结果
             log.debug("文件上传成功，{}", fileName);
-            return Result.ok(fileName);
+            return Result.ok("/imgs" + fileName);
         } catch (IOException e) {
             throw new RuntimeException("文件上传失败", e);
         }
