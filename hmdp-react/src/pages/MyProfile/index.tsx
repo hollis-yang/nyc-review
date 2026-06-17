@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo, sign, signCount } from '../../api/user';
 import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
 import FeedCard from '../../components/FeedCard';
+import FootBar from '../../components/FootBar';
 import type { BlogData } from '../../components/BlogCard';
 import styles from './MyProfile.module.css';
 
@@ -240,6 +241,8 @@ export default function MyProfile() {
           </Tabs.Tab>
         </Tabs>
       </div>
+
+      <FootBar activeBtn={4} />
     </div>
   );
 }
