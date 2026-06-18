@@ -40,6 +40,10 @@ interface CommentInfo {
   content: string;
   liked: number;
   createTime: string;
+  parentId: number;
+  answerId: number;
+  replyToName?: string;
+  children: CommentInfo[];
 }
 
 export default function BlogDetail() {
@@ -54,6 +58,8 @@ export default function BlogDetail() {
   const [error, setError] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [replyTo, setReplyTo] = useState<CommentInfo | null>(null);
+  const [replyText, setReplyText] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -156,6 +162,33 @@ export default function BlogDetail() {
     }
   };
 
+  const handleInlineReply = async () => {
+    if (!replyText.trim() || !replyTo || !id) return;
+    try {
+      const parentId = replyTo.parentId > 0 ? replyTo.parentId : replyTo.id;
+      const answerId = replyTo.id;
+      await createBlogComment({
+        blogId: Number(id),
+        content: replyText.trim(),
+        parentId,
+        answerId,
+      });
+      Toast.show({ icon: 'success', content: '回复成功' });
+      setReplyTo(null);
+      setReplyText('');
+      const res = await getBlogComments(id);
+      setComments(res.data ?? res);
+      const blogRes = await getBlogById(id);
+      const blogData = blogRes.data ?? blogRes;
+      if (blogData) {
+        blogData.images = blogData.images ? blogData.images.split(',') : [];
+        setBlog(blogData);
+      }
+    } catch (err: any) {
+      Toast.show({ icon: 'fail', content: String(err) });
+    }
+  };
+
   const handleDelete = () => {
     if (!blog) return;
     Dialog.confirm({
@@ -227,6 +260,83 @@ export default function BlogDetail() {
   };
 
   const hasCommented = currentUser && comments.some((c) => c.userId === currentUser.id);
+
+  const countTree = (list: CommentInfo[]): number =>
+    list.reduce((s, c) => s + 1 + countTree(c.children), 0);
+  const totalCommentCount = countTree(comments);
+
+  const refreshComments = async () => {
+    if (!id) return;
+    const res = await getBlogComments(id);
+    setComments(res.data ?? res);
+    const blogRes = await getBlogById(id);
+    const d = blogRes.data ?? blogRes;
+    if (d) { d.images = d.images ? d.images.split(',') : []; setBlog(d); }
+  };
+
+  const renderComment = (c: CommentInfo, depth: number): JSX.Element => (
+    <div key={c.id}>
+      <div className={`${styles.commentItem} ${depth > 0 ? styles.commentNested : ''}`}>
+        <div className={styles.commentIcon}>
+          <img src={c.icon || '/imgs/icons/default-icon.png'} alt="" />
+        </div>
+        <div className={styles.commentInfo}>
+          <div className={styles.commentUser}>{c.name}</div>
+          {c.replyToName && (
+            <span className={styles.replyToTag}>回复 @{c.replyToName}</span>
+          )}
+          <div className={styles.commentContent}>{c.content}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
+              {currentUser && (
+                <span className={styles.replyBtn} onClick={() => { setReplyTo(c); setReplyText(''); }}>
+                  回复
+                </span>
+              )}
+            </div>
+            {currentUser && currentUser.id === c.userId && (
+              <div
+                style={{ fontSize: 18, color: '#ccc', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+                onClick={() => {
+                  Dialog.confirm({
+                    content: '确定要删除这条评论吗？',
+                    onConfirm: async () => {
+                      try {
+                        await deleteBlogComment(c.id);
+                        await refreshComments();
+                      } catch (err: any) {
+                        Toast.show({ icon: 'fail', content: String(err) });
+                      }
+                    },
+                  });
+                }}
+              >×</div>
+            )}
+          </div>
+          {/* 行内回复框 */}
+          {replyTo?.id === c.id && (
+            <div className={styles.inlineReplyBar}>
+              <span className={styles.replyToTag}>回复 @{c.name}:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleInlineReply(); }}
+                  placeholder={`回复 ${c.name}...`}
+                  className={styles.inlineReplyInput}
+                />
+                <span className={styles.commentSubmit} onClick={handleInlineReply}>发送</span>
+                <span className={styles.cancelReply} onClick={() => setReplyTo(null)}>取消</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      {c.children && c.children.length > 0 && c.children.map((child) => renderComment(child, depth + 1))}
+    </div>
+  );
 
   return (
     <div className={styles.container}>
@@ -323,52 +433,12 @@ export default function BlogDetail() {
         <div className={styles.comments} id="comments-section">
           <div className={styles.commentsHead}>
             <div>
-              网友评价 <span>（{comments.length}）</span>
+              网友评价 <span>（{totalCommentCount}）</span>
             </div>
             <div className={styles.commentsHeadArrow} onClick={scrollToComments}>&gt;</div>
           </div>
           {comments.length > 0 ? (
-            comments.map((c) => (
-              <div className={styles.commentItem} key={c.id}>
-                <div className={styles.commentIcon}>
-                  <img src={c.icon || '/imgs/icons/default-icon.png'} alt="" />
-                </div>
-                <div className={styles.commentInfo}>
-                  <div className={styles.commentUser}>{c.name}</div>
-                  <div className={styles.commentContent}>{c.content}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
-                    {currentUser && currentUser.id === c.userId && (
-                      <div
-                        style={{ fontSize: 18, color: '#ccc', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
-                        onClick={() => {
-                          Dialog.confirm({
-                            content: '确定要删除这条评论吗？',
-                            onConfirm: async () => {
-                              try {
-                                await deleteBlogComment(c.id);
-                                const res = await getBlogComments(id!);
-                                setComments(res.data ?? res);
-                                const blogRes = await getBlogById(id!);
-                                const blogData = blogRes.data ?? blogRes;
-                                if (blogData) {
-                                  blogData.images = blogData.images ? blogData.images.split(',') : [];
-                                  setBlog(blogData);
-                                }
-                              } catch (err: any) {
-                                Toast.show({ icon: 'fail', content: String(err) });
-                              }
-                            },
-                          });
-                        }}
-                      >
-                        ×
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
+            comments.map((c) => renderComment(c, 0))
           ) : (
             <div className={styles.commentPlaceholder}>
               <div className={styles.commentPlaceholderIcon}>💬</div>

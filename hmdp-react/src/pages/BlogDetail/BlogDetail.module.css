@@ -460,3 +460,57 @@
 .commentSubmit:active {
   background: #ffebe6;
 }
+
+/* ===== 嵌套评论 ===== */
+.commentNested {
+  margin-left: 36px;
+  padding-left: 8px;
+  border-left: 2px solid #f0f0f0;
+}
+
+.replyToTag {
+  font-size: 12px;
+  color: #F63;
+  margin-right: 4px;
+}
+
+.replyBtn {
+  font-size: 12px;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.replyBtn:hover {
+  color: #F63;
+}
+
+.inlineReplyBar {
+  margin-top: 8px;
+  padding: 8px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.inlineReplyInput {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e8e8e8;
+  outline: none;
+  background: #fff;
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.inlineReplyInput:focus {
+  border-color: #F63;
+}
+
+.cancelReply {
+  font-size: 12px;
+  color: #999;
+  cursor: pointer;
+  white-space: nowrap;
+}
