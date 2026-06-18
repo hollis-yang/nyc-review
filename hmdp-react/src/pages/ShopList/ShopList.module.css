@@ -12,14 +12,18 @@
   align-items: center;
   background: var(--color-primary-gradient);
   flex-shrink: 0;
+  position: relative;
 }
 
 .backBtn {
-  width: 10%;
+  width: 40px;
+  height: 40px;
   display: flex;
   justify-content: center;
+  align-items: center;
   cursor: pointer;
-  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+  z-index: 1;
 }
 
 .backBtn:active {
@@ -27,18 +31,16 @@
 }
 
 .title {
-  flex: 1;
-  text-align: center;
-  font-size: 18px;
-  font-weight: bold;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  font-weight: 600;
   color: #fff;
-}
-
-.search {
-  width: 10%;
-  display: flex;
-  justify-content: center;
-  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 65%;
 }
 
 .sortBar {
@@ -177,4 +179,22 @@
   padding: 16px;
   color: #999;
   font-size: 13px;
+}
+
+.emptySearch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.emptySearch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
 }

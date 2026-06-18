@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LeftOutline, SearchOutline } from 'antd-mobile-icons';
+import { LeftOutline } from 'antd-mobile-icons';
 import { getShopTypes, getShopsByType, getShopsByName } from '../../api/shop';
 import ShopCard, { type ShopData } from '../../components/ShopCard';
 import styles from './ShopList.module.css';
@@ -118,9 +118,8 @@ export default function ShopList() {
         <div className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={18} color="white" />
         </div>
-        <div className={styles.title}>{typeName}</div>
-        <div className={styles.search}>
-          <SearchOutline fontSize={16} />
+        <div className={styles.title}>
+          {searchQuery ? `"${searchQuery}" 搜索结果` : typeName}
         </div>
       </div>
 
@@ -172,9 +171,17 @@ export default function ShopList() {
       )}
 
       <div className={styles.list} onScroll={handleScroll} ref={containerRef}>
-        {shops.map((s) => (
-          <ShopCard key={s.id} shop={s} />
-        ))}
+        {shops.length === 0 && !loading ? (
+          <div className={styles.emptySearch}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+            <div style={{ fontSize: 15, color: '#999' }}>没有找到相关商户</div>
+            <div style={{ fontSize: 13, color: '#ccc', marginTop: 4 }}>换个关键词试试吧</div>
+          </div>
+        ) : (
+          shops.map((s) => (
+            <ShopCard key={s.id} shop={s} />
+          ))
+        )}
         {loading && <div className={styles.loading}>加载中...</div>}
       </div>
     </div>

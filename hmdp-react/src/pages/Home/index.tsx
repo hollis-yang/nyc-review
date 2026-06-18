@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutline } from 'antd-mobile-icons';
-import { getShopTypes } from '../../api/shop';
+import { getShopTypes, getShopsByName } from '../../api/shop';
 import { getHotBlogs } from '../../api/blog';
 import BlogCard, { type BlogData } from '../../components/BlogCard';
 import FootBar from '../../components/FootBar';
@@ -23,6 +23,30 @@ export default function Home() {
   const loadingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [searchText, setSearchText] = useState('');
+  const [suggestions, setSuggestions] = useState<{ id: number; name: string; typeId?: number }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getTypeInfo = (typeId: number) => types.find(t => t.id === typeId);
+
+  const handleSearchInput = (value: string) => {
+    setSearchText(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!value.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await getShopsByName(value.trim());
+        const data = res.data ?? res;
+        const list = Array.isArray(data) ? data.slice(0, 5) : [];
+        setSuggestions(list);
+        setShowSuggestions(true);
+      } catch { setSuggestions([]); }
+    }, 300);
+  };
 
   useEffect(() => {
     getShopTypes()
@@ -87,15 +111,44 @@ export default function Home() {
               type="text"
               placeholder="请输入商户名、地点"
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
+              onChange={(e) => handleSearchInput(e.target.value)}
+              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && searchText.trim()) {
+                  setShowSuggestions(false);
                   navigate(`/shop-list?query=${encodeURIComponent(searchText.trim())}`);
                 }
               }}
               style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: '#333', width: '100%' }}
             />
           </div>
+          {showSuggestions && suggestions.length > 0 && (
+            <div className={styles.suggestions}>
+              <div className={styles.suggestTitle}>搜索结果</div>
+              {suggestions.map((s) => (
+                <div
+                  key={s.id}
+                  className={styles.suggestionItem}
+                  onMouseDown={() => {
+                    setSearchText(s.name);
+                    setShowSuggestions(false);
+                    navigate(`/shop-detail/${s.id}`);
+                  }}
+                >
+                  <img
+                    className={styles.suggestIcon}
+                    src={s.typeId && getTypeInfo(s.typeId) ? `/imgs/${getTypeInfo(s.typeId)!.icon}` : '/imgs/types/ms.png'}
+                    alt=""
+                  />
+                  <div className={styles.suggestInfo}>
+                    <div className={styles.suggestName}>{s.name}</div>
+                    <div className={styles.suggestHint}>{s.typeId && getTypeInfo(s.typeId) ? getTypeInfo(s.typeId)!.name : '点击查看详情'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className={styles.headerIcon} onClick={() => navigate('/profile')}>
           <svg viewBox="0 0 1024 1024" width="18" height="18" fill="white">
