@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { EnvironmentOutline, MessageOutline, UserOutline } from 'antd-mobile-icons';
 
 function HomeIcon({ size = 26, color = 'currentColor' }: { size?: number; color?: string }) {
@@ -15,6 +16,7 @@ interface FootBarProps {
 }
 
 export default function FootBar({ activeBtn }: FootBarProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const toPage = (i: number) => {
@@ -38,14 +40,14 @@ export default function FootBar({ activeBtn }: FootBarProps) {
         onClick={() => toPage(1)}
       >
         <div className={styles.footView}><HomeIcon size={26} /></div>
-        <div className={styles.footText}>首页</div>
+        <div className={styles.footText}>{t('nav.home')}</div>
       </div>
       <div
         className={`${styles.footBox} ${activeBtn === 2 ? styles.active : ''}`}
         onClick={() => toPage(2)}
       >
         <div className={styles.footView}><EnvironmentOutline fontSize={26} /></div>
-        <div className={styles.footText}>地图</div>
+        <div className={styles.footText}>{t('nav.map')}</div>
       </div>
       <div className={styles.footBox} onClick={() => toPage(0)}>
         <img className={styles.addBtn} src="/imgs/add.png" alt="" />
@@ -55,14 +57,14 @@ export default function FootBar({ activeBtn }: FootBarProps) {
         onClick={() => toPage(3)}
       >
         <div className={styles.footView}><MessageOutline fontSize={26} /></div>
-        <div className={styles.footText}>消息</div>
+        <div className={styles.footText}>{t('nav.messages')}</div>
       </div>
       <div
         className={`${styles.footBox} ${activeBtn === 4 ? styles.active : ''}`}
         onClick={() => toPage(4)}
       >
         <div className={styles.footView}><UserOutline fontSize={26} /></div>
-        <div className={styles.footText}>我的</div>
+        <div className={styles.footText}>{t('nav.profile')}</div>
       </div>
     </div>
   );

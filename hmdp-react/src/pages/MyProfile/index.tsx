@@ -4,6 +4,7 @@ import { LeftOutline } from 'antd-mobile-icons';
 import { Tabs, Toast } from 'antd-mobile';
 import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo, sign, signCount } from '../../api/user';
+import { useTranslation } from 'react-i18next';
 import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
 import FeedCard from '../../components/FeedCard';
 import FootBar from '../../components/FootBar';
@@ -12,6 +13,7 @@ import styles from './MyProfile.module.css';
 
 export default function MyProfile() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { logout } = useAuth();
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
   const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
@@ -142,7 +144,7 @@ export default function MyProfile() {
       const count = res.data ?? res;
       setSignDays(typeof count === 'number' ? count : 0);
       setSignedToday(true);
-      Toast.show({ icon: 'success', content: '签到成功！' });
+      Toast.show({ icon: 'success', content: t('sign.success') });
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -154,7 +156,7 @@ export default function MyProfile() {
         <div className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={18} color="white" />
         </div>
-        <div className={styles.headerTitle}>个人主页</div>
+        <div className={styles.headerTitle}>{t('profile.title')}</div>
       </div>
 
       {user && (
@@ -165,9 +167,9 @@ export default function MyProfile() {
             </div>
             <div className={styles.profileInfo}>
               <div className={styles.nickName}>{user.nickName}</div>
-              <div className={styles.city}>{info.city || '未设置'}</div>
+              <div className={styles.city}>{info.city || t('profile.notSet')}</div>
               <div className={styles.intro}>
-                {info.introduce || '添加个人简介，让大家更好的认识你'}
+                {info.introduce || t('profile.defaultIntro')}
               </div>
               <div className={styles.actions}>
                 <div className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
@@ -182,12 +184,12 @@ export default function MyProfile() {
           <div className={styles.stats}>
             <div className={styles.statItem}>
               <div className={styles.statNum}>{blogs.length}</div>
-              <div className={styles.statLabel}>笔记</div>
+              <div className={styles.statLabel}>{t('profile.notes')}</div>
             </div>
             <div className={styles.statDivider} />
             <div className={styles.statItem}>
               <div className={styles.statNum}>{info.followee || 0}</div>
-              <div className={styles.statLabel}>关注</div>
+              <div className={styles.statLabel}>{t('profile.following')}</div>
             </div>
           </div>
           <div className={styles.signSection}>
@@ -197,7 +199,7 @@ export default function MyProfile() {
               </div>
             ) : (
               <div className={styles.signBtn} onClick={handleSign}>
-                ✍️ 签到
+                {t('profile.signIn')}
               </div>
             )}
           </div>
@@ -247,7 +249,7 @@ export default function MyProfile() {
                   onLikeUpdate={() => handleLikeUpdate(b.id)}
                 />
               ))}
-              {loading && <div className={styles.loadingMore}>加载中...</div>}
+              {loading && <div className={styles.loadingMore}>{t('home.loading')}</div>}
             </div>
           </Tabs.Tab>
         </Tabs>

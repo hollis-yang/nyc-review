@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Toast } from 'antd-mobile';
@@ -91,6 +92,7 @@ function MapController({ centerOn }: { centerOn: [number, number] | null }) {
 }
 
 export default function MapPage() {
+  const { t: tt } = useTranslation();
   const navigate = useNavigate();
   const [shops, setShops] = useState<Shop[]>([]);
   const [types, setTypes] = useState<ShopType[]>([]);
@@ -107,7 +109,7 @@ export default function MapPage() {
         setShops(Array.isArray(shopList) ? shopList : []);
         setTypes(Array.isArray(typeList) ? typeList : []);
       })
-      .catch(() => Toast.show({ icon: 'fail', content: '加载失败' }))
+      .catch(() => Toast.show({ icon: 'fail', content: tt('map.loadFailed') }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -118,7 +120,7 @@ export default function MapPage() {
           const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
           setUserPos(coords);
           setFlyTo(coords);
-          Toast.show({ icon: 'success', content: '已定位' });
+          Toast.show({ icon: 'success', content: tt('map.located') });
         },
         () => {
           const fallback: [number, number] = [30.334229, 120.149993];
@@ -141,12 +143,12 @@ export default function MapPage() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.headerTitle}>附近商家</div>
+        <div className={styles.headerTitle}>{tt('map.title')}</div>
       </div>
 
       <div className={styles.mapWrap}>
         {loading ? (
-          <div className={styles.loading}>加载中...</div>
+          <div className={styles.loading}>{tt('map.loading')}</div>
         ) : (
           <MapContainer
             center={defaultCenter}
@@ -169,7 +171,7 @@ export default function MapPage() {
                   iconAnchor: [11, 11],
                 })}
               >
-                <Popup>📍 我的位置</Popup>
+                <Popup>{tt('map.myLocation')}</Popup>
               </Marker>
             )}
             {shops.map((shop) => {
@@ -206,7 +208,7 @@ export default function MapPage() {
                         style={{ marginTop: 6, textAlign: 'center', color: '#F63', fontSize: 13, cursor: 'pointer' }}
                         onClick={() => navigate(`/shop-detail/${shop.id}`)}
                       >
-                        查看详情 →
+                        {tt('map.viewDetail')}
                       </div>
                     </div>
                   </Popup>

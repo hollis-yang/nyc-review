@@ -25,3 +25,7 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug
+
+deepseek:
+  api-key: sk-2974cd4c829a4429ba9f2736218bbf9c
+  model: deepseek-chat

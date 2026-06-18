@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { LeftOutline } from 'antd-mobile-icons';
 import FootBar from '../../components/FootBar';
 import styles from './Messages.module.css';
 
 export default function Messages() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
@@ -12,13 +14,13 @@ export default function Messages() {
         <div className={styles.backBtn} onClick={() => navigate(-1)}>
           <LeftOutline fontSize={18} color="white" />
         </div>
-        <div className={styles.headerTitle}>消息</div>
+        <div className={styles.headerTitle}>{t('messages.title')}</div>
       </div>
 
       <div className={styles.empty}>
         <div className={styles.emptyIcon}>📭</div>
-        <div className={styles.emptyText}>暂无消息</div>
-        <div className={styles.emptyHint}>功能开发中，敬请期待</div>
+        <div className={styles.emptyText}>{t('messages.empty')}</div>
+        <div className={styles.emptyHint}>{t('messages.comingSoon')}</div>
       </div>
 
       <FootBar activeBtn={3} />

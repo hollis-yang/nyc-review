@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { LeftOutline, EnvironmentOutline } from 'antd-mobile-icons';
 import { Rate, Toast } from 'antd-mobile';
 import { getShopById, getShopReviews, createShopReview } from '../../api/shop';
+import { translateComment } from '../../api/translate';
 import { getVoucherList, seckillVoucher } from '../../api/voucher';
 import VoucherCard, { type VoucherData } from '../../components/VoucherCard';
 import styles from './ShopDetail.module.css';
@@ -32,6 +34,7 @@ interface ReviewData {
 
 export default function ShopDetail() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
@@ -41,6 +44,7 @@ export default function ShopDetail() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewTL, setReviewTL] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,14 +65,14 @@ export default function ShopDetail() {
       }),
     ]).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || '店铺不存在');
+      setError(msg || t('shopDetail.notFound'));
     });
   }, [id]);
 
   const handleSeckill = async (voucherId: number) => {
     try {
       const res = await seckillVoucher(voucherId);
-      Toast.show({ icon: 'success', content: '抢购成功，订单id：' + (res.data ?? res) });
+      Toast.show({ icon: 'success', content: t('shopDetail.seckillSuccess', { id: res.data ?? res }) });
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -85,7 +89,7 @@ export default function ShopDetail() {
       try { await navigator.share({ title: shop?.name ?? '店铺详情', url }); } catch {}
     } else {
       await navigator.clipboard.writeText(url);
-      Toast.show({ icon: 'success', content: '链接已复制' });
+      Toast.show({ icon: 'success', content: t('shopDetail.linkCopied') });
     }
   };
 
@@ -94,7 +98,7 @@ export default function ShopDetail() {
     setReviewSubmitting(true);
     try {
       await createShopReview({ shopId: Number(id), rating: reviewRating, content: reviewContent.trim() });
-      Toast.show({ icon: 'success', content: '评价发表成功' });
+      Toast.show({ icon: 'success', content: t('shopDetail.reviewSuccess') });
       setReviewContent('');
       setReviewRating(5);
       setReviewTotal((prev) => prev + 1);
@@ -124,7 +128,7 @@ export default function ShopDetail() {
   }
 
   if (!shop) {
-    return <div className={styles.loadingFull}>加载中...</div>;
+    return <div className={styles.loadingFull}>{t('shopDetail.loading')}</div>;
   }
 
   return (
@@ -146,10 +150,10 @@ export default function ShopDetail() {
               style={{ '--star-size': '14px', '--active-color': '#F63' }}
             />
             <span style={{ color: '#F63', fontSize: 12, marginLeft: 6 }}>
-              {shop.score / 10}分
+              {shop.score / 10}{t('shopCard.score')}
             </span>
             <span style={{ color: '#999', fontSize: 11, marginLeft: 4 }}>
-              {shop.comments}条
+              {shop.comments}{t('shopCard.comments')}
             </span>
           </div>
           <div className={styles.shopImages}>
@@ -166,7 +170,7 @@ export default function ShopDetail() {
             <span style={{ fontSize: 12, cursor: 'pointer' }} onClick={() => {
               const addr = encodeURIComponent(shop?.address ?? '');
               window.open(`https://maps.apple.com/?q=${addr}`, '_blank');
-            }}>导航</span>
+            }}>{t('shopDetail.navigate')}</span>
           </div>
         </div>
 
@@ -174,10 +178,10 @@ export default function ShopDetail() {
 
         <div className={styles.openTime}>
           <span>🕐</span>
-          <div>营业时间</div>
+          <div>{t('shopDetail.hours')}</div>
           <div style={{ flex: 1, fontSize: 12 }}>{shop.openHours}</div>
           <span className={styles.lineRight} onClick={() => setShowHours(!showHours)} style={{ cursor: 'pointer' }}>
-            {showHours ? '收起' : '查看详情'}
+            {showHours ? t('shopDetail.collapse') : t('shopDetail.expand')}
           </span>
         </div>
         {showHours && (
@@ -191,7 +195,7 @@ export default function ShopDetail() {
         <div className={styles.voucherSection}>
           <div>
             <span className={styles.voucherIcon}>券</span>
-            <span style={{ fontWeight: 'bold' }}>代金券</span>
+            <span style={{ fontWeight: 'bold' }}>{t('shopDetail.vouchers')}</span>
           </div>
           {vouchers.map((v) => (
             <VoucherCard key={v.id} voucher={v} onSeckill={handleSeckill} />
@@ -202,7 +206,7 @@ export default function ShopDetail() {
 
         <div className={styles.comments}>
           <div className={styles.commentsHead}>
-            <div>网友评价 <span>（{reviewTotal || shop.comments}）</span></div>
+            <div>{t('shopDetail.reviews')} <span>（{reviewTotal || shop.comments}）</span></div>
             {reviewTotal > 3 && (
               <div style={{ cursor: 'pointer' }} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</div>
             )}
@@ -225,6 +229,26 @@ export default function ShopDetail() {
                       />
                     </div>
                     <div style={{ padding: '5px 0', fontSize: 13 }}>{review.content}</div>
+                    {reviewTL[review.id] && (
+                      <div style={{ background: '#f0f7ff', padding: '6px 8px', borderRadius: 6, margin: '4px 0', fontSize: 12, color: '#555' }}>
+                        {reviewTL[review.id]}
+                      </div>
+                    )}
+                    <span style={{ fontSize: 11, color: '#bbb', cursor: 'pointer' }}
+                      onClick={async () => {
+                        if (reviewTL[review.id]) {
+                          const next = { ...reviewTL };
+                          delete next[review.id];
+                          setReviewTL(next);
+                          return;
+                        }
+                        try {
+                          const res = await translateComment(review.id, 'en');
+                          setReviewTL(prev => ({ ...prev, [review.id]: String(res.data ?? res) }));
+                        } catch {}
+                      }}>
+                      🌐
+                    </span>
                     {reviewImages.length > 0 && (
                       <div className={styles.commentImages}>
                         {reviewImages.map((img: string, idx: number) => (
@@ -241,7 +265,7 @@ export default function ShopDetail() {
             })}
             {reviewTotal > 3 && (
               <div className={styles.viewAll} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>
-                <div>查看全部{reviewTotal}条评价</div>
+                <div>{t('shopDetail.viewAll', { n: reviewTotal })}</div>
                 <div>&gt;</div>
               </div>
             )}
@@ -251,7 +275,7 @@ export default function ShopDetail() {
         {/* 写评价 */}
         <div className={styles.divider} />
         <div style={{ padding: '12px 14px' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>写评价</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{t('shopDetail.writeReview')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 13, color: '#666' }}>评分：</span>
             <Rate
@@ -261,7 +285,7 @@ export default function ShopDetail() {
             />
           </div>
           <textarea
-            placeholder="分享你的体验..."
+            placeholder={t('shopDetail.reviewPlaceholder')}
             value={reviewContent}
             onChange={(e) => setReviewContent(e.target.value)}
             rows={3}
@@ -280,7 +304,7 @@ export default function ShopDetail() {
               opacity: reviewContent.trim() && !reviewSubmitting ? 1 : 0.5,
             }}
           >
-            {reviewSubmitting ? '提交中...' : '发表评价'}
+            {reviewSubmitting ? t('shopDetail.submitting') : t('shopDetail.submit')}
           </div>
         </div>
 

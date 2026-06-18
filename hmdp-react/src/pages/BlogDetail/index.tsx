@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Toast, Dialog } from 'antd-mobile';
+import { useTranslation } from 'react-i18next';
 import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
+import { translateBlog, translateComment } from '../../api/translate';
 import { getShopById } from '../../api/shop';
 import { getMe } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
@@ -48,6 +50,7 @@ interface CommentInfo {
 
 export default function BlogDetail() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
@@ -60,6 +63,9 @@ export default function BlogDetail() {
   const [submitting, setSubmitting] = useState(false);
   const [replyTo, setReplyTo] = useState<CommentInfo | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [blogTL, setBlogTL] = useState<string | null>(null);
+  const [blogTLLoading, setBlogTLLoading] = useState(false);
+  const [commentTL, setCommentTL] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -91,7 +97,7 @@ export default function BlogDetail() {
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        setError(msg || '笔记不存在');
+        setError(msg || t('blogDetail.notFound'));
       });
   }, [id]);
 
@@ -114,7 +120,7 @@ export default function BlogDetail() {
     if (!blog) return;
     try {
       await follow(blog.userId, !followed);
-      Toast.show({ icon: 'success', content: followed ? '已取消关注' : '已关注' });
+      Toast.show({ icon: 'success', content: followed ? t('blogDetail.unfollowed') : t('blogDetail.followed') });
       setFollowed(!followed);
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
@@ -136,7 +142,7 @@ export default function BlogDetail() {
       try { await navigator.share({ title: blog?.title ?? '笔记详情', url }); } catch {}
     } else {
       await navigator.clipboard.writeText(url);
-      Toast.show({ icon: 'success', content: '链接已复制' });
+      Toast.show({ icon: 'success', content: t('blogDetail.linkCopied') });
     }
   };
 
@@ -145,7 +151,7 @@ export default function BlogDetail() {
     setSubmitting(true);
     try {
       await createBlogComment({ blogId: Number(id), content: commentText.trim() });
-      Toast.show({ icon: 'success', content: '评论成功' });
+      Toast.show({ icon: 'success', content: t('blogDetail.commentSuccess') });
       setCommentText('');
       const res = await getBlogComments(id);
       setComments(res.data ?? res);
@@ -173,7 +179,7 @@ export default function BlogDetail() {
         parentId,
         answerId,
       });
-      Toast.show({ icon: 'success', content: '回复成功' });
+      Toast.show({ icon: 'success', content: t('blogDetail.replySuccess') });
       setReplyTo(null);
       setReplyText('');
       const res = await getBlogComments(id);
@@ -189,14 +195,24 @@ export default function BlogDetail() {
     }
   };
 
+  const handleTranslateBlog = async () => {
+    if (!blog || blogTL) { setBlogTL(null); return; }
+    setBlogTLLoading(true);
+    try {
+      const res = await translateBlog(blog.id, 'en');
+      setBlogTL(String(res.data ?? res));
+    } catch {}
+    finally { setBlogTLLoading(false); }
+  };
+
   const handleDelete = () => {
     if (!blog) return;
     Dialog.confirm({
-      content: '确定要删除这篇笔记吗？',
+      content: t('blogDetail.deleteNoteConfirm'),
       onConfirm: async () => {
         try {
           await deleteBlog(blog.id);
-          Toast.show({ icon: 'success', content: '已删除' });
+          Toast.show({ icon: 'success', content: t('blogDetail.deleted') });
           navigate(-1);
         } catch (err: any) {
           Toast.show({ icon: 'fail', content: String(err) });
@@ -214,7 +230,7 @@ export default function BlogDetail() {
           <div className={styles.backBtn} onClick={handleBack}>
             <LeftOutline fontSize={20} color="#fff" />
           </div>
-          <div className={styles.title}>笔记详情</div>
+          <div className={styles.title}>{t('blogDetail.title')}</div>
           <div className={styles.share} />
         </div>
         <div className={styles.loadingFull}>{error}</div>
@@ -229,10 +245,10 @@ export default function BlogDetail() {
           <div className={styles.backBtn} onClick={handleBack}>
             <LeftOutline fontSize={20} color="#fff" />
           </div>
-          <div className={styles.title}>笔记详情</div>
+          <div className={styles.title}>{t('blogDetail.title')}</div>
           <div className={styles.share} />
         </div>
-        <div className={styles.loadingFull}>加载中...</div>
+        <div className={styles.loadingFull}>{t('blogDetail.loading')}</div>
       </div>
     );
   }
@@ -286,6 +302,11 @@ export default function BlogDetail() {
             <span className={styles.replyToTag}>回复 @{c.replyToName}</span>
           )}
           <div className={styles.commentContent}>{c.content}</div>
+          {commentTL[c.id] && (
+            <div style={{ background: '#f0f7ff', padding: '6px 8px', borderRadius: 6, margin: '4px 0', fontSize: 12, color: '#555' }}>
+              {commentTL[c.id]}
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
@@ -294,13 +315,29 @@ export default function BlogDetail() {
                   回复
                 </span>
               )}
+                <span className={styles.replyBtn}
+                  style={{ marginLeft: 4 }}
+                  onClick={async () => {
+                    if (commentTL[c.id]) {
+                      const next = { ...commentTL };
+                      delete next[c.id];
+                      setCommentTL(next);
+                      return;
+                    }
+                    try {
+                      const res = await translateComment(c.id, 'en');
+                      setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
+                    } catch {}
+                  }}>
+                  🌐
+                </span>
             </div>
             {currentUser && currentUser.id === c.userId && (
               <div
                 style={{ fontSize: 18, color: '#ccc', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
                 onClick={() => {
                   Dialog.confirm({
-                    content: '确定要删除这条评论吗？',
+                    content: t('blogDetail.deleteCommentConfirm'),
                     onConfirm: async () => {
                       try {
                         await deleteBlogComment(c.id);
@@ -327,8 +364,8 @@ export default function BlogDetail() {
                   placeholder={`回复 ${c.name}...`}
                   className={styles.inlineReplyInput}
                 />
-                <span className={styles.commentSubmit} onClick={handleInlineReply}>发送</span>
-                <span className={styles.cancelReply} onClick={() => setReplyTo(null)}>取消</span>
+                <span className={styles.commentSubmit} onClick={handleInlineReply}>{t('blogDetail.send')}</span>
+                <span className={styles.cancelReply} onClick={() => setReplyTo(null)}>{t('blogDetail.cancel')}</span>
               </div>
             </div>
           )}
@@ -345,7 +382,7 @@ export default function BlogDetail() {
         <div className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={20} color="#fff" />
         </div>
-        <div className={styles.title}>笔记详情</div>
+        <div className={styles.title}>{t('blogDetail.title')}</div>
         <div className={styles.share} onClick={handleShare}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="5" r="1.2" fill="rgba(255,255,255,0.85)" stroke="none" />
@@ -378,7 +415,7 @@ export default function BlogDetail() {
             <div className={styles.followArea}>
               {(!currentUser || currentUser.id !== blog.userId) && (
                 <div className={styles.followBtn} onClick={handleFollow}>
-                  {followed ? '取消关注' : '关注'}
+                  {followed ? t('blogDetail.unfollow') : t('blogDetail.follow')}
                 </div>
               )}
             </div>
@@ -394,6 +431,18 @@ export default function BlogDetail() {
             className={styles.contentBody}
             dangerouslySetInnerHTML={{ __html: blog.content }}
           />
+          <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
+            <span style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}
+              onClick={handleTranslateBlog}>
+              {blogTLLoading ? '⏳ ...' : blogTL ? t('blogDetail.original') : '🌐 ' + t('blogDetail.translate')}
+            </span>
+          </div>
+          {blogTL && (
+            <div style={{ background: '#f0f7ff', padding: 10, borderRadius: 8, margin: '0 0 10px', fontSize: 14, color: '#444', lineHeight: 1.7 }}>
+              <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>💬 {t('blogDetail.translatedByAI')}</div>
+              {blogTL}
+            </div>
+          )}
         </div>
 
         {/* 关联商铺卡片 */}
@@ -425,7 +474,7 @@ export default function BlogDetail() {
                 <img src={u.icon || '/imgs/icons/default-icon.png'} alt="" />
               </div>
             ))}
-            <div className={styles.likedCount}>{blog.liked}人点赞</div>
+            <div className={styles.likedCount}>{t('blogDetail.likes', { n: blog.liked })}</div>
           </div>
         </div>
 
@@ -442,7 +491,7 @@ export default function BlogDetail() {
           ) : (
             <div className={styles.commentPlaceholder}>
               <div className={styles.commentPlaceholderIcon}>💬</div>
-              <div>暂无评论，快来抢沙发</div>
+              <div>{t('blogDetail.noComments')}</div>
             </div>
           )}
         </div>
@@ -453,7 +502,7 @@ export default function BlogDetail() {
         <div className={styles.commentInputBar}>
           <input
             type="text"
-            placeholder="说点什么..."
+            placeholder={t('blogDetail.commentPlaceholder')}
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCommentSubmit(); }}

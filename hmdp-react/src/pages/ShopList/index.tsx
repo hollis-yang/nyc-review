@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { getShopTypes, getShopsByType, getShopsByName } from '../../api/shop';
+import { useTranslation } from 'react-i18next';
 import ShopCard, { type ShopData } from '../../components/ShopCard';
 import styles from './ShopList.module.css';
 
@@ -18,6 +19,7 @@ const SORT_OPTIONS = [
 ] as const;
 
 export default function ShopList() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const typeId = searchParams.get('type') || '0';
@@ -174,15 +176,15 @@ export default function ShopList() {
         {shops.length === 0 && !loading ? (
           <div className={styles.emptySearch}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-            <div style={{ fontSize: 15, color: '#999' }}>没有找到相关商户</div>
-            <div style={{ fontSize: 13, color: '#ccc', marginTop: 4 }}>换个关键词试试吧</div>
+            <div style={{ fontSize: 15, color: '#999' }}>{t('shopList.noResults')}</div>
+            <div style={{ fontSize: 13, color: '#ccc', marginTop: 4 }}>{t('shopList.tryDifferent')}</div>
           </div>
         ) : (
           shops.map((s) => (
             <ShopCard key={s.id} shop={s} />
           ))
         )}
-        {loading && <div className={styles.loading}>加载中...</div>}
+        {loading && <div className={styles.loading}>{t('shopList.loading')}</div>}
       </div>
     </div>
   );

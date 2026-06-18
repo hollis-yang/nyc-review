@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LeftOutline, RightOutline } from 'antd-mobile-icons';
 import { Picker, DatePicker, Toast, Input, TextArea, Button, Popup, CascadePicker } from 'antd-mobile';
+import { useTranslation } from 'react-i18next';
 import { getMe, getUserInfo, updateUser, updateUserInfo } from '../../api/user';
 import { uploadBlogImage } from '../../api/upload';
 import FootBar from '../../components/FootBar';
@@ -11,6 +12,7 @@ import styles from './ProfileEdit.module.css';
 type EditField = 'nickname' | 'introduce' | null;
 
 export default function ProfileEdit() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
@@ -21,6 +23,7 @@ export default function ProfileEdit() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [cityPickerVisible, setCityPickerVisible] = useState(false);
+  const [langPickerVisible, setLangPickerVisible] = useState(false);
 
   useEffect(() => {
     getMe()
@@ -58,7 +61,7 @@ export default function ProfileEdit() {
       const iconPath = res.data ?? res;
       await updateUser({ icon: String(iconPath) });
       setUser((prev) => (prev ? { ...prev, icon: String(iconPath) } : prev));
-      Toast.show({ icon: 'success', content: '头像已更新' });
+      Toast.show({ icon: 'success', content: t('profileEdit.avatarUpdated') });
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -82,7 +85,7 @@ export default function ProfileEdit() {
         await updateUserInfo({ introduce: editValue });
         setInfo((prev) => ({ ...prev, introduce: editValue }));
       }
-      Toast.show({ icon: 'success', content: '已更新' });
+      Toast.show({ icon: 'success', content: t('profileEdit.updated') });
       setEditField(null);
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
@@ -92,14 +95,14 @@ export default function ProfileEdit() {
   };
 
   const fieldLabels: Record<string, string> = {
-    nickname: '修改昵称',
-    introduce: '修改个人介绍',
+    nickname: t('profileEdit.editNickname'),
+    introduce: t('profileEdit.editIntro'),
   };
 
   // ---- 性别 ----
   const genderColumns = [
-    { label: '男', value: 'true' },
-    { label: '女', value: 'false' },
+    { label: t('profileEdit.male'), value: 'true' },
+    { label: t('profileEdit.female'), value: 'false' },
   ];
 
   const handleGenderConfirm = async (value: any[]) => {
@@ -109,7 +112,7 @@ export default function ProfileEdit() {
     try {
       await updateUserInfo({ gender: gender === 'true' });
       setInfo((prev) => ({ ...prev, gender: gender === 'true' }));
-      Toast.show({ icon: 'success', content: '性别已更新' });
+      Toast.show({ icon: 'success', content: t('profileEdit.genderUpdated') });
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -123,7 +126,7 @@ export default function ProfileEdit() {
     try {
       await updateUserInfo({ birthday });
       setInfo((prev) => ({ ...prev, birthday }));
-      Toast.show({ icon: 'success', content: '生日已更新' });
+      Toast.show({ icon: 'success', content: t('profileEdit.birthdayUpdated') });
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -142,14 +145,14 @@ export default function ProfileEdit() {
         <div className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={18} color="white" />
         </div>
-        <div className={styles.title}>资料编辑</div>
+        <div className={styles.title}>{t('profileEdit.title')}</div>
       </div>
 
       <div className={styles.scroll}>
         {/* 基本信息 */}
         <div className={styles.infoBox}>
           <div className={styles.infoItem} onClick={handleAvatarClick}>
-            <div className={styles.infoLabel}>头像</div>
+            <div className={styles.infoLabel}>{t('profileEdit.avatar')}</div>
             <div className={styles.infoBtn}>
               <img width="35" src={user?.icon || '/imgs/icons/default-icon.png'} alt="" style={{ borderRadius: '50%' }} />
               <RightOutline fontSize={14} color="#ccc" />
@@ -158,7 +161,7 @@ export default function ProfileEdit() {
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
           <div className={styles.divider} />
           <div className={styles.infoItem} onClick={() => openTextEdit('nickname', user?.nickName || '')}>
-            <div className={styles.infoLabel}>昵称</div>
+            <div className={styles.infoLabel}>{t('profileEdit.nickname')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{user?.nickName || ''}</div>
               <RightOutline fontSize={14} color="#ccc" />
@@ -166,9 +169,9 @@ export default function ProfileEdit() {
           </div>
           <div className={styles.divider} />
           <div className={styles.infoItem} onClick={() => openTextEdit('introduce', info.introduce || '')}>
-            <div className={styles.infoLabel}>个人介绍</div>
+            <div className={styles.infoLabel}>{t('profileEdit.intro')}</div>
             <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.introduce || '介绍一下自己'}</div>
+              <div className={styles.infoValue}>{info.introduce || t('profileEdit.introPlaceholder')}</div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
@@ -177,7 +180,7 @@ export default function ProfileEdit() {
         {/* 详细信息 */}
         <div className={styles.infoBox}>
           <div className={styles.infoItem} onClick={() => setGenderVisible(true)}>
-            <div className={styles.infoLabel}>性别</div>
+            <div className={styles.infoLabel}>{t('profileEdit.gender')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{genderLabel}</div>
               <RightOutline fontSize={14} color="#ccc" />
@@ -185,7 +188,7 @@ export default function ProfileEdit() {
           </div>
           <div className={styles.divider} />
           <div className={styles.infoItem} onClick={() => setCityPickerVisible(true)}>
-            <div className={styles.infoLabel}>城市</div>
+            <div className={styles.infoLabel}>{t('profileEdit.city')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{info.city || '选择'}</div>
               <RightOutline fontSize={14} color="#ccc" />
@@ -193,9 +196,9 @@ export default function ProfileEdit() {
           </div>
           <div className={styles.divider} />
           <div className={styles.infoItem} onClick={() => setDateVisible(true)}>
-            <div className={styles.infoLabel}>生日</div>
+            <div className={styles.infoLabel}>{t('profileEdit.birthday')}</div>
             <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.birthday || '添加'}</div>
+              <div className={styles.infoValue}>{info.birthday || t('profileEdit.add')}</div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
@@ -204,7 +207,7 @@ export default function ProfileEdit() {
         {/* 积分/会员 */}
         <div className={styles.infoBox}>
           <div className={styles.infoItem}>
-            <div className={styles.infoLabel}>我的积分</div>
+            <div className={styles.infoLabel}>{t('profileEdit.credits')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{info.credits ?? 0}</div>
               <RightOutline fontSize={14} color="#ccc" />
@@ -212,9 +215,19 @@ export default function ProfileEdit() {
           </div>
           <div className={styles.divider} />
           <div className={styles.infoItem}>
-            <div className={styles.infoLabel}>会员等级</div>
+            <div className={styles.infoLabel}>{t('profileEdit.level')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>Lv.{info.level ?? 0}</div>
+              <RightOutline fontSize={14} color="#ccc" />
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.infoBox}>
+          <div className={styles.infoItem} onClick={() => setLangPickerVisible(true)}>
+            <div className={styles.infoLabel}>{t('profileEdit.language')}</div>
+            <div className={styles.infoBtn}>
+              <div className={styles.infoValue}>{i18n.language === 'en' ? 'English' : '中文'}</div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
@@ -243,7 +256,7 @@ export default function ProfileEdit() {
             <Input
               value={editValue}
               onChange={(val) => setEditValue(val)}
-              placeholder="请输入"
+              placeholder={t('profileEdit.enterText')}
               clearable
               style={{ '--font-size': '15px' }}
             />
@@ -268,7 +281,7 @@ export default function ProfileEdit() {
           onClose={() => setGenderVisible(false)}
           value={[info.gender === true || info.gender === 'true' ? 'true' : 'false']}
           onConfirm={handleGenderConfirm}
-          title="选择性别"
+          title={t('profileEdit.selectGender')}
         />
 
         {/* 生日选择 */}
@@ -278,7 +291,7 @@ export default function ProfileEdit() {
           min={new Date(1950, 0, 1)}
           max={new Date()}
           onConfirm={handleBirthdayConfirm}
-          title="选择生日"
+          title={t('profileEdit.selectBirthday')}
         />
 
         {/* 城市选择 */}
@@ -293,12 +306,25 @@ export default function ProfileEdit() {
             try {
               await updateUserInfo({ city: cityStr });
               setInfo((prev) => ({ ...prev, city: cityStr }));
-              Toast.show({ icon: 'success', content: '城市已更新' });
+              Toast.show({ icon: 'success', content: t('profileEdit.cityUpdated') });
             } catch (err: any) {
               Toast.show({ icon: 'fail', content: String(err) });
             }
           }}
-          title="选择城市"
+          title={t('profileEdit.selectCity')}
+        />
+        <Picker
+          columns={[[{ label: '中文', value: 'zh-CN' }, { label: 'English', value: 'en' }]]}
+          visible={langPickerVisible}
+          onClose={() => setLangPickerVisible(false)}
+          value={[i18n.language]}
+          onConfirm={async (value: any[]) => {
+            setLangPickerVisible(false);
+            const lang = value[0] as string;
+            i18n.changeLanguage(lang);
+            localStorage.setItem('appLanguage', lang);
+          }}
+          title={t('profileEdit.language')}
         />
       </div>
 

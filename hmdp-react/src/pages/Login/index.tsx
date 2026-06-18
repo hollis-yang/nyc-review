@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Input, Toast } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
 import { useAuth } from '../../hooks/useAuth';
+import { useTranslation } from 'react-i18next';
 import { sendCode, loginByCode, loginByPassword } from '../../api/auth';
 import styles from './Login.module.css';
 
@@ -28,6 +29,7 @@ function BrandIcon({ size = 36 }: { size?: number }) {
 export default function Login({ mode = 'sms' }: LoginProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t } = useTranslation();
   const { login } = useAuth();
   const isPasswordMode = mode === 'password';
 
@@ -36,7 +38,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [disabled, setDisabled] = useState(false);
-  const [codeBtnMsg, setCodeBtnMsg] = useState('获取验证码');
+  const [codeBtnMsg, setCodeBtnMsg] = useState("获取验证码");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef(60);
 
@@ -56,7 +58,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
 
   const handleSendCode = async () => {
     if (!phone) {
-      Toast.show({ icon: 'fail', content: '手机号不能为空' });
+      Toast.show({ icon: 'fail', content: t('login.phoneRequired') });
       return;
     }
     try {
@@ -72,7 +74,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
       countdownRef.current--;
       if (countdownRef.current <= 0) {
         setDisabled(false);
-        setCodeBtnMsg('获取验证码');
+        setCodeBtnMsg(t('login.getCode'));
         if (timerRef.current) clearInterval(timerRef.current);
       } else {
         setCodeBtnMsg(`${countdownRef.current}秒后可重发`);
@@ -82,7 +84,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
 
   const handleLogin = async () => {
     if (!radio) {
-      Toast.show({ icon: 'fail', content: '请先确认阅读用户协议！' });
+      Toast.show({ icon: 'fail', content: t('login.agreeRequired') });
       return;
     }
     if (!phone || (!isPasswordMode && !code) || (isPasswordMode && !password)) {
@@ -117,14 +119,14 @@ export default function Login({ mode = 'sms' }: LoginProps) {
       <div className={styles.scroll}>
         <div className={styles.brand}>
           <BrandIcon size={48} />
-          <div className={styles.brandName}>黑马点评</div>
-          <div className={styles.brandSlogan}>发现身边好店</div>
+          <div className={styles.brandName}>{t('login.brand')}</div>
+          <div className={styles.brandSlogan}>{t('login.slogan')}</div>
         </div>
 
         <div className={styles.formCard}>
           <div className={styles.fieldGroup}>
             <Input
-              placeholder="请输入手机号"
+              placeholder={t('login.phonePlaceholder')}
               value={phone}
               onChange={setPhone}
               style={{ '--font-size': '15px' } as React.CSSProperties}
@@ -134,7 +136,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
           <div className={styles.fieldGroup}>
             {isPasswordMode ? (
               <Input
-                placeholder="请输入密码"
+                placeholder={t('login.pwdPlaceholder')}
                 type="password"
                 value={password}
                 onChange={setPassword}
@@ -144,7 +146,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <Input
-                    placeholder="请输入验证码"
+                    placeholder={t('login.codePlaceholder')}
                     value={code}
                     onChange={setCode}
                     style={{ '--font-size': '15px' } as React.CSSProperties}
@@ -185,10 +187,10 @@ export default function Login({ mode = 'sms' }: LoginProps) {
             )}
           </div>
           <div className={styles.agreementText}>
-            我已阅读并同意
-            <a href="javascript:void(0)">《用户服务协议》</a>
+            {t('login.agreement')}
+            <a href="javascript:void(0)">{t('login.tos')}</a>
             、
-            <a href="javascript:void(0)">《隐私政策》</a>
+            <a href="javascript:void(0)">{t('login.privacy')}</a>
           </div>
         </div>
       </div>

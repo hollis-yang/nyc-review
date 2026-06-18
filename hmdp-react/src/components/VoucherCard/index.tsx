@@ -1,4 +1,5 @@
 import { Toast } from 'antd-mobile';
+import { useTranslation } from 'react-i18next';
 import { formatPrice } from '../../utils';
 import { purchaseVoucher } from '../../api/voucher';
 import { useAuth } from '../../hooks/useAuth';
@@ -21,11 +22,15 @@ interface VoucherCardProps {
   onSeckill: (id: number) => void;
 }
 
-function formatTime(v: VoucherData): string {
+function formatTime(v: VoucherData, t: (k: string, opts?: any) => string): string {
   const b = new Date(v.beginTime);
   const e = new Date(v.endTime);
   const pad = (m: number) => (m < 10 ? '0' + m : String(m));
-  return `${b.getMonth() + 1}月${b.getDate()}日 ${b.getHours()}:${pad(b.getMinutes())} ~ ${e.getHours()}:${pad(e.getMinutes())}`;
+  return t('voucherCard.timeFormat', {
+    m: b.getMonth() + 1, d: b.getDate(),
+    h: b.getHours(), min: pad(b.getMinutes()),
+    eh: e.getHours(), emin: pad(e.getMinutes()),
+  }).replace(/\{(\w+)\}/g, (_: string, k: string) => String({m: b.getMonth()+1, d: b.getDate(), h: b.getHours(), min: pad(b.getMinutes()), eh: e.getHours(), emin: pad(e.getMinutes())}[k] ?? ''));
 }
 
 function isNotBegin(v: VoucherData): boolean {
@@ -37,6 +42,7 @@ function isEnd(v: VoucherData): boolean {
 }
 
 export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
+  const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
   const v = voucher;
 
@@ -48,22 +54,22 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
 
   const handleSeckill = async () => {
     if (!isAuthenticated) {
-      Toast.show({ icon: 'fail', content: '请先登录' });
+      Toast.show({ icon: 'fail', content: t('voucher.loginRequired') });
       setTimeout(() => {
         window.location.href = '/login';
       }, 200);
       return;
     }
     if (isNotBegin(v)) {
-      Toast.show({ icon: 'fail', content: '优惠券抢购尚未开始！' });
+      Toast.show({ icon: 'fail', content: t('voucher.notStarted') });
       return;
     }
     if (isEnd(v)) {
-      Toast.show({ icon: 'fail', content: '优惠券抢购已经结束！' });
+      Toast.show({ icon: 'fail', content: t('voucher.ended') });
       return;
     }
     if (v.type === 1 && v.stock < 1) {
-      Toast.show({ icon: 'fail', content: '库存不足，请刷新再试试！' });
+      Toast.show({ icon: 'fail', content: t('voucher.outOfStock') });
       return;
     }
     if (v.type === 1) {
@@ -71,7 +77,7 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
     } else {
       try {
         const res = await purchaseVoucher(v.id);
-        Toast.show({ icon: 'success', content: '购买成功，订单id：' + (res.data ?? res) });
+        Toast.show({ icon: 'success', content: t('voucher.purchaseSuccess', { id: res.data ?? res }) });
       } catch (err: any) {
         Toast.show({ icon: 'fail', content: String(err) });
       }
@@ -85,7 +91,7 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
         <div className={styles.subtitle}>{v.subTitle}</div>
         <div className={styles.price}>
           <div>￥ {price}</div>
-          <span>{discount}折</span>
+          <span>{discount}{t("voucherCard.off")}</span>
         </div>
       </div>
       <div className={styles.right}>
@@ -98,12 +104,12 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
               限时抢购
             </div>
             <div className={styles.stock}>
-              剩余 <span>{v.stock}</span> 张
+              {t('voucher.remaining', { n: v.stock })}
             </div>
-            <div className={styles.time}>{formatTime(v)}</div>
+            <div className={styles.time}>{formatTime(v, t)}</div>
           </div>
         ) : (
-          <div className={styles.btn} onClick={handleSeckill}>抢购</div>
+          <div className={styles.btn} onClick={handleSeckill}>{t('voucher.buy')}</div>
         )}
       </div>
     </div>

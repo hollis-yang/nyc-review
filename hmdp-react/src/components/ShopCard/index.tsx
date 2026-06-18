@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Rate } from 'antd-mobile';
 import { EnvironmentOutline } from 'antd-mobile-icons';
 import styles from './ShopCard.module.css';
@@ -20,6 +21,7 @@ interface ShopCardProps {
 }
 
 export default function ShopCard({ shop }: ShopCardProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const imgSrc = shop.images ? shop.images.split(',')[0] : '';
 
@@ -42,10 +44,10 @@ export default function ShopCard({ shop }: ShopCardProps) {
             style={{ '--star-size': '12px', '--active-color': '#F63' }}
           />
           <span style={{ color: '#F63', fontSize: 11, marginLeft: 4 }}>
-            {shop.score / 10}分
+            {shop.score / 10}{t('shopCard.score')}
           </span>
           <span style={{ color: '#999', fontSize: 10, marginLeft: 4 }}>
-            {shop.comments}条
+            {shop.comments}{t('shopCard.comments')}
           </span>
         </div>
         <div className={styles.area}>
@@ -54,7 +56,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
             <span style={{ marginLeft: 8 }}>{formatDistance(shop.distance)}</span>
           )}
         </div>
-        <div className={styles.avgPrice}>￥{shop.avgPrice}/人</div>
+        <div className={styles.avgPrice}>￥{shop.avgPrice}</div>
         <div className={styles.address}>
           <EnvironmentOutline fontSize={12} />
           <span style={{ marginLeft: 2 }}>{shop.address}</span>

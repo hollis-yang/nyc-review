@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchOutline } from 'antd-mobile-icons';
 import { getShopTypes, getShopsByName } from '../../api/shop';
+import { useTranslation } from 'react-i18next';
 import { getHotBlogs } from '../../api/blog';
 import BlogCard, { type BlogData } from '../../components/BlogCard';
 import FootBar from '../../components/FootBar';
@@ -14,6 +15,7 @@ interface ShopType {
 }
 
 export default function Home() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [types, setTypes] = useState<ShopType[]>([]);
   const [blogs, setBlogs] = useState<BlogData[]>([]);
@@ -109,7 +111,7 @@ export default function Home() {
             <SearchOutline fontSize={14} style={{ margin: '0 4px' }} />
             <input
               type="text"
-              placeholder="请输入商户名、地点"
+              placeholder={t('home.searchPlaceholder')}
               value={searchText}
               onChange={(e) => handleSearchInput(e.target.value)}
               onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
@@ -125,7 +127,7 @@ export default function Home() {
           </div>
           {showSuggestions && suggestions.length > 0 && (
             <div className={styles.suggestions}>
-              <div className={styles.suggestTitle}>搜索结果</div>
+              <div className={styles.suggestTitle}>{t('home.searchResults')}</div>
               {suggestions.map((s) => (
                 <div
                   key={s.id}
@@ -158,18 +160,18 @@ export default function Home() {
       </div>
 
       <div className={styles.typeList}>
-        {types.map((t) => (
+        {types.map((tp) => (
           <div
-            key={t.id}
+            key={tp.id}
             className={styles.typeBox}
             onClick={() =>
-              navigate(`/shop-list?type=${t.id}&name=${encodeURIComponent(t.name)}`)
+              navigate(`/shop-list?type=${tp.id}&name=${encodeURIComponent(tp.name)}`)
             }
           >
             <div className={styles.typeView}>
-              <img src={`/imgs/${t.icon}`} alt="" />
+              <img src={`/imgs/${tp.icon}`} alt="" />
             </div>
-            <div className={styles.typeText}>{t.name}</div>
+            <div className={styles.typeText}>{t(`shopTypes.${tp.name}`, tp.name)}</div>
           </div>
         ))}
       </div>
@@ -178,7 +180,7 @@ export default function Home() {
         {blogs.map((b) => (
           <BlogCard key={b.id} blog={b} onLikeUpdate={handleLikeUpdate} />
         ))}
-        {loading && <div className={styles.loading}>加载中...</div>}
+        {loading && <div className={styles.loading}>{t('home.loading')}</div>}
       </div>
 
       <FootBar activeBtn={1} />
