@@ -49,3 +49,7 @@ export function createBlog(data: {
 }) {
   return client.post('/blog', data);
 }
+
+export function deleteBlog(id: number | string) {
+  return client.delete(`/blog/${id}`);
+}

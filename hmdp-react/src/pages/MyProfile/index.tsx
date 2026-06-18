@@ -138,9 +138,11 @@ export default function MyProfile() {
   const handleSign = async () => {
     try {
       await sign();
-      Toast.show({ icon: 'success', content: '签到成功！' });
+      const res = await signCount();
+      const count = res.data ?? res;
+      setSignDays(typeof count === 'number' ? count : 0);
       setSignedToday(true);
-      setSignDays((prev) => prev + 1);
+      Toast.show({ icon: 'success', content: '签到成功！' });
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -229,7 +231,7 @@ export default function MyProfile() {
                     <div className={styles.blogItemTitle}>{b.title}</div>
                     <div className={styles.blogItemMeta}>
                       <span>👍 {b.liked}</span>
-                      <span style={{ marginLeft: 10 }}>💬 {(b as any).comments ?? 0}</span>
+                      <span style={{ marginLeft: 10 }}>💬 {b.comments ?? 0}</span>
                     </div>
                   </div>
                 </div>

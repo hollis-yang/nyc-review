@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
-import { Toast } from 'antd-mobile';
-import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment } from '../../api/blog';
+import { Toast, Dialog } from 'antd-mobile';
+import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog } from '../../api/blog';
 import { getShopById } from '../../api/shop';
 import { getMe } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
@@ -143,11 +143,33 @@ export default function BlogDetail() {
       setCommentText('');
       const res = await getBlogComments(id);
       setComments(res.data ?? res);
+      const blogRes = await getBlogById(id);
+      const blogData = blogRes.data ?? blogRes;
+      if (blogData) {
+        blogData.images = blogData.images ? blogData.images.split(',') : [];
+        setBlog(blogData);
+      }
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!blog) return;
+    Dialog.confirm({
+      content: '确定要删除这篇笔记吗？',
+      onConfirm: async () => {
+        try {
+          await deleteBlog(blog.id);
+          Toast.show({ icon: 'success', content: '已删除' });
+          navigate(-1);
+        } catch (err: any) {
+          Toast.show({ icon: 'fail', content: String(err) });
+        }
+      },
+    });
   };
 
   /* ---- 渲染 ---- */
@@ -204,6 +226,8 @@ export default function BlogDetail() {
     }
   };
 
+  const hasCommented = currentUser && comments.some((c) => c.userId === currentUser.id);
+
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -219,6 +243,14 @@ export default function BlogDetail() {
             <circle cx="12" cy="19" r="1.2" fill="rgba(255,255,255,0.85)" stroke="none" />
           </svg>
         </div>
+        {currentUser && currentUser.id === blog.userId && (
+          <div className={styles.share} onClick={handleDelete}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+          </div>
+        )}
       </div>
 
       <div className={styles.scroll}>
@@ -345,9 +377,10 @@ export default function BlogDetail() {
             <span className={blog.isLike ? styles.liked : ''}>{blog.liked}</span>
           </div>
           <div className={styles.bottomBox} onClick={scrollToComments}>
-            <svg viewBox="0 0 1024 1024" width="26" height="26" fill="#82848a">
+            <svg viewBox="0 0 1024 1024" width="26" height="26" fill={hasCommented ? '#ff6633' : '#82848a'}>
               <path d="M128 128h768v576H128V128zm0-64C92.8 64 64 92.8 64 128v576c0 35.2 28.8 64 64 64h256l128 192 128-192h256c35.2 0 64-28.8 64-64V128c0-35.2-28.8-64-64-64H128z" />
             </svg>
+            <span className={hasCommented ? styles.liked : ''}>{blog.comments ?? 0}</span>
           </div>
         </div>
       </div>

@@ -72,7 +72,7 @@ public class Blog implements Serializable {
     /**
      * 评论数量
      */
-    private Integer comments;
+    private Integer comments = 0;
 
     /**
      * 创建时间

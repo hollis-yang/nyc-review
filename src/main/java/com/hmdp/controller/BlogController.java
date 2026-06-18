@@ -27,6 +27,11 @@ public class BlogController {
         return blogService.saveBlog(blog);
     }
 
+    @DeleteMapping("/{id}")
+    public Result deleteBlog(@PathVariable("id") Long id) {
+        return blogService.deleteBlog(id);
+    }
+
     @PutMapping("/like/{id}")
     public Result likeBlog(@PathVariable("id") Long id) {
 //        // 修改点赞数量

@@ -5,6 +5,7 @@ import com.hmdp.entity.BlogComments;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogCommentsMapper;
 import com.hmdp.service.IBlogCommentsService;
+import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.UserHolder;
@@ -21,6 +22,9 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
 
     @Resource
     private IUserService userService;
+
+    @Resource
+    private IBlogService blogService;
 
     @Override
     public Result queryCommentsByBlogId(Long blogId) {
@@ -65,6 +69,8 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         if (comment.getParentId() == null) comment.setParentId(0L);
         if (comment.getAnswerId() == null) comment.setAnswerId(0L);
         save(comment);
+        // 更新博客评论数
+        blogService.update().setSql("comments = comments + 1").eq("id", comment.getBlogId()).update();
         return Result.ok(comment.getId());
     }
 }

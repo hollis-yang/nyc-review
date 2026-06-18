@@ -10,6 +10,7 @@ export interface BlogData {
   name?: string;
   liked: number;
   isLike: boolean;
+  comments?: number;
   img?: string;
 }
 

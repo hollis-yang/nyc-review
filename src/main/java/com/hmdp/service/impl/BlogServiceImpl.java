@@ -147,6 +147,20 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         return Result.ok(userDTOS);
     }
 
+    @Override
+    public Result deleteBlog(Long id) {
+        Blog blog = getById(id);
+        if (blog == null) {
+            return Result.fail("笔记不存在");
+        }
+        Long userId = UserHolder.getUser().getId();
+        if (!userId.equals(blog.getUserId())) {
+            return Result.fail("只能删除自己的笔记");
+        }
+        removeById(id);
+        return Result.ok();
+    }
+
     private void isBlogLiked(Blog blog) {
         // 1.获取登录用户
         UserDTO user = UserHolder.getUser();

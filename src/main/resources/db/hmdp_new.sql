@@ -167,7 +167,7 @@ CREATE TABLE `tb_blog` (
   `images` varchar(2048) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '探店的照片',
   `content` varchar(2048) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '探店的文字描述',
   `liked` int(8) UNSIGNED NULL DEFAULT 0 COMMENT '点赞数量',
-  `comments` int(8) UNSIGNED NULL DEFAULT NULL COMMENT '评论数量',
+  `comments` int(8) UNSIGNED NOT NULL DEFAULT 0 COMMENT '评论数量',
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE
