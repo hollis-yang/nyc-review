@@ -41,6 +41,10 @@ export function createBlogComment(data: {
   return client.post('/blog-comments', data);
 }
 
+export function deleteBlogComment(id: number | string) {
+  return client.delete(`/blog-comments/${id}`);
+}
+
 export function createBlog(data: {
   title: string;
   content: string;

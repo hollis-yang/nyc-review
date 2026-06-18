@@ -24,4 +24,9 @@ public class BlogCommentsController {
     public Result addComment(@RequestBody BlogComments comment) {
         return blogCommentsService.addComment(comment);
     }
+
+    @DeleteMapping("/{id}")
+    public Result deleteComment(@PathVariable("id") Long id) {
+        return blogCommentsService.deleteComment(id);
+    }
 }

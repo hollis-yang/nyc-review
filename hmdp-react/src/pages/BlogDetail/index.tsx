@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Toast, Dialog } from 'antd-mobile';
-import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog } from '../../api/blog';
+import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
 import { getShopById } from '../../api/shop';
 import { getMe } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
@@ -336,7 +336,36 @@ export default function BlogDetail() {
                 <div className={styles.commentInfo}>
                   <div className={styles.commentUser}>{c.name}</div>
                   <div className={styles.commentContent}>{c.content}</div>
-                  <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
+                    {currentUser && currentUser.id === c.userId && (
+                      <div
+                        style={{ fontSize: 18, color: '#ccc', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+                        onClick={() => {
+                          Dialog.confirm({
+                            content: '确定要删除这条评论吗？',
+                            onConfirm: async () => {
+                              try {
+                                await deleteBlogComment(c.id);
+                                const res = await getBlogComments(id!);
+                                setComments(res.data ?? res);
+                                const blogRes = await getBlogById(id!);
+                                const blogData = blogRes.data ?? blogRes;
+                                if (blogData) {
+                                  blogData.images = blogData.images ? blogData.images.split(',') : [];
+                                  setBlog(blogData);
+                                }
+                              } catch (err: any) {
+                                Toast.show({ icon: 'fail', content: String(err) });
+                              }
+                            },
+                          });
+                        }}
+                      >
+                        ×
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))

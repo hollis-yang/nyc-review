@@ -73,4 +73,20 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         blogService.update().setSql("comments = comments + 1").eq("id", comment.getBlogId()).update();
         return Result.ok(comment.getId());
     }
+
+    @Override
+    public Result deleteComment(Long id) {
+        BlogComments comment = getById(id);
+        if (comment == null) {
+            return Result.fail("评论不存在");
+        }
+        Long userId = UserHolder.getUser().getId();
+        if (!userId.equals(comment.getUserId())) {
+            return Result.fail("只能删除自己的评论");
+        }
+        removeById(id);
+        // 博客评论数-1
+        blogService.update().setSql("comments = comments - 1").eq("id", comment.getBlogId()).update();
+        return Result.ok();
+    }
 }
