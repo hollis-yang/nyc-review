@@ -21,4 +21,9 @@ public class TranslateController {
     public Result translateComment(@RequestParam Long commentId, @RequestParam(defaultValue = "en") String targetLang) {
         return translateService.translateComment(commentId, targetLang);
     }
+
+    @PostMapping("/shop")
+    public Result translateShop(@RequestParam Long shopId, @RequestParam(defaultValue = "en") String targetLang) {
+        return translateService.translateShop(shopId, targetLang);
+    }
 }

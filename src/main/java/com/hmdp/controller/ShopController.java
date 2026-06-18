@@ -73,9 +73,11 @@ public class ShopController {
             @RequestParam("typeId") Integer typeId,
             @RequestParam(value = "current", defaultValue = "1") Integer current,
             @RequestParam(value = "x", required = false) Double x,
-            @RequestParam(value = "y", required = false) Double y
+            @RequestParam(value = "y", required = false) Double y,
+            @RequestParam(value = "sortBy", required = false) String sortBy,
+            @RequestParam(value = "sortOrder", required = false) String sortOrder
     ) {
-        return shopService.queryShopByType(typeId, current, x, y);
+        return shopService.queryShopByType(typeId, current, x, y, sortBy, sortOrder);
     }
 
     /**

@@ -100,7 +100,8 @@
     "likes": "{{n}}人点赞",
     "translate": "翻译",
     "translatedByAI": "由 AI 翻译",
-    "original": "原文"
+    "original": "原文",
+    "confirm": "确定"
   },
   "blogEdit": {
     "cancel": "取消",
@@ -193,7 +194,8 @@
   },
   "shopCard": {
     "score": "分",
-    "comments": "条"
+    "comments": "条",
+    "perPerson": "/人"
   },
   "common": {
     "back": "返回",

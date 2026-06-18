@@ -100,7 +100,8 @@
     "likes": "{{n}} likes",
     "translate": "Translate",
     "translatedByAI": "Translated by AI",
-    "original": "Original"
+    "original": "Original",
+    "confirm": "Confirm"
   },
   "blogEdit": {
     "cancel": "Cancel",
@@ -193,7 +194,8 @@
   },
   "shopCard": {
     "score": "pts",
-    "comments": "reviews"
+    "comments": "reviews",
+    "perPerson": "/person"
   },
   "common": {
     "back": "Back",

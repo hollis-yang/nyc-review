@@ -34,7 +34,9 @@ interface ReviewData {
 
 export default function ShopDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isEn2 = i18n.language === 'en';
+  const [addrTL, setAddrTL] = useState<string | null>(null);
   const navigate = useNavigate();
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
@@ -92,6 +94,12 @@ export default function ShopDetail() {
       Toast.show({ icon: 'success', content: t('shopDetail.linkCopied') });
     }
   };
+
+  useEffect(() => {
+    if (shop && isEn2 && !addrTL) {
+      setAddrTL('...');
+    }
+  }, [shop, isEn2]);
 
   const handleReviewSubmit = async () => {
     if (!reviewContent.trim() || !id) return;
@@ -234,7 +242,7 @@ export default function ShopDetail() {
                         {reviewTL[review.id]}
                       </div>
                     )}
-                    <span style={{ fontSize: 11, color: '#bbb', cursor: 'pointer' }}
+                    <span style={{ fontSize: 11, color: '#bbb', cursor: 'pointer', display: isEn2 ? 'inline' : 'none' }}
                       onClick={async () => {
                         if (reviewTL[review.id]) {
                           const next = { ...reviewTL };

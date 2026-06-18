@@ -28,7 +28,7 @@
 .info {
   flex: 1;
   margin-left: 10px;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .title {
@@ -59,10 +59,9 @@
 
 .address {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   color: #999;
   font-size: 11px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  word-break: break-word;
 }

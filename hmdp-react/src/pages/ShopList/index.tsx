@@ -12,11 +12,7 @@ interface ShopType {
   icon: string;
 }
 
-const SORT_OPTIONS = [
-  { label: '距离', field: '' },
-  { label: '人气', field: 'comments' },
-  { label: '评分', field: 'score' },
-] as const;
+
 
 export default function ShopList() {
   const { t } = useTranslation();
@@ -25,12 +21,17 @@ export default function ShopList() {
   const typeId = searchParams.get('type') || '0';
   const typeName = searchParams.get('name') || '';
   const searchQuery = searchParams.get('query') || '';
+  const sortOptions = [
+    { label: t('shopList.distance'), field: '' },
+    { label: t('shopList.popularity'), field: 'comments' },
+    { label: t('shopList.rating'), field: 'score' },
+  ] as const;
 
   const [types, setTypes] = useState<ShopType[]>([]);
   const [shops, setShops] = useState<ShopData[]>([]);
   const [visible, setVisible] = useState(false);
   const [sortBy, setSortBy] = useState('');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [current, setCurrent] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -121,16 +122,16 @@ export default function ShopList() {
           <LeftOutline fontSize={18} color="white" />
         </div>
         <div className={styles.title}>
-          {searchQuery ? `"${searchQuery}" 搜索结果` : typeName}
+          {searchQuery ? t('shopList.searchResult', { query: searchQuery }) : t(`shopTypes.${typeName}`, typeName)}
         </div>
       </div>
 
       <div className={styles.sortBar}>
         <div className={`${styles.sortItem} ${visible ? styles.sortActive : ''}`} onClick={() => setVisible(!visible)}>
-          <span>{typeName || '全部分类'}</span>
+          <span>{typeName ? t(`shopTypes.${typeName}`, typeName) : t('shopList.allCategories')}</span>
           <span className={styles.sortArrow}>&#9660;</span>
         </div>
-        {SORT_OPTIONS.map((opt) => (
+        {sortOptions.map((opt) => (
           <div
             key={opt.field}
             className={`${styles.sortItem} ${sortBy === opt.field ? styles.sortActive : ''}`}
@@ -147,21 +148,21 @@ export default function ShopList() {
 
         {visible && (
           <div className={styles.selectType}>
-            {types.map((t) => (
+            {types.map((tp) => (
               <div
-                key={t.id}
-                className={`${styles.typeOption} ${String(t.id) === typeId ? styles.activeType : ''}`}
+                key={tp.id}
+                className={`${styles.typeOption} ${String(tp.id) === typeId ? styles.activeType : ''}`}
                 onClick={() => {
-                  handleTypeChange(t);
+                  handleTypeChange(tp);
                   setVisible(false);
                 }}
               >
                 <img
                   className={styles.typeIcon}
-                  src={`/imgs/${t.icon}`}
-                  alt={t.name}
+                  src={`/imgs/${tp.icon}`}
+                  alt={tp.name}
                 />
-                <span className={styles.typeName}>{t.name}</span>
+                <span className={styles.typeName}>{t(`shopTypes.${tp.name}`, tp.name)}</span>
               </div>
             ))}
           </div>

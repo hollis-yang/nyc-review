@@ -80,13 +80,16 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
     @Override
-    public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+    public Result queryShopByType(Integer typeId, Integer current, Double x, Double y, String sortBy, String sortOrder) {
         // 1.判断是否需要根据坐标查询
         if (x == null || y == null) {
             // 不需要坐标查询，按数据库分页查询
-            Page<Shop> page = query()
-                    .eq("type_id", typeId)
-                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+            var qw = query().eq("type_id", typeId);
+            if (sortBy != null && !sortBy.isEmpty()) {
+                boolean asc = "asc".equalsIgnoreCase(sortOrder);
+                qw.orderBy(true, asc, sortBy);
+            }
+            Page<Shop> page = qw.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
             // 返回数据
             return Result.ok(page.getRecords());
         }
@@ -125,6 +128,20 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         shops.forEach(shop -> {
             shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
         });
+        // 根据sortBy排序
+        if (sortBy != null && !sortBy.isEmpty() && !"".equals(sortBy)) {
+            boolean asc = "asc".equalsIgnoreCase(sortOrder);
+            if ("score".equals(sortBy)) {
+                shops.sort((a, b) -> asc ? a.getScore().compareTo(b.getScore()) : b.getScore().compareTo(a.getScore()));
+            } else if ("comments".equals(sortBy)) {
+                shops.sort((a, b) -> asc ? Integer.compare(a.getComments(), b.getComments()) : Integer.compare(b.getComments(), a.getComments()));
+            }
+        } else {
+            // 按距离排序（sortBy为空）: GEO默认升序，desc时反转
+            if ("desc".equalsIgnoreCase(sortOrder)) {
+                java.util.Collections.reverse(shops);
+            }
+        }
         // 6.返回结果
         return Result.ok(shops);
     }

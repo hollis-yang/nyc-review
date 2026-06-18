@@ -50,7 +50,8 @@ interface CommentInfo {
 
 export default function BlogDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isEn = i18n.language === 'en';
   const navigate = useNavigate();
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
@@ -64,6 +65,7 @@ export default function BlogDetail() {
   const [replyTo, setReplyTo] = useState<CommentInfo | null>(null);
   const [replyText, setReplyText] = useState('');
   const [blogTL, setBlogTL] = useState<string | null>(null);
+  const [blogTitleTL, setBlogTitleTL] = useState<string | null>(null);
   const [blogTLLoading, setBlogTLLoading] = useState(false);
   const [commentTL, setCommentTL] = useState<Record<number, string>>({});
 
@@ -195,12 +197,61 @@ export default function BlogDetail() {
     }
   };
 
+  useEffect(() => {
+    if (blog && isEn && !blogTL && !blogTLLoading) {
+      handleTranslateBlog();
+    }
+  }, [blog, isEn, blogTL]);
+
+  useEffect(() => {
+    if (comments.length > 0 && isEn) {
+      const allIds: number[] = [];
+      const collect = (list: any[]) => {
+        list.forEach((c: any) => {
+          allIds.push(c.id);
+          if (c.children?.length) collect(c.children);
+        });
+      };
+      collect(comments);
+      const untranslated = allIds.filter(id => !commentTL[id]);
+      if (untranslated.length > 0) {
+        untranslated.forEach(id => {
+          translateComment(id, 'en').then(res => {
+            const txt = String(res.data ?? res);
+            if (txt && txt !== 'Translation failed') {
+              setCommentTL(prev => ({ ...prev, [id]: txt }));
+            }
+          }).catch(() => {});
+        });
+      }
+    }
+  }, [comments.length, isEn]);
+
+  useEffect(() => {
+    if (comments.length > 0 && isEn) {
+      comments.forEach(c => {
+        if (!commentTL[c.id]) {
+          translateComment(c.id, 'en').then(res => {
+            setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
+          }).catch(() => {});
+        }
+      });
+    }
+  }, [comments, isEn]);
+
   const handleTranslateBlog = async () => {
-    if (!blog || blogTL) { setBlogTL(null); return; }
+    if (!blog || blogTL) { setBlogTL(null); setBlogTitleTL(null); return; }
     setBlogTLLoading(true);
     try {
       const res = await translateBlog(blog.id, 'en');
-      setBlogTL(String(res.data ?? res));
+      const full = String(res.data ?? res);
+      const parts = full.split('\n\n');
+      if (parts.length >= 2) {
+        setBlogTitleTL(parts[0].trim());
+        setBlogTL(parts.slice(1).join('\n\n').trim());
+      } else {
+        setBlogTL(full);
+      }
     } catch {}
     finally { setBlogTLLoading(false); }
   };
@@ -209,6 +260,8 @@ export default function BlogDetail() {
     if (!blog) return;
     Dialog.confirm({
       content: t('blogDetail.deleteNoteConfirm'),
+      cancelText: t('blogDetail.cancel'),
+      confirmText: t('blogDetail.confirm'),
       onConfirm: async () => {
         try {
           await deleteBlog(blog.id);
@@ -255,6 +308,10 @@ export default function BlogDetail() {
 
   const formatDate = (d: string) => {
     const date = new Date(d);
+    if (isEn) {
+      const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return `${m[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+    }
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   };
 
@@ -299,7 +356,7 @@ export default function BlogDetail() {
         <div className={styles.commentInfo}>
           <div className={styles.commentUser}>{c.name}</div>
           {c.replyToName && (
-            <span className={styles.replyToTag}>回复 @{c.replyToName}</span>
+            <span className={styles.replyToTag}>{t('blogDetail.replyTo')} @{c.replyToName}</span>
           )}
           <div className={styles.commentContent}>{c.content}</div>
           {commentTL[c.id] && (
@@ -312,11 +369,11 @@ export default function BlogDetail() {
               <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
               {currentUser && (
                 <span className={styles.replyBtn} onClick={() => { setReplyTo(c); setReplyText(''); }}>
-                  回复
+                  {t('blogDetail.reply')}
                 </span>
               )}
                 <span className={styles.replyBtn}
-                  style={{ marginLeft: 4 }}
+                  style={{ marginLeft: 4, display: isEn ? 'inline' : 'none' }}
                   onClick={async () => {
                     if (commentTL[c.id]) {
                       const next = { ...commentTL };
@@ -338,6 +395,8 @@ export default function BlogDetail() {
                 onClick={() => {
                   Dialog.confirm({
                     content: t('blogDetail.deleteCommentConfirm'),
+                    cancelText: t('blogDetail.cancel'),
+                    confirmText: t('blogDetail.confirm'),
                     onConfirm: async () => {
                       try {
                         await deleteBlogComment(c.id);
@@ -354,14 +413,14 @@ export default function BlogDetail() {
           {/* 行内回复框 */}
           {replyTo?.id === c.id && (
             <div className={styles.inlineReplyBar}>
-              <span className={styles.replyToTag}>回复 @{c.name}:</span>
+              <span className={styles.replyToTag}>{t('blogDetail.replyTo')} @{c.name}:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
                 <input
                   type="text"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleInlineReply(); }}
-                  placeholder={`回复 ${c.name}...`}
+                  placeholder={`${t('blogDetail.replyTo')} ${c.name}...`}
                   className={styles.inlineReplyInput}
                 />
                 <span className={styles.commentSubmit} onClick={handleInlineReply}>{t('blogDetail.send')}</span>
@@ -427,6 +486,11 @@ export default function BlogDetail() {
           {blog.title && (
             <div className={styles.contentTitle}>{blog.title}</div>
           )}
+          {blogTitleTL && (
+            <div style={{ fontSize: 14, color: '#888', marginTop: 2, marginBottom: 8 }}>
+              {blogTitleTL}
+            </div>
+          )}
           <div
             className={styles.contentBody}
             dangerouslySetInnerHTML={{ __html: blog.content }}
@@ -434,7 +498,7 @@ export default function BlogDetail() {
           <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
             <span style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}
               onClick={handleTranslateBlog}>
-              {blogTLLoading ? '⏳ ...' : blogTL ? t('blogDetail.original') : '🌐 ' + t('blogDetail.translate')}
+              {isEn ? (blogTLLoading ? '⏳ ...' : blogTL ? t('blogDetail.original') : '🌐 ' + t('blogDetail.translate')) : ''}
             </span>
           </div>
           {blogTL && (
@@ -513,7 +577,7 @@ export default function BlogDetail() {
             onClick={handleCommentSubmit}
             style={{ opacity: commentText.trim() && !submitting ? 1 : 0.4 }}
           >
-            发送
+            {t('blogDetail.send')}
           </div>
         </div>
 

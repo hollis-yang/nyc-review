@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { translateShop } from '../../api/translate';
 import { Rate } from 'antd-mobile';
 import { EnvironmentOutline } from 'antd-mobile-icons';
 import styles from './ShopCard.module.css';
@@ -21,9 +23,29 @@ interface ShopCardProps {
 }
 
 export default function ShopCard({ shop }: ShopCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isEn = i18n.language === 'en';
   const navigate = useNavigate();
   const imgSrc = shop.images ? shop.images.split(',')[0] : '';
+  const [tl, setTl] = useState<{ name?: string; area?: string; address?: string } | null>(null);
+
+  useEffect(() => {
+    if (isEn && !tl && shop.id) {
+      translateShop(shop.id, 'en').then(res => {
+        const txt = String(res.data ?? res);
+        if (txt) {
+          const m: any = {};
+          txt.split('\n').forEach((line: string) => {
+            const l = line.trim();
+            if (l.toLowerCase().startsWith('name:')) m.name = l.substring(5).trim();
+            else if (l.toLowerCase().startsWith('area:')) m.area = l.substring(5).trim();
+            else if (l.toLowerCase().startsWith('address:')) m.address = l.substring(8).trim();
+          });
+          setTl(m);
+        }
+      }).catch(() => {});
+    }
+  }, [isEn, shop.id, tl]);
 
   const formatDistance = (d: number) => {
     if (d < 1000) return d.toFixed(1) + 'm';
@@ -36,7 +58,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
         <img src={imgSrc} alt="" />
       </div>
       <div className={styles.info}>
-        <div className={styles.title}>{shop.name}</div>
+        <div className={styles.title}>{tl?.name || shop.name}</div>
         <div className={styles.rate}>
           <Rate
             readOnly
@@ -51,15 +73,15 @@ export default function ShopCard({ shop }: ShopCardProps) {
           </span>
         </div>
         <div className={styles.area}>
-          <span>{shop.area}</span>
+          <span>{tl?.area || shop.area}</span>
           {shop.distance != null && (
             <span style={{ marginLeft: 8 }}>{formatDistance(shop.distance)}</span>
           )}
         </div>
-        <div className={styles.avgPrice}>￥{shop.avgPrice}</div>
+        <div className={styles.avgPrice}>￥{shop.avgPrice}{isEn ? '/person' : '/人'}</div>
         <div className={styles.address}>
           <EnvironmentOutline fontSize={12} />
-          <span style={{ marginLeft: 2 }}>{shop.address}</span>
+          <span style={{ marginLeft: 2 }}>{tl?.address || shop.address}</span>
         </div>
       </div>
     </div>
