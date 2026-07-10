@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Tabs, Toast } from 'antd-mobile';
-import { getUserById, getUserInfo, getMe } from '../../api/user';
+import { getUserById, getUserInfo, getMeOptional } from '../../api/user';
 import { getBlogsOfUser } from '../../api/blog';
 import { isFollowed, follow, getCommonFollows } from '../../api/follow';
 import FootBar from '../../components/FootBar';
@@ -51,11 +51,11 @@ export default function OtherProfile() {
         getBlogsOfUser(u.id)
           .then((r) => setBlogs(r.data ?? r))
           .catch(() => {});
-        isFollowed(u.id)
-          .then((r) => setFollowed(r.data ?? r))
-          .catch(() => {});
       }),
-      getMe().then(() => {}).catch(() => {}),
+      getMeOptional()
+        .then(() => isFollowed(id))
+        .then((r) => setFollowed(r.data ?? r))
+        .catch(() => {}),
     ]).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg || '用户不存在');

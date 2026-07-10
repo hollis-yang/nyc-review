@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
 import { translateBlog, translateComment } from '../../api/translate';
 import { getShopById } from '../../api/shop';
-import { getMe } from '../../api/user';
+import { getMeOptional } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
 import ImageSwiper from '../../components/ImageSwiper';
 import { normalizeBlogContent } from '../../utils/blogContent';
@@ -86,7 +86,7 @@ export default function BlogDetail() {
         }
         getBlogLikes(id).then((r) => setLikes(r.data ?? r)).catch(() => {});
         getBlogComments(id).then((r) => setComments(r.data ?? r)).catch(() => {});
-        getMe()
+        getMeOptional()
           .then((r) => {
             const u = r.data ?? r;
             setCurrentUser(u);

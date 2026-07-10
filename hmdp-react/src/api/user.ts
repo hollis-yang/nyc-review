@@ -1,7 +1,12 @@
-import client from './client';
+import client, { type AuthAwareRequestConfig } from './client';
 
 export function getMe() {
   return client.get('/user/me');
+}
+
+export function getMeOptional() {
+  const config: AuthAwareRequestConfig = { skipAuthRedirect: true };
+  return client.get('/user/me', config);
 }
 
 export function getUserById(id: number | string) {

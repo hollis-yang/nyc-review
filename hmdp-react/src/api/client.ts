@@ -1,4 +1,8 @@
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
+
+export interface AuthAwareRequestConfig extends AxiosRequestConfig {
+  skipAuthRedirect?: boolean;
+}
 
 const client = axios.create({
   baseURL: '/api',
@@ -29,9 +33,12 @@ client.interceptors.response.use(
   (error) => {
     console.log(error);
     if (error.response?.status === 401) {
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 200);
+      const requestConfig = error.config as AuthAwareRequestConfig | undefined;
+      if (!requestConfig?.skipAuthRedirect) {
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 200);
+      }
       return Promise.reject('请先登录');
     }
     return Promise.reject('服务器异常');
