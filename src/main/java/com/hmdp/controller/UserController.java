@@ -149,7 +149,7 @@ public class UserController {
         }
         // 防止修改其他用户
         userInfo.setUserId(userDTO.getId());
-        userInfoService.updateById(userInfo);
-        return Result.ok();
+        boolean saved = userInfoService.saveOrUpdate(userInfo);
+        return saved ? Result.ok() : Result.fail("用户资料保存失败");
     }
 }

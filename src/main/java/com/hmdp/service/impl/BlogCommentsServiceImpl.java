@@ -8,8 +8,12 @@ import com.hmdp.mapper.BlogCommentsMapper;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.RedisConstants;
+import com.hmdp.utils.RedisPatternCleaner;
+import com.hmdp.utils.TransactionHooks;
 import com.hmdp.utils.UserHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.util.*;
@@ -23,6 +27,9 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
 
     @Resource
     private IBlogService blogService;
+
+    @Resource
+    private RedisPatternCleaner redisPatternCleaner;
 
     @Override
     public Result queryCommentsByBlogId(Long blogId) {
@@ -108,12 +115,16 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
     }
 
     @Override
+    @Transactional
     public Result addComment(BlogComments comment) {
         if (comment.getBlogId() == null) {
             return Result.fail("博客ID不能为空");
         }
         if (comment.getContent() == null || comment.getContent().trim().isEmpty()) {
             return Result.fail("评论内容不能为空");
+        }
+        if (blogService.getById(comment.getBlogId()) == null) {
+            return Result.fail("博客不存在");
         }
         // 校验父评论
         if (comment.getParentId() != null && comment.getParentId() > 0) {
@@ -128,19 +139,38 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         } else {
             comment.setParentId(0L);
         }
-        if (comment.getAnswerId() == null) {
+        if (comment.getAnswerId() != null && comment.getAnswerId() > 0) {
+            BlogComments answered = getById(comment.getAnswerId());
+            if (answered == null || !answered.getBlogId().equals(comment.getBlogId())) {
+                return Result.fail("被回复评论不存在");
+            }
+            if (comment.getParentId() == 0L) {
+                comment.setParentId(answered.getParentId() != null && answered.getParentId() > 0
+                        ? answered.getParentId()
+                        : answered.getId());
+            }
+        } else {
             comment.setAnswerId(0L);
         }
         Long userId = UserHolder.getUser().getId();
         comment.setUserId(userId);
         comment.setLiked(0);
         comment.setStatus(false);
-        save(comment);
-        blogService.update().setSql("comments = comments + 1").eq("id", comment.getBlogId()).update();
+        if (!save(comment)) {
+            throw new IllegalStateException("评论保存失败");
+        }
+        boolean countUpdated = blogService.update()
+                .setSql("comments = comments + 1")
+                .eq("id", comment.getBlogId())
+                .update();
+        if (!countUpdated) {
+            throw new IllegalStateException("博客评论数更新失败");
+        }
         return Result.ok(comment.getId());
     }
 
     @Override
+    @Transactional
     public Result deleteComment(Long id) {
         BlogComments comment = getById(id);
         if (comment == null) {
@@ -151,19 +181,40 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
             return Result.fail("只能删除自己的评论");
         }
         int deletedCount = 1;
+        List<Long> deletedIds = new ArrayList<>();
+        deletedIds.add(id);
         // 顶层评论：级联删除所有子评论
         if (comment.getParentId() == null || comment.getParentId() == 0L) {
             List<BlogComments> children = lambdaQuery().eq(BlogComments::getParentId, id).list();
             if (!children.isEmpty()) {
                 List<Long> childIds = children.stream().map(BlogComments::getId).collect(Collectors.toList());
-                removeByIds(childIds);
+                if (!removeByIds(childIds)) {
+                    throw new IllegalStateException("子评论删除失败");
+                }
+                deletedIds.addAll(childIds);
                 deletedCount += children.size();
             }
         }
-        removeById(id);
-        blogService.update()
-                .setSql("comments = comments - " + deletedCount)
-                .eq("id", comment.getBlogId()).update();
+        if (!removeById(id)) {
+            throw new IllegalStateException("评论删除失败");
+        }
+        boolean countUpdated = blogService.update()
+                .setSql("comments = GREATEST(comments - " + deletedCount + ", 0)")
+                .eq("id", comment.getBlogId())
+                .update();
+        if (!countUpdated) {
+            throw new IllegalStateException("博客评论数更新失败");
+        }
+        TransactionHooks.afterCommit(() -> {
+            try {
+                for (Long deletedId : deletedIds) {
+                    redisPatternCleaner.deleteByPattern(
+                            RedisConstants.TRANSLATE_CACHE_KEY + "comment:" + deletedId + ":*");
+                }
+            } catch (RuntimeException ignored) {
+                // 翻译缓存到期后会自动清理，不影响评论删除事务。
+            }
+        });
         return Result.ok();
     }
 }

@@ -1,32 +1,46 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.BlogComments;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
+import com.hmdp.mapper.BlogCommentsMapper;
+import com.hmdp.service.ImageStorageService;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
+import com.hmdp.utils.RedisPatternCleaner;
 import com.hmdp.utils.SystemConstants;
+import com.hmdp.utils.TransactionHooks;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import jakarta.annotation.Resource;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,34 +55,77 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Resource
     private IFollowService followService;
 
+    @Resource
+    private BlogCommentsMapper blogCommentsMapper;
+
+    @Resource
+    private ImageStorageService imageStorageService;
+
+    @Resource
+    private RedisPatternCleaner redisPatternCleaner;
+
+    @Resource
+    private RedissonClient redissonClient;
+
     private static final String BLOG_LIKED_KEY = RedisConstants.BLOG_LIKED_KEY;
     private static final String FEED_KEY = RedisConstants.FEED_KEY;
 
+    private static final DefaultRedisScript<Long> BLOG_LIKE_SCRIPT;
+
+    static {
+        BLOG_LIKE_SCRIPT = new DefaultRedisScript<>();
+        BLOG_LIKE_SCRIPT.setLocation(new ClassPathResource("blog_like.lua"));
+        BLOG_LIKE_SCRIPT.setResultType(Long.class);
+    }
+
     @Override
+    @Transactional
     public Result likeBlog(Long id) {
         // 1.获取登录用户
         Long userId = UserHolder.getUser().getId();
-        // 2.判断当前用户是否点赞
+        if (getById(id) == null) {
+            return Result.fail("笔记不存在");
+        }
         String key = BLOG_LIKED_KEY + id;
-        Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
-        if (score == null) {
-            // 3.没点赞，可以点赞
-            // 3.1.数据库点赞数+1
-            boolean isSuccess = update().setSql("liked = liked + 1").eq("id", id).update();
-            if (isSuccess) {
-                // 3.2.保存用户到redis zset
-                stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
+        RLock lock = redissonClient.getLock("lock:blog-like:" + id + ":" + userId);
+        boolean locked = false;
+        boolean releaseAfterCompletion = false;
+        try {
+            locked = lock.tryLock(1, 10, TimeUnit.SECONDS);
+            if (!locked) {
+                return Result.fail("操作过于频繁，请稍后重试");
             }
-        } else {
-            // 4.已点赞，取消点赞
-            // 4.1.数据库点赞数-1
-            boolean isSuccess = update().setSql("liked = liked - 1").eq("id", id).update();
-            if (isSuccess) {
-                // 4.2.将用户移除redis set
-                stringRedisTemplate.opsForZSet().remove(key, userId.toString());
+            Long delta = stringRedisTemplate.execute(
+                    BLOG_LIKE_SCRIPT,
+                    Collections.singletonList(key),
+                    userId.toString(),
+                    Long.toString(System.currentTimeMillis()));
+            if (delta == null || (delta != 1L && delta != -1L)) {
+                throw new IllegalStateException("点赞状态更新失败");
+            }
+            registerLikeRollbackCompensation(key, userId);
+            releaseAfterCompletion = registerLikeLockRelease(lock);
+            boolean updated = delta > 0
+                    ? update().setSql("liked = liked + 1").eq("id", id).update()
+                    : update().setSql("liked = GREATEST(liked - 1, 0)").eq("id", id).gt("liked", 0).update();
+            if (!updated) {
+                // 当前线程持有用户-博客粒度的分布式锁，再执行一次切换可安全补偿 Redis。
+                stringRedisTemplate.execute(
+                        BLOG_LIKE_SCRIPT,
+                        Collections.singletonList(key),
+                        userId.toString(),
+                        Long.toString(System.currentTimeMillis()));
+                return Result.fail("点赞状态更新失败");
+            }
+            return Result.ok();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Result.fail("操作被中断，请重试");
+        } finally {
+            if (locked && !releaseAfterCompletion && lock.isHeldByCurrentThread()) {
+                lock.unlock();
             }
         }
-        return Result.ok();
     }
 
     @Override
@@ -102,6 +159,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     }
 
     @Override
+    @Transactional
     public Result saveBlog(Blog blog) {
         // 1.获取登录用户
         UserDTO user = UserHolder.getUser();
@@ -113,14 +171,22 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         // 3.查询笔记作者的所有粉丝
         List<Follow> follows = followService.query().eq("follow_user_id", user.getId()).list();
-        // 4.推送笔记id给所有粉丝
-        for (Follow follow : follows) {
-            // 4.1.获取粉丝id
-            Long userId = follow.getUserId();
-            // 4.2.推送
-            String key = FEED_KEY + userId;
-            stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
-        }
+        // 4.仅在数据库事务提交后推送，避免数据库回滚但 Feed 已写入
+        TransactionHooks.afterCommit(() -> {
+            long publishedAt = blog.getCreateTime() == null
+                    ? System.currentTimeMillis()
+                    : blog.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            for (Follow follow : follows) {
+                try {
+                    stringRedisTemplate.opsForZSet().add(
+                            FEED_KEY + follow.getUserId(),
+                            blog.getId().toString(),
+                            publishedAt);
+                } catch (RuntimeException e) {
+                    // 查询关注 Feed 时会从数据库回补，单个推送失败不影响博客发布结果。
+                }
+            }
+        });
         // 5.返回id
         return Result.ok(blog.getId());
     }
@@ -148,6 +214,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     }
 
     @Override
+    @Transactional
     public Result deleteBlog(Long id) {
         Blog blog = getById(id);
         if (blog == null) {
@@ -157,7 +224,17 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         if (!userId.equals(blog.getUserId())) {
             return Result.fail("只能删除自己的笔记");
         }
-        removeById(id);
+        List<BlogComments> comments = blogCommentsMapper.selectList(
+                new QueryWrapper<BlogComments>().eq("blog_id", id));
+        blogCommentsMapper.delete(new QueryWrapper<BlogComments>().eq("blog_id", id));
+        if (!removeById(id)) {
+            throw new IllegalStateException("笔记删除失败");
+        }
+        List<Long> commentIds = comments.stream().map(BlogComments::getId).collect(Collectors.toList());
+        List<String> images = blog.getImages() == null
+                ? Collections.emptyList()
+                : List.of(blog.getImages().split(","));
+        TransactionHooks.afterCommit(() -> cleanupDeletedBlog(blog, commentIds, images));
         return Result.ok();
     }
 
@@ -186,6 +263,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     public Result queryBlogOfFollow(Long max, Integer offset) {
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();
+        backfillFeed(userId);
         // 2.查询收件箱 ZREVRANGEBYSCORE key Max Min LIMIT offset count
         String key = FEED_KEY + userId;
         Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
@@ -227,5 +305,99 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         scrollResult.setOffset(os);
         scrollResult.setMinTime(minTime);
         return Result.ok(scrollResult);
+    }
+
+    private void backfillFeed(Long userId) {
+        List<Long> followedUserIds = followService.query()
+                .eq("user_id", userId)
+                .list()
+                .stream()
+                .map(Follow::getFollowUserId)
+                .collect(Collectors.toList());
+        if (followedUserIds.isEmpty()) {
+            return;
+        }
+        List<Blog> recentBlogs = query()
+                .in("user_id", followedUserIds)
+                .orderByDesc("create_time")
+                .last("LIMIT 100")
+                .list();
+        String feedKey = FEED_KEY + userId;
+        for (Blog recentBlog : recentBlogs) {
+            long score = recentBlog.getCreateTime() == null
+                    ? 0L
+                    : recentBlog.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            stringRedisTemplate.opsForZSet().add(feedKey, recentBlog.getId().toString(), score);
+        }
+    }
+
+    private void cleanupDeletedBlog(Blog blog, List<Long> commentIds, List<String> images) {
+        try {
+            stringRedisTemplate.delete(BLOG_LIKED_KEY + blog.getId());
+            redisPatternCleaner.deleteByPattern(
+                    RedisConstants.TRANSLATE_CACHE_KEY + "blog:" + blog.getId() + ":*");
+            if (!commentIds.isEmpty()) {
+                for (Long commentId : commentIds) {
+                    redisPatternCleaner.deleteByPattern(
+                            RedisConstants.TRANSLATE_CACHE_KEY + "comment:" + commentId + ":*");
+                }
+            }
+            redisPatternCleaner.removeZSetMemberByPattern(FEED_KEY + "*", blog.getId().toString());
+        } catch (RuntimeException ignored) {
+            // Redis 清理失败不会回滚已经提交的数据库删除；重复清理是幂等的。
+        }
+        for (String image : images) {
+            String path = image.trim();
+            if (!path.startsWith("/imgs/blogs/" + blog.getUserId() + "/")) {
+                continue;
+            }
+            try {
+                boolean usedAsAvatar = userService.query().eq("icon", path).count() > 0;
+                boolean usedByAnotherBlog = query().like("images", path).count() > 0;
+                if (!usedAsAvatar && !usedByAnotherBlog) {
+                    imageStorageService.delete(path, blog.getUserId());
+                }
+            } catch (RuntimeException ignored) {
+                // 文件可能已经删除，保留数据库删除结果。
+            }
+        }
+    }
+
+    private void registerLikeRollbackCompensation(String key, Long userId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == TransactionSynchronization.STATUS_COMMITTED) {
+                    return;
+                }
+                try {
+                    stringRedisTemplate.execute(
+                            BLOG_LIKE_SCRIPT,
+                            Collections.singletonList(key),
+                            userId.toString(),
+                            Long.toString(System.currentTimeMillis()));
+                } catch (RuntimeException ignored) {
+                    // Redis 暂不可用时保留日志侧告警，后续一致性任务可再次修复。
+                }
+            }
+        });
+    }
+
+    private boolean registerLikeLockRelease(RLock lock) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return false;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
+            }
+        });
+        return true;
     }
 }
