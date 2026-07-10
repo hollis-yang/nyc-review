@@ -51,7 +51,7 @@ export default function BlogEdit() {
     if (!file) return;
     try {
       const res = await uploadBlogImage(file);
-      const path = '/imgs' + (res.data ?? res);
+      const path = String(res.data ?? res);
       setFileList((prev) => [...prev, path]);
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
@@ -107,7 +107,7 @@ export default function BlogEdit() {
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelect}
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           style={{ display: 'none' }}
         />
         <div className={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>

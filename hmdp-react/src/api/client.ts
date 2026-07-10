@@ -41,7 +41,7 @@ client.interceptors.response.use(
       }
       return Promise.reject('请先登录');
     }
-    return Promise.reject('服务器异常');
+    return Promise.reject(error.response?.data?.errorMsg || '服务器异常');
   }
 );
 

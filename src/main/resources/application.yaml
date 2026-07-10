@@ -10,6 +10,10 @@ spring:
     url: ${HMDP_DB_URL:jdbc:mysql://127.0.0.1:3306/hmdp_new?useSSL=false&serverTimezone=UTC}
     username: ${HMDP_DB_USERNAME:root}
     password: ${HMDP_DB_PASSWORD}
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   redis:
     host: localhost
     port: 6379
@@ -31,3 +35,6 @@ logging:
 deepseek:
   api-key: ${DEEPSEEK_API_KEY}
   model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+hmdp:
+  upload:
+    image-dir: ${HMDP_IMAGE_UPLOAD_DIR:./uploads/imgs}

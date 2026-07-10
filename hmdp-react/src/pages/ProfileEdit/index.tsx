@@ -158,7 +158,7 @@ export default function ProfileEdit() {
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarChange} />
           <div className={styles.divider} />
           <div className={styles.infoItem} onClick={() => openTextEdit('nickname', user?.nickName || '')}>
             <div className={styles.infoLabel}>{t('profileEdit.nickname')}</div>

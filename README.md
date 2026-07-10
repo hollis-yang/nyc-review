@@ -31,6 +31,7 @@ cp .env.example .env
 | `HMDP_DB_PASSWORD` | 是 | 数据库密码，无默认值 |
 | `DEEPSEEK_API_KEY` | 是 | DeepSeek API Key，无默认值 |
 | `DEEPSEEK_MODEL` | 否 | 翻译模型，默认 `deepseek-v4-flash` |
+| `HMDP_IMAGE_UPLOAD_DIR` | 否 | 用户图片保存目录，默认 `./uploads/imgs`；Nginx 部署时应指向其图片目录 |
 
 `.env` 和 `application-local.yaml` 已被 Git 忽略。`.env` 自动导入依赖当前工作目录；请从项目根目录启动后端。不要把真实凭据写入 `.env.example`、`application.yaml`、README 或提交记录。
 
@@ -81,6 +82,8 @@ npm run build
 - 用户上传图片：`nginx-1.18.0/html/hmdp/imgs`
 - Nginx 监听端口：`8080`
 - Spring Boot 上游端口：`8081`
+
+部署到 Nginx 时，请将 `HMDP_IMAGE_UPLOAD_DIR` 设置为上述用户图片目录的绝对路径。上传接口仅接受 JPEG、PNG 和 WebP，单文件最大 5MB。
 
 将 `hmdp-react/dist` 中的内容部署到 React 静态资源目录后，检查并重新加载 Nginx 配置。SPA 路由需要保留 `try_files $uri $uri/ /index.html`，API 请求需要把 `/api` 前缀代理到 Spring Boot。
 
