@@ -81,13 +81,21 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y, String sortBy, String sortOrder) {
+        String sortColumn = resolveSortColumn(sortBy);
+        if (StrUtil.isNotBlank(sortBy) && sortColumn == null) {
+            return Result.fail("排序字段不合法");
+        }
+        if (!isSortOrderValid(sortOrder)) {
+            return Result.fail("排序方向不合法");
+        }
+        boolean sortAscending = "asc".equalsIgnoreCase(sortOrder);
+
         // 1.判断是否需要根据坐标查询
         if (x == null || y == null) {
             // 不需要坐标查询，按数据库分页查询
             var qw = query().eq("type_id", typeId);
-            if (sortBy != null && !sortBy.isEmpty()) {
-                boolean asc = "asc".equalsIgnoreCase(sortOrder);
-                qw.orderBy(true, asc, sortBy);
+            if (sortColumn != null) {
+                qw.orderBy(true, sortAscending, sortColumn);
             }
             Page<Shop> page = qw.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
             // 返回数据
@@ -128,13 +136,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         shops.forEach(shop -> {
             shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
         });
-        // 根据sortBy排序
-        if (sortBy != null && !sortBy.isEmpty() && !"".equals(sortBy)) {
-            boolean asc = "asc".equalsIgnoreCase(sortOrder);
-            if ("score".equals(sortBy)) {
-                shops.sort((a, b) -> asc ? a.getScore().compareTo(b.getScore()) : b.getScore().compareTo(a.getScore()));
-            } else if ("comments".equals(sortBy)) {
-                shops.sort((a, b) -> asc ? Integer.compare(a.getComments(), b.getComments()) : Integer.compare(b.getComments(), a.getComments()));
+        // 根据白名单字段排序
+        if (sortColumn != null) {
+            if ("score".equals(sortColumn)) {
+                shops.sort((a, b) -> sortAscending ? a.getScore().compareTo(b.getScore()) : b.getScore().compareTo(a.getScore()));
+            } else if ("comments".equals(sortColumn)) {
+                shops.sort((a, b) -> sortAscending ? Integer.compare(a.getComments(), b.getComments()) : Integer.compare(b.getComments(), a.getComments()));
             }
         } else {
             // 按距离排序（sortBy为空）: GEO默认升序，desc时反转
@@ -144,5 +151,22 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         // 6.返回结果
         return Result.ok(shops);
+    }
+
+    static String resolveSortColumn(String sortBy) {
+        if (StrUtil.isBlank(sortBy)) {
+            return null;
+        }
+        return switch (sortBy) {
+            case "score" -> "score";
+            case "comments" -> "comments";
+            default -> null;
+        };
+    }
+
+    static boolean isSortOrderValid(String sortOrder) {
+        return StrUtil.isBlank(sortOrder)
+                || "asc".equalsIgnoreCase(sortOrder)
+                || "desc".equalsIgnoreCase(sortOrder);
     }
 }
