@@ -20,13 +20,7 @@
 cp .env.example .env
 ```
 
-编辑 `.env`，填入本机数据库密码和 DeepSeek API Key。然后在启动后端的同一个终端中导出变量：
-
-```bash
-set -a
-source .env
-set +a
-```
+编辑 `.env`，填入本机数据库密码和 DeepSeek API Key。从项目根目录启动时，Spring Boot 会通过 `spring.config.import` 自动读取该文件，无需手动执行 `source`。操作系统环境变量的优先级高于 `.env`，因此部署环境仍可直接注入同名变量覆盖本地值。
 
 环境变量说明：
 
@@ -38,7 +32,7 @@ set +a
 | `DEEPSEEK_API_KEY` | 是 | DeepSeek API Key，无默认值 |
 | `DEEPSEEK_MODEL` | 否 | 翻译模型，默认 `deepseek-v4-flash` |
 
-`.env` 和 `application-local.yaml` 已被 Git 忽略。不要把真实凭据写入 `.env.example`、`application.yaml`、README 或提交记录。
+`.env` 和 `application-local.yaml` 已被 Git 忽略。`.env` 自动导入依赖当前工作目录；请从项目根目录启动后端。不要把真实凭据写入 `.env.example`、`application.yaml`、README 或提交记录。
 
 ## 初始化数据
 
