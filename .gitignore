@@ -20,6 +20,13 @@ nohup.out
 *.swp
 *~
 
+### Local secrets and environment ###
+.env
+.env.*
+!.env.example
+src/main/resources/application-local.yaml
+src/main/resources/application-local.yml
+
 ### STS ###
 .apt_generated
 .classpath

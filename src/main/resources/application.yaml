@@ -5,9 +5,9 @@ spring:
     name: hmdp
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp_new?useSSL=false&serverTimezone=UTC
-    username: root
-    password: haoyang020912
+    url: ${HMDP_DB_URL:jdbc:mysql://127.0.0.1:3306/hmdp_new?useSSL=false&serverTimezone=UTC}
+    username: ${HMDP_DB_USERNAME:root}
+    password: ${HMDP_DB_PASSWORD}
   redis:
     host: localhost
     port: 6379
@@ -27,5 +27,5 @@ logging:
     com.hmdp: debug
 
 deepseek:
-  api-key: sk-2974cd4c829a4429ba9f2736218bbf9c
-  model: deepseek-v4-flash
+  api-key: ${DEEPSEEK_API_KEY}
+  model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
