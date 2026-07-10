@@ -155,6 +155,9 @@
   font-size: 15px;
   line-height: 1.9;
   color: var(--color-text-dark);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ===== 关联商铺卡片 ===== */

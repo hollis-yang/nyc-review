@@ -9,6 +9,7 @@ import { getShopById } from '../../api/shop';
 import { getMe } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
 import ImageSwiper from '../../components/ImageSwiper';
+import { normalizeBlogContent } from '../../utils/blogContent';
 import styles from './BlogDetail.module.css';
 
 interface BlogInfo {
@@ -491,10 +492,9 @@ export default function BlogDetail() {
               {blogTitleTL}
             </div>
           )}
-          <div
-            className={styles.contentBody}
-            dangerouslySetInnerHTML={{ __html: blog.content }}
-          />
+          <div className={styles.contentBody}>
+            {normalizeBlogContent(blog.content)}
+          </div>
           <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
             <span style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}
               onClick={handleTranslateBlog}>
