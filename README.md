@@ -29,6 +29,11 @@ cp .env.example .env
 | `HMDP_DB_URL` | 否 | JDBC 地址，默认连接本机 `hmdp_new` 数据库 |
 | `HMDP_DB_USERNAME` | 否 | 数据库用户名，默认 `root` |
 | `HMDP_DB_PASSWORD` | 是 | 数据库密码，无默认值 |
+| `HMDP_REDIS_HOST` | 否 | Redis 地址，默认 `localhost` |
+| `HMDP_REDIS_PORT` | 否 | Redis 端口，默认 `6379` |
+| `HMDP_REDIS_DATABASE` | 否 | Redis 数据库编号，默认 `0` |
+| `HMDP_REDIS_USERNAME` | 否 | Redis ACL 用户名，默认空 |
+| `HMDP_REDIS_PASSWORD` | 否 | Redis 密码，默认空 |
 | `DEEPSEEK_API_KEY` | 是 | DeepSeek API Key，无默认值 |
 | `DEEPSEEK_MODEL` | 否 | 翻译模型，默认 `deepseek-v4-flash` |
 | `HMDP_IMAGE_UPLOAD_DIR` | 否 | 用户图片保存目录，默认 `./uploads/imgs`；Nginx 部署时应指向其图片目录 |
@@ -43,7 +48,7 @@ cp .env.example .env
 mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 ```
 
-默认 Redis 地址为 `localhost:6379`，使用数据库编号 `4`。部分 GEO、秒杀库存和 Feed 数据需要按项目初始化流程写入 Redis；不要直接运行整个测试类，因为其中包含清表和测试数据回填操作。
+默认 Redis 地址为 `localhost:6379`，统一使用数据库编号 `0`。Spring Data Redis 与 Redisson 共用同一套连接配置。部分 GEO、秒杀库存和 Feed 数据需要按项目初始化流程写入 Redis；不要直接运行整个测试类，因为其中包含清表和测试数据回填操作。
 
 ## 启动后端
 

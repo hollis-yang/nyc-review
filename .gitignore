@@ -24,6 +24,7 @@ nohup.out
 .env
 .env.*
 !.env.example
+.local-backups/
 src/main/resources/application-local.yaml
 src/main/resources/application-local.yml
 
