@@ -161,7 +161,7 @@ export default function BlogEdit() {
               <div className={styles.shopLeft}>关联商户</div>
             </div>
             <div className={styles.searchBar}>
-              <div className={styles.citySelect}>杭州</div>
+              <div className={styles.citySelect}>NYC</div>
               <div className={styles.searchInput}>
                 <SearchOutline fontSize={14} onClick={queryShops} style={{ cursor: 'pointer' }} />
                 <input

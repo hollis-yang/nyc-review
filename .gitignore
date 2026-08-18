@@ -55,3 +55,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Python Agent service / generated demo data ###
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+data/generated/
+agent-service/.local/

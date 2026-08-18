@@ -124,7 +124,7 @@ export default function Home() {
   return (
     <div className={styles.container}>
       <div className={styles.searchBar}>
-        <div className={styles.cityBtn}>杭州</div>
+        <div className={styles.cityBtn}>NYC</div>
         <div className={styles.searchInput}>
           <div className={styles.inputWrapper}>
             <SearchOutline fontSize={14} style={{ margin: '0 4px' }} />

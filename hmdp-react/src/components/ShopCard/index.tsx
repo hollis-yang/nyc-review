@@ -78,7 +78,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
             <span style={{ marginLeft: 8 }}>{formatDistance(shop.distance)}</span>
           )}
         </div>
-        <div className={styles.avgPrice}>￥{shop.avgPrice}{isEn ? '/person' : '/人'}</div>
+        <div className={styles.avgPrice}>${shop.avgPrice}{isEn ? '/person' : '/人'}</div>
         <div className={styles.address}>
           <EnvironmentOutline fontSize={12} />
           <span style={{ marginLeft: 2 }}>{tl?.address || shop.address}</span>

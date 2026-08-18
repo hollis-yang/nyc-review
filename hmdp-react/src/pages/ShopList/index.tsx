@@ -54,8 +54,8 @@ export default function ShopList() {
             current,
             sortBy,
             sortOrder,
-            x: 120.149993,
-            y: 30.334229,
+            x: -73.9855,
+            y: 40.758,
           });
       const data = res.data ?? res;
       if (!data || data.length === 0) {

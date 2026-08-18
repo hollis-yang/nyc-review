@@ -520,7 +520,7 @@ export default function BlogDetail() {
               <span style={{ fontSize: 12, color: '#F63', fontWeight: 600 }}>
                 ★ {shop.score / 10}
               </span>
-              <div className={styles.shopAvg}>￥{shop.avgPrice}/人</div>
+              <div className={styles.shopAvg}>${shop.avgPrice}/人</div>
             </div>
           </div>
         )}

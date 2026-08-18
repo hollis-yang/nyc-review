@@ -1,6 +1,8 @@
 # hm-dianping
 
-黑马点评全栈项目，后端使用 Spring Boot、MySQL 和 Redis，前端使用 React、TypeScript 与 Vite，并通过 Nginx 提供 SPA 静态资源和 API 反向代理。
+黑马点评 NYC AI 全栈改造项目。Spring Boot、MySQL 和 Redis 继续承载传统业务与手动秒杀；React 提供 NYC 地图和 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent 与 Qdrant RAG。
+
+架构边界与不可回退能力见 [目标架构](docs/target-architecture.md) 和 [验收标准](docs/acceptance-criteria.md)。
 
 ## 环境要求
 
@@ -11,6 +13,7 @@
 - Node.js 20+
 - npm 10+
 - Nginx（仅部署时需要）
+- Python 3.11+ 与 `uv`（Agent Service）
 
 ## 本地配置
 
@@ -50,6 +53,23 @@ mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 
 默认 Redis 地址为 `localhost:6379`，统一使用数据库编号 `0`。Spring Data Redis 与 Redisson 共用同一套连接配置。部分 GEO、秒杀库存和 Feed 数据需要按项目初始化流程写入 Redis；不要直接运行整个测试类，因为其中包含清表和测试数据回填操作。
 
+新的 Redis Stream 秒杀订单链路还需要应用幂等唯一键：
+
+```bash
+mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
+```
+
+生成稳定、可复现的 NYC Mock 数据：
+
+```bash
+python3 scripts/mock-data-generator/generate.py \
+  --profile small \
+  --output data/generated/nyc-small
+```
+
+生成结果包括六个顶级分类、商户、营业时间、评论、博客、嵌套评论、普通优惠券与必须手动参与的秒杀券。详细说明见 [Mock 数据生成器](scripts/mock-data-generator/README.md)。
+
 ## 启动后端
 
 确认 MySQL、Redis 和环境变量均已就绪：
@@ -60,6 +80,19 @@ mvn spring-boot:run
 
 后端默认监听 `http://127.0.0.1:8081`。
 
+## 启动多 Agent 与 RAG
+
+```bash
+cd agent-service
+uv sync --dev
+HMDP_AGENT_RAG_ADAPTER=qdrant \
+HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
+HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+uv run uvicorn app.main:app --reload --port 8090
+```
+
+配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 使用生成的 NYC 数据作为只读业务 Tool；需要连接 Spring Boot Tool API 时设置 `HMDP_AGENT_ADAPTER=http`。完整配置见 [Agent Service README](agent-service/README.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
+
 ## 启动前端开发环境
 
 ```bash
@@ -68,7 +101,7 @@ npm ci
 npm run dev
 ```
 
-Vite 默认监听 `http://127.0.0.1:3000`，并将 `/api` 代理到后端 8081 端口。
+Vite 默认监听 `http://127.0.0.1:3000`，将 `/api` 代理到 Spring Boot 8081，并将 `/agent-api` 代理到 Agent Service 8090。AI 工作台位于 `/ai`。
 
 生产构建：
 

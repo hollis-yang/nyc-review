@@ -13,6 +13,7 @@ import ProfileEdit from './pages/ProfileEdit';
 import OtherProfile from './pages/OtherProfile';
 import MapPage from './pages/Map';
 import Messages from './pages/Messages';
+import AiWorkspace from './pages/AiWorkspace';
 import ProtectedRoute from './components/ProtectedRoute';
 import LegacyRedirect from './components/LegacyRedirect';
 
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/user/:id" element={<OtherProfile />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/messages" element={<Messages />} />
+          <Route path="/ai" element={<AiWorkspace />} />
           {/* 兼容旧版 .html URL 格式 */}
           <Route path="/index.html" element={<LegacyRedirect />} />
           <Route path="/login.html" element={<LegacyRedirect />} />

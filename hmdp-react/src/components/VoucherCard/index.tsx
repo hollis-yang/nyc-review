@@ -90,7 +90,7 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
         <div className={styles.title}>{v.title}</div>
         <div className={styles.subtitle}>{v.subTitle}</div>
         <div className={styles.price}>
-          <div>￥ {price}</div>
+          <div>$ {price}</div>
           <span>{discount}{t("voucherCard.off")}</span>
         </div>
       </div>

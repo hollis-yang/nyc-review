@@ -45,7 +45,7 @@
     "signedIn": "✅ 已签到 {{n}} 天",
     "signIn": "✍️ 签到",
     "signSuccess": "签到成功！",
-    "city": "杭州"
+    "city": "纽约市"
   },
   "profileEdit": {
     "title": "资料编辑",
@@ -136,7 +136,7 @@
     "comingSoon": "功能开发中，敬请期待"
   },
   "map": {
-    "title": "附近商家",
+    "title": "纽约附近商家",
     "loading": "加载中...",
     "loadFailed": "加载失败",
     "located": "已定位",

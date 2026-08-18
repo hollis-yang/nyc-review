@@ -45,7 +45,7 @@
     "signedIn": "Checked in {{n}} days",
     "signIn": "Check In",
     "signSuccess": "Check-in successful!",
-    "city": "Hangzhou"
+    "city": "New York City"
   },
   "profileEdit": {
     "title": "Edit Profile",
@@ -136,7 +136,7 @@
     "comingSoon": "Coming soon"
   },
   "map": {
-    "title": "Nearby Shops",
+    "title": "NYC Nearby",
     "loading": "Loading...",
     "loadFailed": "Failed to load",
     "located": "Located",

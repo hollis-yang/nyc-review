@@ -35,11 +35,9 @@ const TYPE_COLORS: Record<number, string> = {
   4: '#2ECC71',
   5: '#3498DB',
   6: '#F39C12',
-  7: '#1ABC9C',
-  8: '#E91E63',
-  9: '#00BCD4',
-  10: '#FF9800',
 };
+
+const NYC_CENTER: [number, number] = [40.758, -73.9855];
 
 function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -54,8 +52,9 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 }
 
 function formatDistance(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)}m`;
-  return `${km.toFixed(1)}km`;
+  const miles = km * 0.621371;
+  if (miles < 0.1) return `${Math.round(km * 3280.84)}ft`;
+  return `${miles.toFixed(1)}mi`;
 }
 
 function createTypeIcon(typeName: string, color: string) {
@@ -149,13 +148,13 @@ export default function MapPage() {
           Toast.show({ icon: 'success', content: tt('map.located') });
         },
         () => {
-          const fallback: [number, number] = [30.334229, 120.149993];
+          const fallback: [number, number] = NYC_CENTER;
           setUserPos(fallback);
           setFlyTo(fallback);
         }
       );
     } else {
-      const fallback: [number, number] = [30.334229, 120.149993];
+      const fallback: [number, number] = NYC_CENTER;
       setUserPos(fallback);
       setFlyTo(fallback);
     }
@@ -164,12 +163,13 @@ export default function MapPage() {
   const typeMap = new Map<number, ShopType>();
   types.forEach((t) => typeMap.set(t.id, t));
 
-  const defaultCenter: [number, number] = [30.334229, 120.149993];
+  const defaultCenter: [number, number] = NYC_CENTER;
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <div className={styles.headerTitle}>{tt('map.title')}</div>
+        <button className={styles.aiButton} onClick={() => navigate('/ai')}>AI</button>
       </div>
 
       <div className={styles.mapWrap}>
@@ -178,7 +178,7 @@ export default function MapPage() {
         ) : (
           <MapContainer
             center={defaultCenter}
-            zoom={13}
+            zoom={12}
             className={styles.map}
             zoomControl={false}
           >
@@ -222,7 +222,7 @@ export default function MapPage() {
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 14 }}>{shopTL2[shop.id]?.name || shop.name}</div>
                           <div style={{ fontSize: 12, color: '#999' }}>
-                            {shopTL2[shop.id]?.type || (t?.name ? tt(`shopTypes.${t.name}`, t.name) : '')} · ⭐{scoreText} · ¥{shop.avgPrice || '-'}{isEn2 ? '/person' : '/人'}
+                            {shopTL2[shop.id]?.type || (t?.name ? tt(`shopTypes.${t.name}`, t.name) : '')} · ⭐{scoreText} · ${shop.avgPrice || '-'}{isEn2 ? '/person' : '/人'}
                           </div>
                           <div style={{ fontSize: 11, color: '#bbb' }}>
                             {shopTL2[shop.id]?.area || shop.area || ''}

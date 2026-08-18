@@ -111,7 +111,7 @@ export default function OtherProfile() {
               <div className={styles.profileInfo}>
                 <div className={styles.userName}>{user.nickName}</div>
                 <div className={styles.userMeta}>
-                  {info.city || '杭州'}
+                  {info.city || 'New York City'}
                   {info.introduce ? ` · ${info.introduce}` : ''}
                 </div>
               </div>
