@@ -8,6 +8,7 @@ import com.hmdp.entity.Shop;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IShopService;
+import com.hmdp.service.IShopTypeService;
 import com.hmdp.service.TranslateService;
 import jakarta.annotation.Resource;
 import org.springframework.http.*;
@@ -33,6 +34,9 @@ public class TranslateServiceImpl implements TranslateService {
 
     @Resource
     private IShopService shopService;
+
+    @Resource
+    private IShopTypeService shopTypeService;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -87,7 +91,10 @@ public class TranslateServiceImpl implements TranslateService {
         Shop shop = shopService.getById(shopId);
         if (shop == null) return Result.fail("Shop not found");
         String langName = "en".equals(targetLang) ? "English" : "Chinese";
+        com.hmdp.entity.ShopType st = shop.getTypeId() != null ? shopTypeService.getById(shop.getTypeId()) : null;
+        String typeName = st != null ? st.getName() : "";
         String text = "Shop name: " + shop.getName()
+            + "\nCategory: " + typeName
             + "\nArea: " + (shop.getArea() != null ? shop.getArea() : "")
             + "\nAddress: " + (shop.getAddress() != null ? shop.getAddress() : "");
         String translated = callDeepSeek(text, "Translate the following shop info to " + langName + ". Keep the format: Name: xxx, Area: xxx, Address: xxx. Return ONLY the translated lines, one per field, no explanations.");

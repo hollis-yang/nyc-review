@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Toast } from 'antd-mobile';
 import { getAllShops, getShopTypes } from '../../api/shop';
+import { translateShop } from '../../api/translate';
 import FootBar from '../../components/FootBar';
 import 'leaflet/dist/leaflet.css';
 import styles from './Map.module.css';
@@ -92,8 +93,10 @@ function MapController({ centerOn }: { centerOn: [number, number] | null }) {
 }
 
 export default function MapPage() {
-  const { t: tt } = useTranslation();
+  const { t: tt, i18n } = useTranslation();
+  const isEn2 = i18n.language === 'en';
   const navigate = useNavigate();
+  const [shopTL2, setShopTL2] = useState<Record<number, { name?: string; type?: string; area?: string }>>({});
   const [shops, setShops] = useState<Shop[]>([]);
   const [types, setTypes] = useState<ShopType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,12 +109,35 @@ export default function MapPage() {
       getShopTypes().then((res) => res.data ?? res),
     ])
       .then(([shopList, typeList]) => {
-        setShops(Array.isArray(shopList) ? shopList : []);
+        const sl = Array.isArray(shopList) ? shopList : [];
+        setShops(sl);
         setTypes(Array.isArray(typeList) ? typeList : []);
       })
       .catch(() => Toast.show({ icon: 'fail', content: tt('map.loadFailed') }))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (isEn2 && shops.length > 0) {
+      shops.forEach(s => {
+        if (!shopTL2[s.id]) {
+          translateShop(s.id, 'en').then(res => {
+            const txt = String(res.data ?? res);
+            if (txt) {
+              const m: any = {};
+              txt.split('\n').forEach((line: string) => {
+                const l = line.trim();
+                if (l.toLowerCase().startsWith('name:')) m.name = l.substring(5).trim();
+                else if (l.toLowerCase().startsWith('category:')) m.type = l.substring(9).trim();
+                else if (l.toLowerCase().startsWith('area:')) m.area = l.substring(5).trim();
+              });
+              setShopTL2(prev => ({ ...prev, [s.id]: m }));
+            }
+          }).catch(() => {});
+        }
+      });
+    }
+  }, [shops.length, isEn2]);
 
   const locateMe = useCallback(() => {
     if ('geolocation' in navigator) {
@@ -194,12 +220,12 @@ export default function MapPage() {
                           style={{ width: 50, height: 50, borderRadius: 6, objectFit: 'cover' }}
                         />
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{shop.name}</div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{shopTL2[shop.id]?.name || shop.name}</div>
                           <div style={{ fontSize: 12, color: '#999' }}>
-                            {t?.name || ''} · ⭐{scoreText} · ¥{shop.avgPrice || '-'}/人
+                            {shopTL2[shop.id]?.type || (t?.name ? tt(`shopTypes.${t.name}`, t.name) : '')} · ⭐{scoreText} · ¥{shop.avgPrice || '-'}{isEn2 ? '/person' : '/人'}
                           </div>
                           <div style={{ fontSize: 11, color: '#bbb' }}>
-                            {shop.area || ''}
+                            {shopTL2[shop.id]?.area || shop.area || ''}
                             {dist !== null && ` · ${formatDistance(dist)}`}
                           </div>
                         </div>
@@ -226,13 +252,13 @@ export default function MapPage() {
       </div>
 
       <div className={styles.legend}>
-        {types.map((t) => (
-          <div key={t.id} className={styles.legendItem}>
+        {types.map((tp2) => (
+          <div key={tp2.id} className={styles.legendItem}>
             <span
               className={styles.legendDot}
-              style={{ background: TYPE_COLORS[t.id] || '#999' }}
+              style={{ background: TYPE_COLORS[tp2.id] || '#999' }}
             />
-            <span>{t.name}</span>
+            <span>{tt(`shopTypes.${tp2.name}`, tp2.name)}</span>
           </div>
         ))}
       </div>
