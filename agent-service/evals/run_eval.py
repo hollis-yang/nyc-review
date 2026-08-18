@@ -13,7 +13,12 @@ from app.runtime import AgentRuntime
 async def wait_for_result(runtime: AgentRuntime, run_id: str):
     for _ in range(1_000):
         snapshot = await runtime.run_manager.get(run_id)
-        if snapshot.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
+        if snapshot.status in {
+            RunStatus.WAITING_CONFIRMATION,
+            RunStatus.COMPLETED,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+        }:
             return snapshot
         await asyncio.sleep(0.01)
     raise TimeoutError(f"Run {run_id} did not reach a terminal state")
@@ -63,6 +68,8 @@ async def evaluate_case(runtime: AgentRuntime, case: dict, mode: AgentMode) -> d
         "latencyMs": latency_ms,
         "modelProvider": result.metadata.get("modelProvider"),
         "model": result.metadata.get("model"),
+        "actionProposalCount": len(snapshot.actions),
+        "relaxedConstraints": result.candidates.relaxed_constraints,
     }
 
 

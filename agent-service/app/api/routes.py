@@ -53,6 +53,23 @@ async def create_run(
     return await manager.create(payload, authorization or "")
 
 
+@router.get("/v1/agent/runs", response_model=list[AgentRunSnapshot])
+async def list_runs(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+):
+    return await request.app.state.agent_runtime.run_manager.list_runs(
+        authorization or "",
+        limit,
+    )
+
+
+@router.get("/v1/agent/metrics")
+async def agent_metrics(request: Request):
+    return await request.app.state.agent_runtime.run_manager.metrics()
+
+
 @router.get("/v1/agent/runs/{run_id}", response_model=AgentRunSnapshot)
 async def get_run(run_id: str, request: Request):
     snapshot = await request.app.state.agent_runtime.run_manager.get(run_id)
@@ -83,6 +100,47 @@ async def stream_run_events(
 @router.post("/v1/agent/runs/{run_id}/cancel", response_model=AgentRunSnapshot)
 async def cancel_run(run_id: str, request: Request):
     snapshot = await request.app.state.agent_runtime.run_manager.cancel(run_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Agent run not found.")
+    return snapshot
+
+
+@router.post(
+    "/v1/agent/runs/{run_id}/actions/{action_id}/approve",
+    response_model=AgentRunSnapshot,
+)
+async def approve_action(
+    run_id: str,
+    action_id: str,
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    try:
+        snapshot = await request.app.state.agent_runtime.run_manager.approve_action(
+            run_id,
+            action_id,
+            authorization or "",
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Agent action not found.") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Agent run not found.")
+    return snapshot
+
+
+@router.post(
+    "/v1/agent/runs/{run_id}/actions/{action_id}/reject",
+    response_model=AgentRunSnapshot,
+)
+async def reject_action(run_id: str, action_id: str, request: Request):
+    try:
+        snapshot = await request.app.state.agent_runtime.run_manager.reject_action(run_id, action_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Agent action not found.") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Agent run not found.")
     return snapshot

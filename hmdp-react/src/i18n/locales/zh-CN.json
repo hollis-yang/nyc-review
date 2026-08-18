@@ -2,7 +2,8 @@
   "nav": {
     "home": "首页",
     "map": "地图",
-    "messages": "消息",
+    "ai": "AI 向导",
+    "create": "发布笔记",
     "profile": "我的"
   },
   "home": {
@@ -74,7 +75,9 @@
     "genderUpdated": "性别已更新",
     "birthdayUpdated": "生日已更新",
     "cityUpdated": "城市已更新",
-    "language": "语言"
+    "language": "语言",
+    "selectLanguage": "选择语言",
+    "languageUpdated": "语言已切换"
   },
   "blogDetail": {
     "title": "笔记详情",
@@ -101,7 +104,9 @@
     "translate": "翻译",
     "translatedByAI": "由 AI 翻译",
     "original": "原文",
-    "confirm": "确定"
+    "confirm": "确定",
+    "deepSeekTranslate": "使用 DeepSeek 翻译",
+    "translatingDeepSeek": "DeepSeek 翻译中…"
   },
   "blogEdit": {
     "cancel": "取消",
@@ -129,11 +134,6 @@
     "visitProfile": "去主页看看",
     "unfollowedToast": "已取消关注",
     "followedToast": "已关注"
-  },
-  "messages": {
-    "title": "消息",
-    "empty": "暂无消息",
-    "comingSoon": "功能开发中，敬请期待"
   },
   "map": {
     "title": "纽约附近商家",
@@ -163,7 +163,8 @@
     "submit": "发表评价",
     "seckillSuccess": "抢购成功，订单id：{{id}}",
     "linkCopied": "链接已复制",
-    "reviewSuccess": "评价发表成功"
+    "reviewSuccess": "评价发表成功",
+    "deepSeekTranslate": "使用 DeepSeek 翻译"
   },
   "shopList": {
     "searchResult": "\"{{query}}\" 搜索结果",
@@ -230,5 +231,113 @@
     "month": "月",
     "day": "日",
     "timeFormat": "{m}月{d}日 {h}:{min} ~ {eh}:{emin}"
+  },
+  "aiGuide": {
+    "title": "AI 向导",
+    "eyebrow": "纽约多智能体规划",
+    "heroTitle": "让本地 AI 团队为你规划",
+    "heroSubtitle": "五个专业 Agent 协作检索、引用证据并校验每条推荐。",
+    "promptLabel": "你想找什么？",
+    "placeholder": "例如：曼哈顿中城安静的双人晚餐，预算 120 美元以内",
+    "exampleOne": "曼哈顿中城安静的纯素晚餐，2 人预算 120 美元以内",
+    "exampleTwo": "切尔西有户外座位且无障碍的咖啡店",
+    "exampleThree": "威廉斯堡适合聚会的深夜场所，预算 200 美元以内",
+    "queryRequired": "请描述你需要的地点或行程。",
+    "translatePrompt": "使用 DeepSeek 翻译为英文",
+    "translating": "DeepSeek 翻译中…",
+    "translationSuccess": "已使用 DeepSeek 翻译为英文",
+    "run": "询问 Agent 团队",
+    "running": "Agent 协作中…",
+    "cancel": "取消运行",
+    "safetyTitle": "操作由你掌控。",
+    "safetyText": "所有写操作都需要确认，秒杀购买始终由用户手动完成。",
+    "liveRun": "实时运行",
+    "collaboration": "Agent 协作过程",
+    "live": "进行中",
+    "finished": "已结束",
+    "runFailed": "运行失败",
+    "verified": "结果已校验",
+    "reviewNeeded": "最接近的结果",
+    "resultSummary": "推荐 {{candidates}} 个地点 · {{issues}} 项需要留意",
+    "indexedDocuments": "已索引 {{count}} 份文档",
+    "personalized": "已参考 {{count}} 个收藏地点进行个性化推荐",
+    "closestMatches": "部分偏好已放宽",
+    "relaxedTags": "没有完全符合所有标签的商户，以下最接近的结果已明确标记，供你判断。",
+    "distanceUnavailable": "距离不可用",
+    "distanceFeet": "{{value}} 英尺",
+    "distanceMiles": "{{value}} 英里",
+    "perPerson": "/人",
+    "estimated": "预计 ${{value}}",
+    "viewShop": "查看商户和手动优惠",
+    "approvalTitle": "可选操作",
+    "approvalSubtitle": "只有你明确同意后，系统才会执行写操作。",
+    "approve": "确认执行",
+    "reject": "暂不执行",
+    "retry": "重试",
+    "executing": "执行中…",
+    "actionCompleted": "已完成并记录审批操作",
+    "actionRejected": "已拒绝，没有执行写操作",
+    "actionFailed": "审批操作未能完成",
+    "recentPlans": "最近规划",
+    "savedRuns": "已保存 {{count}} 次运行",
+    "runStatus": {
+      "created": "已创建",
+      "planning": "规划中",
+      "tool_running": "执行中",
+      "waiting_confirmation": "等待确认",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "agents": {
+      "Supervisor": "主管",
+      "Discovery": "发现",
+      "Evidence": "证据",
+      "Itinerary": "行程",
+      "Verifier": "校验",
+      "Action Executor": "操作执行",
+      "Action Planner": "操作规划"
+    },
+    "events": {
+      "runCreated": "已根据你的需求创建任务。",
+      "modelStarted": "主管正在提取结构化约束。",
+      "modelCompleted": "结构化约束已准备完成。",
+      "agentCompleted": "{{agent}}已完成任务。",
+      "waitingConfirmation": "推荐已生成，可选操作等待你的确认。",
+      "runCompleted": "本次运行已完成。",
+      "runFailed": "本次运行失败。",
+      "runCancelled": "本次运行已取消。",
+      "actionApproved": "你已批准一项操作。",
+      "actionStarted": "Spring 正在执行已批准的操作。",
+      "actionCompleted": "操作已完成并写入审计记录。",
+      "actionFailed": "操作安全失败，未产生未知写入。",
+      "actionRejected": "你已拒绝操作，没有执行写入。"
+    }
+  },
+  "agentActions": {
+    "favorite_shop": {
+      "title": "收藏 {{shop}}",
+      "description": "将这个商户加入你收藏的地点。"
+    },
+    "save_itinerary": {
+      "title": "保存当前行程",
+      "description": "在账户中保存已校验的地点和预算估算。"
+    },
+    "claim_standard_voucher": {
+      "title": "领取普通优惠券",
+      "description": "确认后创建一笔普通优惠券订单。"
+    },
+    "create_seckill_reminder": {
+      "title": "创建秒杀提醒",
+      "description": "只保存提醒；秒杀购买仍需用户手动完成。"
+    },
+    "status": {
+      "proposed": "等待确认",
+      "approved": "已批准",
+      "executing": "执行中",
+      "completed": "已完成",
+      "rejected": "已拒绝",
+      "failed": "可以重试"
+    }
   }
 }

@@ -60,6 +60,7 @@ mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p4_nyc_domain.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p5_agent_actions.sql
 ```
 
 生成稳定、可复现的 NYC Mock 数据：
@@ -102,6 +103,8 @@ uv run uvicorn app.main:app --reload --port 8090
 ```
 
 配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会校验导入清单并使用同一组 shopId 重建 Qdrant 索引；需要连接 Spring Boot Tool API 时设置 `HMDP_AGENT_ADAPTER=http`。`HMDP_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
+
+P3 增加人工审批操作、幂等执行、MySQL 审计、收藏偏好、Run 历史与指标；React 默认英语，可在 `Profile → Edit Profile` 切换中文，DeepSeek 翻译入口只在中文模式显示。迁移、接口和 Docker Compose 验证见 [P3 Runbook](docs/p3-agent-actions-runbook.md)。
 
 ## 启动前端开发环境
 

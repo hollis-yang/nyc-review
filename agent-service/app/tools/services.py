@@ -132,7 +132,8 @@ class GeneratedNycShopToolService:
                 continue
             if per_person_budget is not None and shop["avgPriceCents"] > per_person_budget:
                 continue
-            tag_matches = len(required_tags.intersection(shop.get("tags") or []))
+            shop_tags = set(shop.get("tags") or [])
+            tag_matches = len(required_tags.intersection(shop_tags))
             distance = (
                 haversine_meters(
                     constraints.latitude,
@@ -143,8 +144,19 @@ class GeneratedNycShopToolService:
                 if constraints.latitude is not None and constraints.longitude is not None
                 else None
             )
-            rows.append((shop, category, distance, tag_matches))
-        rows.sort(
+            rows.append((shop, category, distance, tag_matches, required_tags <= shop_tags))
+        strict_rows = [row for row in rows if row[4]]
+        relaxed_constraints: list[str] = []
+        warnings: list[str] = []
+        if required_tags and not strict_rows and rows:
+            selected_rows = rows
+            relaxed_constraints = ["desired_tags"]
+            warnings = [
+                "No shop matched every requested tag. Showing the closest alternatives for review."
+            ]
+        else:
+            selected_rows = strict_rows if required_tags else rows
+        selected_rows.sort(
             key=lambda item: (
                 -item[3],
                 item[2] if item[2] is not None else 0,
@@ -184,12 +196,17 @@ class GeneratedNycShopToolService:
                     for item in self._hours_by_shop.get(shop["id"], [])
                 ],
             )
-            for shop, category, _, _ in rows[: self._max_candidates]
+            for shop, category, _, _, _ in selected_rows[: self._max_candidates]
         ]
         return CandidateSet(
             candidates=candidates,
             applied_constraints=["category", "neighborhood", "budget", "desired_tags"],
-            warnings=[] if candidates else ["No generated NYC shops matched every hard constraint."],
+            relaxed_constraints=relaxed_constraints,
+            warnings=(
+                warnings
+                if warnings
+                else ([] if candidates else ["No generated NYC shops matched every hard constraint."])
+            ),
         )
 
 
@@ -235,6 +252,36 @@ class HttpShopToolService:
             "requiredTags": constraints.desired_tags,
             "limit": self._max_candidates,
         }
+        body = await self._post_search(payload, headers)
+        candidates = [self._to_candidate(item) for item in body.get("data") or []]
+        relaxed_constraints: list[str] = []
+        warnings = list(body.get("warnings") or [])
+        if not candidates and constraints.desired_tags:
+            relaxed_payload = {**payload, "requiredTags": []}
+            relaxed_body = await self._post_search(relaxed_payload, headers)
+            candidates = [self._to_candidate(item) for item in relaxed_body.get("data") or []]
+            if candidates:
+                relaxed_constraints = ["desired_tags"]
+                warnings.append(
+                    "No shop matched every requested tag. Showing the closest alternatives for review."
+                )
+        applied = []
+        for name, value in (
+            ("category", constraints.category),
+            ("neighborhood", constraints.neighborhood),
+            ("budget", constraints.budget_cents),
+            ("desired_tags", constraints.desired_tags),
+        ):
+            if value:
+                applied.append(name)
+        return CandidateSet(
+            candidates=candidates,
+            applied_constraints=applied,
+            relaxed_constraints=relaxed_constraints,
+            warnings=warnings,
+        )
+
+    async def _post_search(self, payload: dict, headers: dict[str, str]) -> dict:
         async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
             response = None
             for attempt in range(2):
@@ -251,22 +298,7 @@ class HttpShopToolService:
                         raise
             if response is None:
                 raise RuntimeError("Shop tool did not return a response.")
-        body = response.json()
-        candidates = [self._to_candidate(item) for item in body.get("data") or []]
-        applied = []
-        for name, value in (
-            ("category", constraints.category),
-            ("neighborhood", constraints.neighborhood),
-            ("budget", constraints.budget_cents),
-            ("desired_tags", constraints.desired_tags),
-        ):
-            if value:
-                applied.append(name)
-        return CandidateSet(
-            candidates=candidates,
-            applied_constraints=applied,
-            warnings=body.get("warnings") or [],
-        )
+        return response.json()
 
     @staticmethod
     def _to_candidate(item: dict) -> ShopCandidate:

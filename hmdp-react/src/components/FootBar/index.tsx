@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { EnvironmentOutline, MessageOutline, UserOutline } from 'antd-mobile-icons';
+import { EnvironmentOutline, UserOutline } from 'antd-mobile-icons';
 
 function HomeIcon({ size = 26, color = 'currentColor' }: { size?: number; color?: string }) {
   return (
@@ -35,8 +35,6 @@ export default function FootBar({ activeBtn }: FootBarProps) {
       navigate('/');
     } else if (i === 2) {
       navigate('/map');
-    } else if (i === 3) {
-      navigate('/messages');
     } else if (i === 4) {
       navigate('/profile');
     } else if (i === 5) {
@@ -69,13 +67,6 @@ export default function FootBar({ activeBtn }: FootBarProps) {
       >
         <div className={styles.footView}><AiIcon size={26} /></div>
         <div className={styles.footText}>{t('nav.ai')}</div>
-      </div>
-      <div
-        className={`${styles.footBox} ${activeBtn === 3 ? styles.active : ''}`}
-        onClick={() => toPage(3)}
-      >
-        <div className={styles.footView}><MessageOutline fontSize={26} /></div>
-        <div className={styles.footText}>{t('nav.messages')}</div>
       </div>
       <div
         className={`${styles.footBox} ${activeBtn === 4 ? styles.active : ''}`}

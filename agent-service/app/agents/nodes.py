@@ -137,6 +137,38 @@ class VerifierAgent:
                         )
                     )
 
+        desired_tags = set(state["constraints"].desired_tags)
+        for candidate in state["candidates"].candidates:
+            missing_tags = sorted(desired_tags - set(candidate.tags))
+            if missing_tags:
+                issues.append(
+                    VerificationIssue(
+                        code="MISSING_DESIRED_TAGS",
+                        message="Candidate is missing requested tags: " + ", ".join(missing_tags),
+                        shop_id=candidate.shop_id,
+                    )
+                )
+
+            expected_category = state["constraints"].category
+            if expected_category and candidate.category != expected_category:
+                issues.append(
+                    VerificationIssue(
+                        code="CATEGORY_MISMATCH",
+                        message="Candidate does not match the requested category.",
+                        shop_id=candidate.shop_id,
+                    )
+                )
+
+            expected_neighborhood = state["constraints"].neighborhood
+            if expected_neighborhood and candidate.neighborhood != expected_neighborhood:
+                issues.append(
+                    VerificationIssue(
+                        code="NEIGHBORHOOD_MISMATCH",
+                        message="Candidate does not match the requested neighborhood.",
+                        shop_id=candidate.shop_id,
+                    )
+                )
+
         report = VerificationReport(
             valid=not issues and bool(candidate_ids),
             issues=issues,

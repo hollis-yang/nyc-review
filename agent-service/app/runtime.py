@@ -8,6 +8,7 @@ from typing import Any
 
 from qdrant_client import AsyncQdrantClient
 
+from app.actions.service import AgentActionService, HttpActionGateway, InMemoryActionGateway
 from app.config import Settings
 from app.domain.models import AgentMode
 from app.graph.workflow import WorkflowServices, build_multi_agent_graph, build_single_agent_graph
@@ -41,6 +42,7 @@ class AgentRuntime:
     qdrant_client: AsyncQdrantClient | None = None
     run_manager: AgentRunManager | None = None
     model_provider: str = "heuristic"
+    action_service: AgentActionService | None = None
 
     @classmethod
     async def create(cls, settings: Settings) -> AgentRuntime:
@@ -89,6 +91,15 @@ class AgentRuntime:
             dataset_sha256=dataset_sha256,
             qdrant_client=qdrant_client,
             model_provider=settings.model_provider,
+            action_service=AgentActionService(
+                HttpActionGateway(
+                    settings.backend_base_url,
+                    timeout_seconds=settings.request_timeout_seconds,
+                    fallback_authorization=settings.backend_auth_token,
+                )
+                if settings.adapter == "http"
+                else InMemoryActionGateway()
+            ),
         )
         model_gateway = _build_model_gateway(settings)
         runtime.run_manager = AgentRunManager(

@@ -1,5 +1,7 @@
 package com.hmdp.config;
 
+import com.hmdp.agentapi.controller.AgentActionToolController;
+import com.hmdp.agentapi.dto.AgentActionExecuteRequest;
 import com.hmdp.controller.TranslateController;
 import com.hmdp.controller.VoucherOrderController;
 import com.hmdp.dto.TranslateTextRequest;
@@ -48,6 +50,21 @@ class CoreCapabilityCompatibilityTest {
         assertPostMapping(
                 VoucherOrderController.class.getDeclaredMethod("seckillVoucher", Long.class),
                 "seckill/{id}"
+        );
+    }
+
+    @Test
+    void approvedAgentActionsUseADedicatedInternalEndpoint() throws Exception {
+        RequestMapping baseMapping = AgentActionToolController.class.getAnnotation(RequestMapping.class);
+        assertNotNull(baseMapping);
+        assertArrayEquals(new String[]{"/internal/agent/actions"}, baseMapping.value());
+
+        assertPostMapping(
+                AgentActionToolController.class.getDeclaredMethod(
+                        "execute",
+                        AgentActionExecuteRequest.class
+                ),
+                "/execute"
         );
     }
 

@@ -36,6 +36,20 @@ curl -sS http://127.0.0.1:8090/v1/agent/runs/<run-id>
 
 Run、事件与最终结果默认持久化到 `./.local/agent-runs.sqlite3`。接口同时支持 `single` 和 `multi`；多 Agent 仍由 Supervisor、Discovery、Evidence、Itinerary、Verifier 协作，Evidence 与 Itinerary 并行。
 
+## P3 人工审批执行
+
+推荐完成后，Agent Service 会持久化可选 action proposal，并将 Run 暂停为 `waiting_confirmation`。用户可逐项批准、拒绝或重试；批准后由 Spring 的受限 action endpoint 执行，并以 `actionId` 保证幂等。收藏偏好可补全后续未指定的分类或街区，Run 历史按登录 token 的不可逆 SHA-256 隔离。
+
+```bash
+curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/approve \
+  -H 'authorization: <current-user-token>'
+curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/reject
+curl -H 'authorization: <current-user-token>' '/v1/agent/runs?limit=5'
+curl /v1/agent/metrics
+```
+
+前端产品入口只暴露 Multi Agent；Single Agent 继续保留在 Eval 中用于质量和延迟对照。完整步骤见 [P3 Runbook](../docs/p3-agent-actions-runbook.md)。
+
 ## DeepSeek 模型网关
 
 默认 `HMDP_AGENT_MODEL_PROVIDER=heuristic`，可离线运行。启用 DeepSeek：

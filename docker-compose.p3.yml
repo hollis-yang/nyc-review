@@ -1,0 +1,115 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${HMDP_DB_PASSWORD:-hmdp-local}
+      MYSQL_DATABASE: hmdp_new
+      TZ: America/New_York
+    command: ["--default-time-zone=+00:00", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_general_ci"]
+    ports:
+      - "3306:3306"
+    volumes:
+      - hmdp-mysql:/var/lib/mysql
+      - ./src/main/resources/db/hmdp_new.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
+      - ./src/main/resources/db/p2_redis_stream_order.sql:/docker-entrypoint-initdb.d/02-stream.sql:ro
+      - ./src/main/resources/db/p3_nyc_compatibility.sql:/docker-entrypoint-initdb.d/03-nyc-compatibility.sql:ro
+      - ./src/main/resources/db/p4_nyc_domain.sql:/docker-entrypoint-initdb.d/04-nyc-domain.sql:ro
+      - ./src/main/resources/db/p5_agent_actions.sql:/docker-entrypoint-initdb.d/05-agent-actions.sql:ro
+      - ./data/generated/nyc-small/mysql_import.sql:/docker-entrypoint-initdb.d/06-nyc-mock.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - hmdp-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis-seed:
+    image: redis:7.4-alpine
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data/generated/nyc-small/redis_seed.resp:/seed/redis_seed.resp:ro
+    command: ["sh", "-c", "redis-cli -h redis --pipe < /seed/redis_seed.resp"]
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.3
+    ports:
+      - "6333:6333"
+    volumes:
+      - hmdp-qdrant:/qdrant/storage
+
+  spring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      HMDP_DB_URL: "jdbc:mysql://mysql:3306/hmdp_new?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      HMDP_DB_USERNAME: root
+      HMDP_DB_PASSWORD: ${HMDP_DB_PASSWORD:-hmdp-local}
+      HMDP_REDIS_HOST: redis
+      HMDP_REDIS_PORT: 6379
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      HMDP_IMAGE_UPLOAD_DIR: /data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-seed:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8081"
+    volumes:
+      - hmdp-uploads:/data/uploads
+
+  agent-service:
+    build:
+      context: ./agent-service
+    environment:
+      HMDP_AGENT_ADAPTER: http
+      HMDP_AGENT_BACKEND_BASE_URL: http://spring:8081
+      HMDP_AGENT_RAG_ADAPTER: qdrant
+      HMDP_AGENT_QDRANT_LOCATION: http://qdrant:6333
+      HMDP_AGENT_RAG_DATA_DIRECTORY: /data/nyc-small
+      HMDP_AGENT_MODEL_PROVIDER: ${HMDP_AGENT_MODEL_PROVIDER:-deepseek}
+      HMDP_AGENT_MODEL_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      HMDP_AGENT_RUN_STORE_PATH: /data/runs/agent-runs.sqlite3
+    depends_on:
+      - spring
+      - qdrant
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./data/generated/nyc-small:/data/nyc-small:ro
+      - hmdp-agent-runs:/data/runs
+
+  web:
+    build:
+      context: ./hmdp-react
+    depends_on:
+      - spring
+      - agent-service
+    ports:
+      - "8080:80"
+
+volumes:
+  hmdp-mysql:
+  hmdp-redis:
+  hmdp-qdrant:
+  hmdp-uploads:
+  hmdp-agent-runs:

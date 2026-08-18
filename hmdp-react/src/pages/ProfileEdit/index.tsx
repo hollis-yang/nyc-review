@@ -12,7 +12,7 @@ import styles from './ProfileEdit.module.css';
 type EditField = 'nickname' | 'introduce' | null;
 
 export default function ProfileEdit() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
@@ -23,6 +23,7 @@ export default function ProfileEdit() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [cityPickerVisible, setCityPickerVisible] = useState(false);
+  const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
 
   useEffect(() => {
     getMe()
@@ -103,6 +104,19 @@ export default function ProfileEdit() {
     { label: t('profileEdit.male'), value: 'true' },
     { label: t('profileEdit.female'), value: 'false' },
   ];
+  const languageColumns = [
+    { label: 'English', value: 'en' },
+    { label: '中文', value: 'zh-CN' },
+  ];
+
+  const handleLanguageConfirm = async (value: any[]) => {
+    setLanguagePickerVisible(false);
+    const language = value[0] === 'zh-CN' ? 'zh-CN' : 'en';
+    localStorage.setItem('appLanguage', language);
+    document.documentElement.lang = language;
+    await i18n.changeLanguage(language);
+    Toast.show({ icon: 'success', content: t('profileEdit.languageUpdated') });
+  };
 
   const handleGenderConfirm = async (value: any[]) => {
     setGenderVisible(false);
@@ -171,6 +185,18 @@ export default function ProfileEdit() {
             <div className={styles.infoLabel}>{t('profileEdit.intro')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{info.introduce || t('profileEdit.introPlaceholder')}</div>
+              <RightOutline fontSize={14} color="#ccc" />
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.infoBox}>
+          <div className={styles.infoItem} onClick={() => setLanguagePickerVisible(true)}>
+            <div className={styles.infoLabel}>{t('profileEdit.language')}</div>
+            <div className={styles.infoBtn}>
+              <div className={styles.infoValue}>
+                {i18n.resolvedLanguage === 'zh-CN' ? '中文' : 'English'}
+              </div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
@@ -271,6 +297,15 @@ export default function ProfileEdit() {
           value={[info.gender === true || info.gender === 'true' ? 'true' : 'false']}
           onConfirm={handleGenderConfirm}
           title={t('profileEdit.selectGender')}
+        />
+
+        <Picker
+          columns={[languageColumns]}
+          visible={languagePickerVisible}
+          onClose={() => setLanguagePickerVisible(false)}
+          value={[i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en']}
+          onConfirm={handleLanguageConfirm}
+          title={t('profileEdit.selectLanguage')}
         />
 
         {/* 生日选择 */}

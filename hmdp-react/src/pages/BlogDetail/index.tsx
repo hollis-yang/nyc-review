@@ -51,7 +51,8 @@ interface CommentInfo {
 
 export default function BlogDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isChinese = i18n.resolvedLanguage === 'zh-CN';
   const navigate = useNavigate();
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
@@ -201,7 +202,7 @@ export default function BlogDetail() {
     if (!blog || blogTL) { setBlogTL(null); setBlogTitleTL(null); return; }
     setBlogTLLoading(true);
     try {
-      const res = await translateBlog(blog.id, 'en');
+      const res = await translateBlog(blog.id, 'zh-CN');
       const full = String(res.data ?? res);
       const parts = full.split('\n\n');
       if (parts.length >= 2) {
@@ -266,7 +267,7 @@ export default function BlogDetail() {
 
   const formatDate = (d: string) => {
     const date = new Date(d);
-    return new Intl.DateTimeFormat('en-US', {
+    return new Intl.DateTimeFormat(isChinese ? 'zh-CN' : 'en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
     }).format(date);
   };
@@ -328,7 +329,7 @@ export default function BlogDetail() {
                   {t('blogDetail.reply')}
                 </span>
               )}
-                <span className={styles.replyBtn}
+                {isChinese && <span className={styles.replyBtn}
                   style={{ marginLeft: 4, display: 'inline' }}
                   onClick={async () => {
                     if (commentTL[c.id]) {
@@ -338,12 +339,12 @@ export default function BlogDetail() {
                       return;
                     }
                     try {
-                      const res = await translateComment(c.id, 'en');
+                      const res = await translateComment(c.id, 'zh-CN');
                       setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
                     } catch {}
                   }}>
-                  ✦ DeepSeek translate
-                </span>
+                  ✦ {t('blogDetail.deepSeekTranslate')}
+                </span>}
             </div>
             {currentUser && currentUser.id === c.userId && (
               <div
@@ -450,12 +451,12 @@ export default function BlogDetail() {
           <div className={styles.contentBody}>
             {normalizeBlogContent(blog.content)}
           </div>
-          <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
+          {isChinese && <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
             <span style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}
               onClick={handleTranslateBlog}>
-              {blogTLLoading ? 'Translating with DeepSeek…' : blogTL ? t('blogDetail.original') : `✦ ${t('blogDetail.translate')} with DeepSeek`}
+              {blogTLLoading ? t('blogDetail.translatingDeepSeek') : blogTL ? t('blogDetail.original') : `✦ ${t('blogDetail.deepSeekTranslate')}`}
             </span>
-          </div>
+          </div>}
           {blogTL && (
             <div style={{ background: '#f0f7ff', padding: 10, borderRadius: 8, margin: '0 0 10px', fontSize: 14, color: '#444', lineHeight: 1.7 }}>
               <div style={{ fontSize: 11, color: '#999', marginBottom: 4 }}>💬 {t('blogDetail.translatedByAI')}</div>

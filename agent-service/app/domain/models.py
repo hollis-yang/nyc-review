@@ -29,6 +29,22 @@ class ToolRisk(StrEnum):
     MANUAL_ONLY = "manual_only"
 
 
+class AgentActionType(StrEnum):
+    FAVORITE_SHOP = "favorite_shop"
+    SAVE_ITINERARY = "save_itinerary"
+    CLAIM_STANDARD_VOUCHER = "claim_standard_voucher"
+    CREATE_SECKILL_REMINDER = "create_seckill_reminder"
+
+
+class AgentActionStatus(StrEnum):
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    EXECUTING = "executing"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
 class UserConstraints(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -80,6 +96,7 @@ class ShopCandidate(BaseModel):
 class CandidateSet(BaseModel):
     candidates: list[ShopCandidate]
     applied_constraints: list[str] = Field(default_factory=list)
+    relaxed_constraints: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -177,6 +194,20 @@ class AgentRunEvent(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentActionProposal(BaseModel):
+    action_id: str
+    action_type: AgentActionType
+    title: str
+    description: str
+    risk: ToolRisk
+    status: AgentActionStatus = AgentActionStatus.PROPOSED
+    payload: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class AgentRunCreated(BaseModel):
     run_id: str
     status: RunStatus
@@ -191,5 +222,6 @@ class AgentRunSnapshot(BaseModel):
     created_at: datetime
     updated_at: datetime
     events: list[AgentRunEvent] = Field(default_factory=list)
+    actions: list[AgentActionProposal] = Field(default_factory=list)
     result: AgentRunResponse | None = None
     error: str | None = None

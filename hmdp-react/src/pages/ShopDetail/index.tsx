@@ -34,7 +34,8 @@ interface ReviewData {
 
 export default function ShopDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isChinese = i18n.resolvedLanguage === 'zh-CN';
   const navigate = useNavigate();
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
@@ -234,7 +235,7 @@ export default function ShopDetail() {
                         {reviewTL[review.id]}
                       </div>
                     )}
-                    <span style={{ fontSize: 11, color: '#ff6633', cursor: 'pointer', display: 'inline' }}
+                    {isChinese && <span style={{ fontSize: 11, color: '#ff6633', cursor: 'pointer', display: 'inline' }}
                       onClick={async () => {
                         if (reviewTL[review.id]) {
                           const next = { ...reviewTL };
@@ -243,12 +244,12 @@ export default function ShopDetail() {
                           return;
                         }
                         try {
-                          const res = await translateComment(review.id, 'en');
+                          const res = await translateComment(review.id, 'zh-CN');
                           setReviewTL(prev => ({ ...prev, [review.id]: String(res.data ?? res) }));
                         } catch {}
                       }}>
-                      ✦ Translate with DeepSeek
-                    </span>
+                      ✦ {t('shopDetail.deepSeekTranslate')}
+                    </span>}
                     {reviewImages.length > 0 && (
                       <div className={styles.commentImages}>
                         {reviewImages.map((img: string, idx: number) => (

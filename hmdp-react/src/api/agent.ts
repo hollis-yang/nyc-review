@@ -66,6 +66,9 @@ export interface AgentRunResponse {
       tags: string[];
       distance_meters?: number;
     }>;
+    applied_constraints: string[];
+    relaxed_constraints: string[];
+    warnings: string[];
   };
   evidence: {
     evidence: Array<{
@@ -99,7 +102,41 @@ export interface AgentRunResponse {
     model?: string;
     modelFallbackUsed?: boolean;
     constraints?: Record<string, unknown>;
+    personalization?: {
+      category?: string;
+      neighborhood?: string;
+      tags?: string[];
+      favoriteCount?: number;
+    };
   };
+}
+
+export type AgentActionType =
+  | 'favorite_shop'
+  | 'save_itinerary'
+  | 'claim_standard_voucher'
+  | 'create_seckill_reminder';
+
+export type AgentActionStatus =
+  | 'proposed'
+  | 'approved'
+  | 'executing'
+  | 'completed'
+  | 'rejected'
+  | 'failed';
+
+export interface AgentActionProposal {
+  action_id: string;
+  action_type: AgentActionType;
+  title: string;
+  description: string;
+  risk: 'read_only' | 'reversible_write' | 'limited_write' | 'manual_only';
+  status: AgentActionStatus;
+  payload: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AgentRunSnapshot {
@@ -110,6 +147,7 @@ export interface AgentRunSnapshot {
   created_at: string;
   updated_at: string;
   events: AgentRunEvent[];
+  actions: AgentActionProposal[];
   result?: AgentRunResponse;
   error?: string;
 }
@@ -137,8 +175,35 @@ export async function getAgentRun(runId: string): Promise<AgentRunSnapshot> {
   return response.data;
 }
 
+export async function listAgentRuns(limit: number = 5): Promise<AgentRunSnapshot[]> {
+  const response = await agentClient.get<AgentRunSnapshot[]>('/v1/agent/runs', {
+    params: { limit },
+  });
+  return response.data;
+}
+
 export async function cancelAgentRun(runId: string): Promise<AgentRunSnapshot> {
   const response = await agentClient.post<AgentRunSnapshot>(`/v1/agent/runs/${runId}/cancel`);
+  return response.data;
+}
+
+export async function approveAgentAction(
+  runId: string,
+  actionId: string,
+): Promise<AgentRunSnapshot> {
+  const response = await agentClient.post<AgentRunSnapshot>(
+    `/v1/agent/runs/${runId}/actions/${actionId}/approve`,
+  );
+  return response.data;
+}
+
+export async function rejectAgentAction(
+  runId: string,
+  actionId: string,
+): Promise<AgentRunSnapshot> {
+  const response = await agentClient.post<AgentRunSnapshot>(
+    `/v1/agent/runs/${runId}/actions/${actionId}/reject`,
+  );
   return response.data;
 }
 
@@ -147,6 +212,12 @@ const STREAM_EVENTS = [
   'model.started',
   'model.completed',
   'agent.completed',
+  'run.waiting_confirmation',
+  'action.approved',
+  'action.started',
+  'action.completed',
+  'action.failed',
+  'action.rejected',
   'run.completed',
   'run.failed',
   'run.cancelled',

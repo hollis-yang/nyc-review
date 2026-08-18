@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from uuid import uuid4
 
 from app.domain.models import (
+    AgentActionStatus,
     AgentMode,
     AgentRunCreated,
     AgentRunCreateRequest,
@@ -27,6 +30,13 @@ NODE_PRESENTATION = {
     "supervisor_finalize": ("Supervisor", "Prepared the verified response."),
 }
 
+STREAM_TERMINAL_STATUSES = {
+    RunStatus.WAITING_CONFIRMATION,
+    RunStatus.COMPLETED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+}
+
 
 class AgentRunManager:
     def __init__(self, runtime, store: SQLiteRunStore, model_gateway: ModelGateway):
@@ -41,7 +51,7 @@ class AgentRunManager:
         authorization: str = "",
     ) -> AgentRunCreated:
         run_id = str(uuid4())
-        await self._store.create(run_id, request)
+        await self._store.create(run_id, request, self._owner_key(authorization))
         await self._store.append_event(
             run_id,
             event="run.created",
@@ -60,6 +70,14 @@ class AgentRunManager:
     async def get(self, run_id: str) -> AgentRunSnapshot | None:
         return await self._store.get(run_id)
 
+    async def list_runs(self, authorization: str, limit: int = 10) -> list[AgentRunSnapshot]:
+        if not authorization:
+            return []
+        return await self._store.list_runs(self._owner_key(authorization), limit)
+
+    async def metrics(self) -> dict:
+        return await self._store.metrics()
+
     async def cancel(self, run_id: str) -> AgentRunSnapshot | None:
         snapshot = await self._store.get(run_id)
         if snapshot is None:
@@ -77,6 +95,103 @@ class AgentRunManager:
             )
         return await self._store.get(run_id)
 
+    async def approve_action(
+        self,
+        run_id: str,
+        action_id: str,
+        authorization: str,
+    ) -> AgentRunSnapshot | None:
+        snapshot = await self._store.get(run_id)
+        if snapshot is None:
+            return None
+        action = await self._store.get_action(run_id, action_id)
+        if action is None:
+            raise KeyError(action_id)
+        if action.status is AgentActionStatus.COMPLETED:
+            return snapshot
+        if action.status is AgentActionStatus.REJECTED:
+            raise ValueError("A rejected action cannot be approved.")
+        if action.status in {AgentActionStatus.APPROVED, AgentActionStatus.EXECUTING}:
+            raise ValueError("This action is already being executed.")
+
+        await self._store.update_action(run_id, action_id, AgentActionStatus.APPROVED)
+        await self._store.append_event(
+            run_id,
+            event="action.approved",
+            agent="Action Executor",
+            status="completed",
+            message="User approved a proposed action.",
+            details={"actionId": action_id, "actionType": action.action_type.value},
+        )
+        await self._store.set_status(run_id, RunStatus.TOOL_RUNNING)
+        await self._store.update_action(run_id, action_id, AgentActionStatus.EXECUTING)
+        await self._store.append_event(
+            run_id,
+            event="action.started",
+            agent="Action Executor",
+            status="running",
+            message="Executing the approved action through Spring.",
+            details={"actionId": action_id, "actionType": action.action_type.value},
+        )
+        try:
+            result = await self._runtime.action_service.execute(run_id, action, authorization)
+            await self._store.update_action(
+                run_id,
+                action_id,
+                AgentActionStatus.COMPLETED,
+                result=result,
+            )
+            await self._store.append_event(
+                run_id,
+                event="action.completed",
+                agent="Action Executor",
+                status="completed",
+                message="Approved action completed and was recorded in the audit log.",
+                details={"actionId": action_id, "actionType": action.action_type.value},
+            )
+        except Exception as exc:  # noqa: BLE001 - action boundary persists controlled failures
+            message = str(exc) or exc.__class__.__name__
+            await self._store.update_action(
+                run_id,
+                action_id,
+                AgentActionStatus.FAILED,
+                error=message,
+            )
+            await self._store.append_event(
+                run_id,
+                event="action.failed",
+                agent="Action Executor",
+                status="failed",
+                message=message,
+                details={"actionId": action_id, "actionType": action.action_type.value},
+            )
+        await self._finalize_action_state(run_id)
+        return await self._store.get(run_id)
+
+    async def reject_action(self, run_id: str, action_id: str) -> AgentRunSnapshot | None:
+        snapshot = await self._store.get(run_id)
+        if snapshot is None:
+            return None
+        action = await self._store.get_action(run_id, action_id)
+        if action is None:
+            raise KeyError(action_id)
+        if action.status is AgentActionStatus.COMPLETED:
+            raise ValueError("A completed action cannot be rejected.")
+        if action.status is AgentActionStatus.EXECUTING:
+            raise ValueError("An executing action cannot be rejected.")
+        if action.status is not AgentActionStatus.REJECTED:
+            await self._store.update_action(run_id, action_id, AgentActionStatus.REJECTED)
+            await self._store.append_event(
+                run_id,
+                event="action.rejected",
+                agent="Action Executor",
+                status="rejected",
+                message="User rejected a proposed action. No write was performed.",
+                details={"actionId": action_id, "actionType": action.action_type.value},
+            )
+        await self._finalize_action_state(run_id)
+        return await self._store.get(run_id)
+
     async def event_stream(self, run_id: str, after: int = 0) -> AsyncIterator[str]:
         last_sequence = max(0, after)
         while True:
@@ -91,7 +206,7 @@ class AgentRunManager:
                     f"event: {item.event}\n"
                     f"data: {item.model_dump_json()}\n\n"
                 )
-            if snapshot.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
+            if snapshot.status in STREAM_TERMINAL_STATUSES:
                 yield (
                     "event: stream.closed\n"
                     f"data: {{\"runId\":\"{run_id}\",\"status\":\"{snapshot.status.value}\"}}\n\n"
@@ -124,6 +239,17 @@ class AgentRunManager:
                 message="Extracting structured constraints from natural language.",
             )
             extraction = await self._model_gateway.extract_constraints(create_request)
+            personalization = await self._runtime.action_service.preferences(authorization)
+            preference_updates = {}
+            if extraction.constraints.category is None and personalization.get("category"):
+                preference_updates["category"] = personalization["category"]
+            if extraction.constraints.neighborhood is None and personalization.get("neighborhood"):
+                preference_updates["neighborhood"] = personalization["neighborhood"]
+            if preference_updates:
+                extraction = replace(
+                    extraction,
+                    constraints=extraction.constraints.model_copy(update=preference_updates),
+                )
             await self._store.append_event(
                 run_id,
                 event="model.completed",
@@ -135,6 +261,7 @@ class AgentRunManager:
                     "model": extraction.model,
                     "fallbackUsed": extraction.fallback_used,
                     "constraints": extraction.constraints.model_dump(mode="json"),
+                    "personalization": personalization,
                 },
             )
             await self._store.set_status(run_id, RunStatus.TOOL_RUNNING)
@@ -166,15 +293,37 @@ class AgentRunManager:
                         details={"node": node_name},
                     )
 
-            result = self._response(create_request.mode, accumulated, extraction)
-            await self._store.set_status(run_id, RunStatus.COMPLETED, result=result)
-            await self._store.append_event(
-                run_id,
-                event="run.completed",
-                status="completed",
-                message="Verified recommendation is ready.",
-                details={"valid": result.verification.valid},
+            result = self._response(
+                create_request.mode,
+                accumulated,
+                extraction,
+                personalization,
             )
+            actions = await self._runtime.action_service.propose(run_id, result, authorization)
+            await self._store.add_actions(run_id, actions)
+            if actions:
+                await self._store.set_status(
+                    run_id,
+                    RunStatus.WAITING_CONFIRMATION,
+                    result=result,
+                )
+                await self._store.append_event(
+                    run_id,
+                    event="run.waiting_confirmation",
+                    agent="Action Planner",
+                    status="waiting_confirmation",
+                    message="Recommendation is ready. Optional actions require your approval.",
+                    details={"valid": result.verification.valid, "actionCount": len(actions)},
+                )
+            else:
+                await self._store.set_status(run_id, RunStatus.COMPLETED, result=result)
+                await self._store.append_event(
+                    run_id,
+                    event="run.completed",
+                    status="completed",
+                    message="Verified recommendation is ready.",
+                    details={"valid": result.verification.valid},
+                )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - boundary converts failures into persisted run state
@@ -189,7 +338,53 @@ class AgentRunManager:
         finally:
             request_authorization.reset(token)
 
-    def _response(self, mode: AgentMode, state: dict, extraction) -> AgentRunResponse:
+    async def _finalize_action_state(self, run_id: str) -> None:
+        snapshot = await self._store.get(run_id)
+        if snapshot is None:
+            return
+        unresolved = any(
+            action.status
+            in {
+                AgentActionStatus.PROPOSED,
+                AgentActionStatus.APPROVED,
+                AgentActionStatus.EXECUTING,
+            }
+            for action in snapshot.actions
+        )
+        next_status = RunStatus.WAITING_CONFIRMATION if unresolved else RunStatus.COMPLETED
+        await self._store.set_status(run_id, next_status)
+        if not unresolved:
+            await self._store.append_event(
+                run_id,
+                event="run.completed",
+                status="completed",
+                message="All proposed actions have been resolved.",
+                details={
+                    "completedActions": sum(
+                        action.status is AgentActionStatus.COMPLETED for action in snapshot.actions
+                    ),
+                    "rejectedActions": sum(
+                        action.status is AgentActionStatus.REJECTED for action in snapshot.actions
+                    ),
+                    "failedActions": sum(
+                        action.status is AgentActionStatus.FAILED for action in snapshot.actions
+                    ),
+                },
+            )
+
+    @staticmethod
+    def _owner_key(authorization: str) -> str:
+        if not authorization:
+            return ""
+        return hashlib.sha256(authorization.encode("utf-8")).hexdigest()
+
+    def _response(
+        self,
+        mode: AgentMode,
+        state: dict,
+        extraction,
+        personalization: dict | None = None,
+    ) -> AgentRunResponse:
         return AgentRunResponse(
             mode=mode,
             status=RunStatus.COMPLETED,
@@ -210,5 +405,6 @@ class AgentRunManager:
                 "promptVersion": extraction.prompt_version,
                 "modelFallbackUsed": extraction.fallback_used,
                 "constraints": extraction.constraints.model_dump(mode="json"),
+                "personalization": personalization or {},
             },
         )

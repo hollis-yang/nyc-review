@@ -92,3 +92,43 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
     assert extraction.constraints.category == "Bars & Nightlife"
     assert extraction.constraints.party_size == 4
     assert extraction.constraints.desired_tags == ["late_night", "quiet"]
+
+
+async def test_model_gateway_normalizes_model_tag_aliases(monkeypatch):
+    response = httpx.Response(
+        200,
+        request=httpx.Request("POST", "https://api.deepseek.com/v1/chat/completions"),
+        json={
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "query": "ignored",
+                                "party_size": 2,
+                                "desired_tags": ["vegan", "accessible", "outdoor"],
+                            }
+                        )
+                    }
+                }
+            ]
+        },
+    )
+
+    async def fake_post(*args, **kwargs):
+        return response
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    extraction = await OpenAICompatibleModelGateway(
+        provider="deepseek",
+        base_url="https://api.deepseek.com/v1",
+        api_key="test-key",
+        model="deepseek-chat",
+        timeout_seconds=1,
+    ).extract_constraints(AgentRunCreateRequest(query="Vegan and accessible outdoor dinner"))
+
+    assert extraction.constraints.desired_tags == [
+        "outdoor_seating",
+        "vegan_options",
+        "wheelchair_accessible",
+    ]
