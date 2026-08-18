@@ -47,7 +47,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         Shop shop = cacheClient.queryWithMutex(CACHE_SHOP_KEY, id,
                 Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES, LOCK_SHOP_TTL);
         if (shop == null) {
-            return Result.fail("店铺不存在!");
+            return Result.fail("Shop not found");
         }
 
         // 逻辑过期解决缓存击穿
@@ -62,7 +62,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public Result update(Shop shop) {
         Long id = shop.getId();
         if (id == null) {
-            return Result.fail("店铺id不能为空!");
+            return Result.fail("Shop ID is required");
         }
 
         updateById(shop);
@@ -83,10 +83,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y, String sortBy, String sortOrder) {
         String sortColumn = resolveSortColumn(sortBy);
         if (StrUtil.isNotBlank(sortBy) && sortColumn == null) {
-            return Result.fail("排序字段不合法");
+            return Result.fail("Invalid sort field");
         }
         if (!isSortOrderValid(sortOrder)) {
-            return Result.fail("排序方向不合法");
+            return Result.fail("Invalid sort direction");
         }
         boolean sortAscending = "asc".equalsIgnoreCase(sortOrder);
 

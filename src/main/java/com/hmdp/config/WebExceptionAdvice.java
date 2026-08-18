@@ -15,13 +15,13 @@ public class WebExceptionAdvice {
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public Result handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
-        log.warn("上传文件超过大小限制: {}", e.getMessage());
-        return Result.fail("图片不能超过5MB");
+        log.warn("Uploaded image exceeds the size limit: {}", e.getMessage());
+        return Result.fail("Images cannot exceed 5 MB");
     }
 
     @ExceptionHandler(RuntimeException.class)
     public Result handleRuntimeException(RuntimeException e) {
         log.error(e.toString(), e);
-        return Result.fail("服务器异常");
+        return Result.fail("The server encountered an unexpected error");
     }
 }

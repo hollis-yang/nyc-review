@@ -2,10 +2,12 @@ from app.domain.models import (
     AgentMode,
     AgentRunRequest,
     CandidateSet,
+    EvidencePack,
     ShopCandidate,
+    ShopEvidence,
     UserConstraints,
 )
-from app.graph.workflow import WorkflowServices, build_multi_agent_graph
+from app.graph.workflow import WorkflowServices, build_multi_agent_graph, build_single_agent_graph
 from app.tools.services import HaversineItineraryService, InMemoryRagService, MockShopToolService
 
 
@@ -82,3 +84,68 @@ async def test_verifier_rejects_candidates_that_exceed_total_budget():
 
     assert state["verification"].valid is False
     assert any(issue.code == "BUDGET_EXCEEDED" for issue in state["verification"].issues)
+
+
+async def test_verifier_rejects_evidence_entries_without_citations():
+    class SingleShopService:
+        async def search(self, constraints: UserConstraints) -> CandidateSet:
+            return CandidateSet(
+                candidates=[
+                    ShopCandidate(
+                        shop_id=999,
+                        name="Missing Evidence Fixture",
+                        category="Food & Dining",
+                        neighborhood="Chelsea",
+                        latitude=40.7465,
+                        longitude=-74.0014,
+                        avg_price_cents=4_000,
+                        score=4.5,
+                    )
+                ]
+            )
+
+    class EmptyCitationRagService:
+        async def retrieve(
+            self,
+            constraints: UserConstraints,
+            candidates: CandidateSet,
+        ) -> EvidencePack:
+            return EvidencePack(evidence=[ShopEvidence(shop_id=999, citations=[])])
+
+    workflow = build_multi_agent_graph(
+        WorkflowServices(
+            shops=SingleShopService(),
+            rag=EmptyCitationRagService(),
+            itinerary=HaversineItineraryService(),
+        )
+    )
+    state = await workflow.ainvoke(
+        {
+            "request": AgentRunRequest(
+                constraints=UserConstraints(query="A result that has no cited evidence")
+            ),
+            "events": [],
+        }
+    )
+
+    assert state["verification"].valid is False
+    assert any(issue.code == "MISSING_EVIDENCE" for issue in state["verification"].issues)
+
+
+async def test_single_agent_graph_uses_same_verifier_contract():
+    workflow = build_single_agent_graph(
+        WorkflowServices(
+            shops=MockShopToolService(),
+            rag=InMemoryRagService(),
+            itinerary=HaversineItineraryService(),
+        )
+    )
+    request = AgentRunRequest(
+        mode=AgentMode.SINGLE,
+        constraints=UserConstraints(query="Quiet dinner in Midtown", desired_tags=["quiet"]),
+    )
+
+    state = await workflow.ainvoke({"request": request, "events": []})
+
+    assert state["verification"].valid is True
+    assert "single_agent:read_tools_completed" in state["events"]

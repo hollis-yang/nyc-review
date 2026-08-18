@@ -35,7 +35,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();
         if (id == null || userService.getById(id) == null) {
-            return Result.fail("用户不存在");
+            return Result.fail("User not found");
         }
         // 2.MySQL 是关注关系的最终数据源，避免 Redis Set 丢失导致结果错误
         List<Long> myFollowIds = query()
@@ -72,13 +72,13 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         // 1.获取用户
         Long userId = UserHolder.getUser().getId();
         if (followUserId == null || isFollow == null) {
-            return Result.fail("关注参数不合法");
+            return Result.fail("Invalid follow request");
         }
         if (userId.equals(followUserId)) {
-            return Result.fail("不能关注自己");
+            return Result.fail("You cannot follow yourself");
         }
         if (userService.getById(followUserId) == null) {
-            return Result.fail("用户不存在");
+            return Result.fail("User not found");
         }
         ensureUserInfo(userId);
         ensureUserInfo(followUserId);
@@ -102,7 +102,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
                 return Result.ok();
             }
             if (!isSuccess) {
-                return Result.fail("关注失败");
+                return Result.fail("Failed to update follow status");
             }
             updateFollowCount(userId, "followee", 1);
             updateFollowCount(followUserId, "fans", 1);
@@ -141,7 +141,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         info.setLevel(false);
         try {
             if (!userInfoService.save(info)) {
-                throw new IllegalStateException("用户资料初始化失败");
+                throw new IllegalStateException("Failed to initialize the user profile");
             }
         } catch (DuplicateKeyException ignored) {
             // 另一个并发事务已经补建了资料行。
@@ -154,7 +154,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
                 .eq("user_id", userId)
                 .update();
         if (!updated) {
-            throw new IllegalStateException("关注统计更新失败");
+            throw new IllegalStateException("Failed to update follow statistics");
         }
     }
 }

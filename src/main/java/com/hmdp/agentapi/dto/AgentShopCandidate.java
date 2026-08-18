@@ -7,14 +7,22 @@ public record AgentShopCandidate(
         String name,
         Long typeId,
         String category,
+        Long subcategoryId,
+        String subcategory,
+        String borough,
         String neighborhood,
         String address,
+        String description,
         Double latitude,
         Double longitude,
         Long avgPriceCents,
+        Integer priceLevel,
         Double score,
         Integer comments,
         Integer distanceMeters,
-        List<String> tags
+        String timezone,
+        String dataVersion,
+        List<String> tags,
+        List<AgentBusinessHours> businessHours
 ) {
 }

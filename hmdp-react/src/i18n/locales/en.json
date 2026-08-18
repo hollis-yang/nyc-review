@@ -2,6 +2,8 @@
   "nav": {
     "home": "Home",
     "map": "Map",
+    "ai": "AI Guide",
+    "create": "Create a note",
     "messages": "Messages",
     "profile": "Profile"
   },
@@ -13,7 +15,7 @@
   "login": {
     "titlePwd": "Password Login",
     "titleSms": "Phone Login",
-    "brand": "Heima Review",
+    "brand": "NYC Review",
     "slogan": "Discover great places nearby",
     "phonePlaceholder": "Enter phone number",
     "pwdPlaceholder": "Enter password",
@@ -99,7 +101,7 @@
     "replySuccess": "Reply posted",
     "likes": "{{n}} likes",
     "translate": "Translate",
-    "translatedByAI": "Translated by AI",
+    "translatedByAI": "Translated by DeepSeek",
     "original": "Original",
     "confirm": "Confirm"
   },

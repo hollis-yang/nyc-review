@@ -30,7 +30,7 @@
   --transition-fast: 0.2s ease;
 
   /* 排版 */
-  --font-family: 'Hiragino Sans GB', Arial, Helvetica, sans-serif;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
 
   /* 布局 */
   --header-height: 7%;

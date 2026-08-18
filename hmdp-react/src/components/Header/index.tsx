@@ -37,7 +37,7 @@ export default function Header({
           </div>
         )}
       </div>
-      <div className={styles.title}>{title || '黑马点评'}</div>
+      <div className={styles.title}>{title || 'NYC Review'}</div>
       <div className={styles.right}>
         {showUser && (
           <div className={styles.icon} onClick={onRightClick}>

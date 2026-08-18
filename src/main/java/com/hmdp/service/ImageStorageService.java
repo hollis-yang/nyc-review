@@ -42,29 +42,29 @@ public class ImageStorageService {
             } catch (IOException cleanupError) {
                 e.addSuppressed(cleanupError);
             }
-            throw new IllegalStateException("图片保存失败", e);
+            throw new IllegalStateException("Failed to save the image", e);
         }
         return "/imgs/blogs/" + userId + "/" + fileName;
     }
 
     public boolean delete(String publicPath, Long userId) {
         if (publicPath == null || userId == null) {
-            throw new IllegalArgumentException("错误的图片路径");
+            throw new IllegalArgumentException("Invalid image path");
         }
 
         Matcher matcher = PUBLIC_IMAGE_PATH.matcher(publicPath);
         if (!matcher.matches()) {
-            throw new IllegalArgumentException("错误的图片路径");
+            throw new IllegalArgumentException("Invalid image path");
         }
 
         Long ownerId;
         try {
             ownerId = Long.valueOf(matcher.group(1));
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("错误的图片路径");
+            throw new IllegalArgumentException("Invalid image path");
         }
         if (!userId.equals(ownerId)) {
-            throw new IllegalArgumentException("只能删除自己上传的图片");
+            throw new IllegalArgumentException("You can only delete images you uploaded");
         }
 
         Path root = uploadRoot();
@@ -81,23 +81,23 @@ public class ImageStorageService {
             Path target = realUserDirectory.resolve(matcher.group(2)).normalize();
             ensureDirectChild(realUserDirectory, target);
             if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IllegalArgumentException("错误的图片路径");
+                throw new IllegalArgumentException("Invalid image path");
             }
             return Files.deleteIfExists(target);
         } catch (IOException e) {
-            throw new IllegalStateException("图片删除失败", e);
+            throw new IllegalStateException("Failed to delete the image", e);
         }
     }
 
     private void validateUpload(MultipartFile image, Long userId) {
         if (userId == null) {
-            throw new IllegalArgumentException("请先登录");
+            throw new IllegalArgumentException("Please sign in first");
         }
         if (image == null || image.isEmpty()) {
-            throw new IllegalArgumentException("请选择图片");
+            throw new IllegalArgumentException("Please select an image");
         }
         if (image.getSize() > MAX_IMAGE_SIZE) {
-            throw new IllegalArgumentException("图片不能超过5MB");
+            throw new IllegalArgumentException("Images cannot exceed 5 MB");
         }
     }
 
@@ -114,9 +114,9 @@ public class ImageStorageService {
                 return "webp";
             }
         } catch (IOException e) {
-            throw new IllegalStateException("图片读取失败", e);
+            throw new IllegalStateException("Failed to read the image", e);
         }
-        throw new IllegalArgumentException("仅支持JPEG、PNG或WebP图片");
+        throw new IllegalArgumentException("Only JPEG, PNG, and WebP images are supported");
     }
 
     private Path prepareUserDirectory(Long userId) {
@@ -126,35 +126,35 @@ public class ImageStorageService {
         try {
             Files.createDirectories(userDirectory);
             if (!Files.isDirectory(userDirectory, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IllegalStateException("图片目录不可用");
+                throw new IllegalStateException("The image directory is unavailable");
             }
             Path realRoot = root.toRealPath();
             Path realUserDirectory = userDirectory.toRealPath();
             ensureWithinRoot(realRoot, realUserDirectory);
             return realUserDirectory;
         } catch (IOException e) {
-            throw new IllegalStateException("图片目录创建失败", e);
+            throw new IllegalStateException("Failed to create the image directory", e);
         }
     }
 
     private Path uploadRoot() {
         Path imageDir = uploadProperties.getImageDir();
         if (imageDir == null) {
-            throw new IllegalStateException("未配置图片上传目录");
+            throw new IllegalStateException("The image upload directory is not configured");
         }
         return imageDir.toAbsolutePath().normalize();
     }
 
     private void ensureWithinRoot(Path root, Path path) {
         if (!path.startsWith(root)) {
-            throw new IllegalArgumentException("错误的图片路径");
+            throw new IllegalArgumentException("Invalid image path");
         }
     }
 
     private void ensureDirectChild(Path directory, Path target) {
         ensureWithinRoot(directory, target);
         if (!directory.equals(target.getParent())) {
-            throw new IllegalArgumentException("错误的图片路径");
+            throw new IllegalArgumentException("Invalid image path");
         }
     }
 

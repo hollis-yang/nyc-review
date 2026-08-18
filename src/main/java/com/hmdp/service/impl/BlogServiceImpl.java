@@ -84,7 +84,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 1.获取登录用户
         Long userId = UserHolder.getUser().getId();
         if (getById(id) == null) {
-            return Result.fail("笔记不存在");
+            return Result.fail("Note not found");
         }
         String key = BLOG_LIKED_KEY + id;
         RLock lock = redissonClient.getLock("lock:blog-like:" + id + ":" + userId);
@@ -93,7 +93,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         try {
             locked = lock.tryLock(1, 10, TimeUnit.SECONDS);
             if (!locked) {
-                return Result.fail("操作过于频繁，请稍后重试");
+                return Result.fail("Too many requests. Please try again later");
             }
             Long delta = stringRedisTemplate.execute(
                     BLOG_LIKE_SCRIPT,
@@ -101,7 +101,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                     userId.toString(),
                     Long.toString(System.currentTimeMillis()));
             if (delta == null || (delta != 1L && delta != -1L)) {
-                throw new IllegalStateException("点赞状态更新失败");
+                throw new IllegalStateException("Failed to update like status");
             }
             registerLikeRollbackCompensation(key, userId);
             releaseAfterCompletion = registerLikeLockRelease(lock);
@@ -115,12 +115,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                         Collections.singletonList(key),
                         userId.toString(),
                         Long.toString(System.currentTimeMillis()));
-                return Result.fail("点赞状态更新失败");
+                return Result.fail("Failed to update like status");
             }
             return Result.ok();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return Result.fail("操作被中断，请重试");
+            return Result.fail("The operation was interrupted. Please try again");
         } finally {
             if (locked && !releaseAfterCompletion && lock.isHeldByCurrentThread()) {
                 lock.unlock();
@@ -149,7 +149,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 1. 查询Blog
         Blog blog = getById(id);
         if (blog == null) {
-            return Result.fail("笔记不存在");
+            return Result.fail("Note not found");
         }
         // 2. 查询Blog有关的用户
         queryBlogUser(blog);
@@ -167,7 +167,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 2.保存探店博文
         boolean isSuccess = save(blog);
         if (!isSuccess) {
-            return Result.fail("新增笔记失败");
+            return Result.fail("Failed to create the note");
         }
         // 3.查询笔记作者的所有粉丝
         List<Follow> follows = followService.query().eq("follow_user_id", user.getId()).list();
@@ -218,17 +218,17 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     public Result deleteBlog(Long id) {
         Blog blog = getById(id);
         if (blog == null) {
-            return Result.fail("笔记不存在");
+            return Result.fail("Note not found");
         }
         Long userId = UserHolder.getUser().getId();
         if (!userId.equals(blog.getUserId())) {
-            return Result.fail("只能删除自己的笔记");
+            return Result.fail("You can only delete your own notes");
         }
         List<BlogComments> comments = blogCommentsMapper.selectList(
                 new QueryWrapper<BlogComments>().eq("blog_id", id));
         blogCommentsMapper.delete(new QueryWrapper<BlogComments>().eq("blog_id", id));
         if (!removeById(id)) {
-            throw new IllegalStateException("笔记删除失败");
+            throw new IllegalStateException("Failed to delete the note");
         }
         List<Long> commentIds = comments.stream().map(BlogComments::getId).collect(Collectors.toList());
         List<String> images = blog.getImages() == null

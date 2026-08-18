@@ -318,7 +318,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private static String requiredStreamValue(Map<Object, Object> values, String field) {
         Object value = values.get(field);
         if (value == null) {
-            throw new IllegalArgumentException("秒杀订单消息缺少字段: " + field);
+            throw new IllegalArgumentException("Flash-sale order message is missing field: " + field);
         }
         return value.toString();
     }
@@ -335,7 +335,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 userId.toString(),
                 Long.toString(orderId));
         if (result == null) {
-            return Result.fail("秒杀服务暂时不可用");
+            return Result.fail("The flash-sale service is temporarily unavailable");
         }
         // 2.判断结果是否为0
         int r = result.intValue();
@@ -353,14 +353,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = UserHolder.getUser().getId();
         long count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
         if (count > 0) {
-            return Result.fail("您已购买过该优惠券");
+            return Result.fail("You have already purchased this voucher");
         }
         Voucher voucher = voucherService.getById(voucherId);
         if (voucher == null) {
-            return Result.fail("优惠券不存在");
+            return Result.fail("Voucher not found");
         }
         if (voucher.getType() != 0) {
-            return Result.fail("该优惠券不支持普通购买，请参与秒杀");
+            return Result.fail("This voucher is only available through the manual flash sale");
         }
         VoucherOrder voucherOrder = new VoucherOrder();
         long orderId = redisIdWorker.nextId("order");
@@ -391,11 +391,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 .gt("stock", 0)
                 .update();
         if (!stockUpdated) {
-            throw new IllegalStateException("数据库库存不足或秒杀券不存在");
+            throw new IllegalStateException("Database stock is insufficient or the flash-sale voucher does not exist");
         }
 
         if (!save(voucherOrder)) {
-            throw new IllegalStateException("秒杀订单保存失败");
+            throw new IllegalStateException("Failed to save the flash-sale order");
         }
     }
 }

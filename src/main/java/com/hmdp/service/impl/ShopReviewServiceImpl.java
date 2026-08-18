@@ -84,22 +84,22 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
     @Transactional
     public Result addReview(ShopReview review) {
         if (review.getShopId() == null) {
-            return Result.fail("店铺ID不能为空");
+            return Result.fail("Shop ID is required");
         }
         if (review.getRating() == null || review.getRating() < 1 || review.getRating() > 5) {
-            return Result.fail("评分必须在1-5之间");
+            return Result.fail("Rating must be between 1 and 5");
         }
         if (review.getContent() == null || review.getContent().trim().isEmpty()) {
-            return Result.fail("评价内容不能为空");
+            return Result.fail("Review content is required");
         }
         if (shopService.getById(review.getShopId()) == null) {
-            return Result.fail("店铺不存在");
+            return Result.fail("Shop not found");
         }
         Long userId = UserHolder.getUser().getId();
         review.setUserId(userId);
         review.setLiked(0);
         if (!save(review)) {
-            throw new IllegalStateException("评价保存失败");
+            throw new IllegalStateException("Failed to save the review");
         }
         int ratingScore = review.getRating() * 10;
         boolean aggregateUpdated = shopService.update()
@@ -109,7 +109,7 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
                 .eq("id", review.getShopId())
                 .update();
         if (!aggregateUpdated) {
-            throw new IllegalStateException("店铺评价统计更新失败");
+            throw new IllegalStateException("Failed to update shop review statistics");
         }
         Long shopId = review.getShopId();
         TransactionHooks.afterCommit(() -> {

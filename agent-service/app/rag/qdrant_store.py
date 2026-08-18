@@ -40,9 +40,11 @@ class QdrantRagService:
             ),
         )
 
-    async def index(self, documents: list[RagDocument]) -> int:
+    async def index(self, documents: list[RagDocument], *, replace: bool = False) -> int:
         if not documents:
             return 0
+        if replace and await self._client.collection_exists(self._collection_name):
+            await self._client.delete_collection(self._collection_name)
         await self.ensure_collection()
         vectors = await self._embeddings.embed([document.text for document in documents])
         points = []
@@ -76,6 +78,7 @@ class QdrantRagService:
                 self._retrieve_for_shop(
                     query_vector=query_vector,
                     shop_id=candidate.shop_id,
+                    data_version=candidate.data_version,
                     desired_tags=constraints.desired_tags,
                 )
                 for candidate in candidates.candidates
@@ -87,18 +90,27 @@ class QdrantRagService:
         self,
         query_vector: list[float],
         shop_id: int,
+        data_version: str | None,
         desired_tags: list[str],
     ) -> ShopEvidence:
+        must_conditions = [
+            models.FieldCondition(
+                key="shop_id",
+                match=models.MatchValue(value=shop_id),
+            )
+        ]
+        if data_version:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="data_version",
+                    match=models.MatchValue(value=data_version),
+                )
+            )
         response = await self._client.query_points(
             collection_name=self._collection_name,
             query=query_vector,
             query_filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="shop_id",
-                        match=models.MatchValue(value=shop_id),
-                    )
-                ]
+                must=must_conditions
             ),
             limit=self._citations_per_shop,
             with_payload=True,

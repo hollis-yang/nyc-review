@@ -117,7 +117,7 @@ public class UserController {
     public Result updateMe(@RequestBody User user, HttpServletRequest request) {
         UserDTO userDTO = UserHolder.getUser();
         if (userDTO == null) {
-            return Result.fail("请先登录");
+            return Result.fail("Please sign in first");
         }
         // 防止修改其他用户
         user.setId(userDTO.getId());
@@ -145,11 +145,11 @@ public class UserController {
     public Result updateInfo(@RequestBody UserInfo userInfo) {
         UserDTO userDTO = UserHolder.getUser();
         if (userDTO == null) {
-            return Result.fail("请先登录");
+            return Result.fail("Please sign in first");
         }
         // 防止修改其他用户
         userInfo.setUserId(userDTO.getId());
         boolean saved = userInfoService.saveOrUpdate(userInfo);
-        return saved ? Result.ok() : Result.fail("用户资料保存失败");
+        return saved ? Result.ok() : Result.fail("Failed to save the user profile");
     }
 }

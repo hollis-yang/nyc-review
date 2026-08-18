@@ -30,4 +30,5 @@ async def health() -> dict[str, str]:
         "service": settings.app_name,
         "adapter": settings.adapter,
         "rag": settings.rag_adapter,
+        "model": settings.model_provider,
     }

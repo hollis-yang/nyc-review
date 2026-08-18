@@ -118,19 +118,19 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
     @Transactional
     public Result addComment(BlogComments comment) {
         if (comment.getBlogId() == null) {
-            return Result.fail("博客ID不能为空");
+            return Result.fail("Blog ID is required");
         }
         if (comment.getContent() == null || comment.getContent().trim().isEmpty()) {
-            return Result.fail("评论内容不能为空");
+            return Result.fail("Comment content is required");
         }
         if (blogService.getById(comment.getBlogId()) == null) {
-            return Result.fail("博客不存在");
+            return Result.fail("Blog not found");
         }
         // 校验父评论
         if (comment.getParentId() != null && comment.getParentId() > 0) {
             BlogComments parent = getById(comment.getParentId());
             if (parent == null || !parent.getBlogId().equals(comment.getBlogId())) {
-                return Result.fail("父评论不存在");
+                return Result.fail("Parent comment not found");
             }
             // 确保 parentId 指向顶层评论
             if (parent.getParentId() != null && parent.getParentId() > 0) {
@@ -142,7 +142,7 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         if (comment.getAnswerId() != null && comment.getAnswerId() > 0) {
             BlogComments answered = getById(comment.getAnswerId());
             if (answered == null || !answered.getBlogId().equals(comment.getBlogId())) {
-                return Result.fail("被回复评论不存在");
+                return Result.fail("Reply target comment not found");
             }
             if (comment.getParentId() == 0L) {
                 comment.setParentId(answered.getParentId() != null && answered.getParentId() > 0
@@ -157,14 +157,14 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         comment.setLiked(0);
         comment.setStatus(false);
         if (!save(comment)) {
-            throw new IllegalStateException("评论保存失败");
+            throw new IllegalStateException("Failed to save the comment");
         }
         boolean countUpdated = blogService.update()
                 .setSql("comments = comments + 1")
                 .eq("id", comment.getBlogId())
                 .update();
         if (!countUpdated) {
-            throw new IllegalStateException("博客评论数更新失败");
+            throw new IllegalStateException("Failed to update the blog comment count");
         }
         return Result.ok(comment.getId());
     }
@@ -174,11 +174,11 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
     public Result deleteComment(Long id) {
         BlogComments comment = getById(id);
         if (comment == null) {
-            return Result.fail("评论不存在");
+            return Result.fail("Comment not found");
         }
         Long userId = UserHolder.getUser().getId();
         if (!userId.equals(comment.getUserId())) {
-            return Result.fail("只能删除自己的评论");
+            return Result.fail("You can only delete your own comments");
         }
         int deletedCount = 1;
         List<Long> deletedIds = new ArrayList<>();
@@ -189,21 +189,21 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
             if (!children.isEmpty()) {
                 List<Long> childIds = children.stream().map(BlogComments::getId).collect(Collectors.toList());
                 if (!removeByIds(childIds)) {
-                    throw new IllegalStateException("子评论删除失败");
+                    throw new IllegalStateException("Failed to delete child comments");
                 }
                 deletedIds.addAll(childIds);
                 deletedCount += children.size();
             }
         }
         if (!removeById(id)) {
-            throw new IllegalStateException("评论删除失败");
+            throw new IllegalStateException("Failed to delete the comment");
         }
         boolean countUpdated = blogService.update()
                 .setSql("comments = GREATEST(comments - " + deletedCount + ", 0)")
                 .eq("id", comment.getBlogId())
                 .update();
         if (!countUpdated) {
-            throw new IllegalStateException("博客评论数更新失败");
+            throw new IllegalStateException("Failed to update the blog comment count");
         }
         TransactionHooks.afterCommit(() -> {
             try {

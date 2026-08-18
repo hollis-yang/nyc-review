@@ -60,4 +60,19 @@ class VoucherOrderStreamContractTest {
         assertEquals("stream:orders", SECKILL_ORDER_STREAM_KEY);
         assertEquals("stream:orders:dead-letter", SECKILL_ORDER_DEAD_LETTER_STREAM_KEY);
     }
+
+    @Test
+    void uniqueIndexMigrationArchivesLegacyConflictsAndIsRepeatable() throws IOException {
+        try (InputStream stream = getClass().getClassLoader()
+                .getResourceAsStream("db/p2_redis_stream_order.sql")) {
+            assertTrue(stream != null, "P2 migration must exist");
+            String migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(migration.contains("tb_voucher_order_conflict_archive"));
+            assertTrue(migration.contains("DELETE duplicate_order"));
+            assertTrue(migration.contains("information_schema.statistics"));
+            assertTrue(migration.contains("uk_voucher_order_user_voucher"));
+            assertTrue(migration.contains("PREPARE hmdp_order_unique_index_statement"));
+        }
+    }
 }

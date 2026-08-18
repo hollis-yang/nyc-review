@@ -34,9 +34,7 @@ interface ReviewData {
 
 export default function ShopDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t, i18n } = useTranslation();
-  const isEn2 = i18n.language === 'en';
-  const [addrTL, setAddrTL] = useState<string | null>(null);
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
@@ -88,18 +86,12 @@ export default function ShopDetail() {
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) {
-      try { await navigator.share({ title: shop?.name ?? '店铺详情', url }); } catch {}
+      try { await navigator.share({ title: shop?.name ?? 'Shop details', url }); } catch {}
     } else {
       await navigator.clipboard.writeText(url);
       Toast.show({ icon: 'success', content: t('shopDetail.linkCopied') });
     }
   };
-
-  useEffect(() => {
-    if (shop && isEn2 && !addrTL) {
-      setAddrTL('...');
-    }
-  }, [shop, isEn2]);
 
   const handleReviewSubmit = async () => {
     if (!reviewContent.trim() || !id) return;
@@ -202,7 +194,7 @@ export default function ShopDetail() {
 
         <div className={styles.voucherSection}>
           <div>
-            <span className={styles.voucherIcon}>券</span>
+            <span className={styles.voucherIcon}>%</span>
             <span style={{ fontWeight: 'bold' }}>{t('shopDetail.vouchers')}</span>
           </div>
           {vouchers.map((v) => (
@@ -242,7 +234,7 @@ export default function ShopDetail() {
                         {reviewTL[review.id]}
                       </div>
                     )}
-                    <span style={{ fontSize: 11, color: '#bbb', cursor: 'pointer', display: isEn2 ? 'inline' : 'none' }}
+                    <span style={{ fontSize: 11, color: '#ff6633', cursor: 'pointer', display: 'inline' }}
                       onClick={async () => {
                         if (reviewTL[review.id]) {
                           const next = { ...reviewTL };
@@ -255,7 +247,7 @@ export default function ShopDetail() {
                           setReviewTL(prev => ({ ...prev, [review.id]: String(res.data ?? res) }));
                         } catch {}
                       }}>
-                      🌐
+                      ✦ Translate with DeepSeek
                     </span>
                     {reviewImages.length > 0 && (
                       <div className={styles.commentImages}>
@@ -265,7 +257,7 @@ export default function ShopDetail() {
                       </div>
                     )}
                     <div style={{ fontSize: 10, color: '#999' }}>
-                      点赞{review.liked}
+                      {t('shopDetail.like', { n: review.liked })}
                     </div>
                   </div>
                 </div>
@@ -285,7 +277,7 @@ export default function ShopDetail() {
         <div style={{ padding: '12px 14px' }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{t('shopDetail.writeReview')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, color: '#666' }}>评分：</span>
+            <span style={{ fontSize: 13, color: '#666' }}>{t('shopDetail.rating')}</span>
             <Rate
               value={reviewRating}
               onChange={setReviewRating}

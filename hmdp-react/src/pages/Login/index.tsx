@@ -38,7 +38,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [disabled, setDisabled] = useState(false);
-  const [codeBtnMsg, setCodeBtnMsg] = useState("获取验证码");
+  const [codeBtnMsg, setCodeBtnMsg] = useState(t('login.getCode'));
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef(60);
 
@@ -69,7 +69,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
     }
     setDisabled(true);
     countdownRef.current = 60;
-    setCodeBtnMsg(`${countdownRef.current}秒后可重发`);
+    setCodeBtnMsg(t('login.retryAfter', { n: countdownRef.current }));
     timerRef.current = setInterval(() => {
       countdownRef.current--;
       if (countdownRef.current <= 0) {
@@ -77,7 +77,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
         setCodeBtnMsg(t('login.getCode'));
         if (timerRef.current) clearInterval(timerRef.current);
       } else {
-        setCodeBtnMsg(`${countdownRef.current}秒后可重发`);
+        setCodeBtnMsg(t('login.retryAfter', { n: countdownRef.current }));
       }
     }, 1000);
   };
@@ -88,7 +88,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
       return;
     }
     if (!phone || (!isPasswordMode && !code) || (isPasswordMode && !password)) {
-      Toast.show({ icon: 'fail', content: isPasswordMode ? '手机号和密码不能为空！' : '手机号和验证码不能为空！' });
+      Toast.show({ icon: 'fail', content: isPasswordMode ? t('login.phonePwdRequired') : t('login.phoneCodeRequired') });
       return;
     }
     try {
@@ -113,7 +113,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
           <LeftOutline fontSize={22} color="white" />
         </div>
         <div className={styles.headerTitle}>
-          {isPasswordMode ? '密码登录' : '手机号码快捷登录'}
+          {isPasswordMode ? t('login.titlePwd') : t('login.titleSms')}
         </div>
       </div>
       <div className={styles.scroll}>
@@ -163,14 +163,14 @@ export default function Login({ mode = 'sms' }: LoginProps) {
           </div>
           <div className={styles.fieldDivider} />
           <div className={styles.hint}>
-            {isPasswordMode ? '未注册的手机号码登录后将自动注册' : '未注册的手机号码验证后自动创建账户'}
+            {isPasswordMode ? t('login.autoRegisterPwd') : t('login.autoRegisterSms')}
           </div>
           <button className={styles.loginBtn} onClick={handleLogin}>
-            登录
+            {t('login.loginBtn')}
           </button>
           <div className={styles.switchLink}>
             <Link to={isPasswordMode ? '/login' : '/login2'}>
-              {isPasswordMode ? '验证码登录' : '密码登录'}
+              {isPasswordMode ? t('login.switchToSms') : t('login.switchToPwd')}
             </Link>
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
           <div className={styles.agreementText}>
             {t('login.agreement')}
             <a href="javascript:void(0)">{t('login.tos')}</a>
-            、
+            {' and '}
             <a href="javascript:void(0)">{t('login.privacy')}</a>
           </div>
         </div>

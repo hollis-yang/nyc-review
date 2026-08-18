@@ -6,6 +6,7 @@ import { getUserById, getUserInfo, getMeOptional } from '../../api/user';
 import { getBlogsOfUser } from '../../api/blog';
 import { isFollowed, follow, getCommonFollows } from '../../api/follow';
 import FootBar from '../../components/FootBar';
+import { useTranslation } from 'react-i18next';
 import styles from './OtherProfile.module.css';
 
 interface UserInfo {
@@ -24,6 +25,7 @@ interface DetailInfo {
 export default function OtherProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [info, setInfo] = useState<DetailInfo>({});
   const [blogs, setBlogs] = useState<any[]>([]);
@@ -58,7 +60,7 @@ export default function OtherProfile() {
         .catch(() => {}),
     ]).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || '用户不存在');
+      setError(msg || t('otherProfile.notFound'));
     });
   }, [id]);
 
@@ -66,7 +68,7 @@ export default function OtherProfile() {
     if (!user) return;
     try {
       await follow(user.id, !followed);
-      Toast.show({ icon: 'success', content: followed ? '已取消关注' : '已关注' });
+      Toast.show({ icon: 'success', content: followed ? t('otherProfile.unfollowedToast') : t('otherProfile.followedToast') });
       setFollowed(!followed);
     } catch (err: any) {
       Toast.show({ icon: 'fail', content: String(err) });
@@ -94,12 +96,12 @@ export default function OtherProfile() {
           <LeftOutline fontSize={18} color="white" />
         </div>
         <div className={styles.headerTitle}>
-          {user ? `${user.nickName} 的主页` : ''}
+          {user ? t('otherProfile.title', { name: user.nickName }) : ''}
         </div>
       </div>
 
       {error && <div className={styles.loadingFull}>{error}</div>}
-      {!error && !user && <div className={styles.loadingFull}>加载中...</div>}
+      {!error && !user && <div className={styles.loadingFull}>{t('otherProfile.loading')}</div>}
       {user && (
         <div className={styles.scroll}>
           {/* 个人信息卡片 */}
@@ -119,18 +121,18 @@ export default function OtherProfile() {
                 className={`${styles.followBtn} ${followed ? styles.followBtnUnfollow : ''}`}
                 onClick={handleFollow}
               >
-                {followed ? '已关注' : '+ 关注'}
+                {followed ? t('otherProfile.followed') : t('otherProfile.follow')}
               </div>
             </div>
             {!info.introduce && !info.city && (
-              <div className={styles.introRow}>这个人很懒，什么都没有留下</div>
+              <div className={styles.introRow}>{t('otherProfile.emptyIntro')}</div>
             )}
           </div>
 
           {/* 内容卡片（笔记 / 共同关注） */}
           <div className={styles.contentCard}>
             <Tabs activeKey={activeTab} onChange={handleTabChange}>
-              <Tabs.Tab title="笔记" key="1">
+              <Tabs.Tab title={t('otherProfile.notes')} key="1">
                 <div className={styles.tabContent}>
                   {blogs.map((b) => (
                     <div
@@ -155,9 +157,9 @@ export default function OtherProfile() {
                   ))}
                 </div>
               </Tabs.Tab>
-              <Tabs.Tab title="共同关注" key="2">
+              <Tabs.Tab title={t('otherProfile.commonFollows')} key="2">
                 <div className={styles.tabContent}>
-                  <div className={styles.commonFollowHint}>你们都关注了：</div>
+                  <div className={styles.commonFollowHint}>{t('otherProfile.commonHint')}</div>
                   {commonFollows.map((u) => (
                     <div key={u.id} className={styles.followItem}>
                       <div
@@ -171,7 +173,7 @@ export default function OtherProfile() {
                         className={styles.followVisitBtn}
                         onClick={() => navigate(`/user/${u.id}`)}
                       >
-                        去主页看看
+                        {t('otherProfile.visitProfile')}
                       </div>
                     </div>
                   ))}

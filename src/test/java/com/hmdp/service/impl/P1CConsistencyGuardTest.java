@@ -50,7 +50,7 @@ class P1CConsistencyGuardTest {
         currentUser.setId(42L);
         UserHolder.saveUser(currentUser);
         UserInfo update = new UserInfo();
-        update.setCity("杭州");
+        update.setCity("New York City");
 
         Result result = controller.updateInfo(update);
 
@@ -70,9 +70,9 @@ class P1CConsistencyGuardTest {
         Result invalid = service.follow(null, true);
 
         assertFalse(selfFollow.getSuccess());
-        assertEquals("不能关注自己", selfFollow.getErrorMsg());
+        assertEquals("You cannot follow yourself", selfFollow.getErrorMsg());
         assertFalse(invalid.getSuccess());
-        assertEquals("关注参数不合法", invalid.getErrorMsg());
+        assertEquals("Invalid follow request", invalid.getErrorMsg());
     }
 
     @Test
@@ -87,7 +87,7 @@ class P1CConsistencyGuardTest {
         Result result = service.addComment(comment);
 
         assertFalse(result.getSuccess());
-        assertEquals("博客不存在", result.getErrorMsg());
+        assertEquals("Blog not found", result.getErrorMsg());
     }
 
     @Test
@@ -103,7 +103,7 @@ class P1CConsistencyGuardTest {
         Result result = service.addReview(review);
 
         assertFalse(result.getSuccess());
-        assertEquals("店铺不存在", result.getErrorMsg());
+        assertEquals("Shop not found", result.getErrorMsg());
     }
 
     @Test

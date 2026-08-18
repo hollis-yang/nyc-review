@@ -1,0 +1,23 @@
+[
+  {
+    "id": "midtown-quiet-vegan",
+    "query": "Quiet vegan dinner in Midtown for 2 under $120",
+    "expectedCategory": "Food & Dining",
+    "expectedNeighborhood": "Midtown",
+    "expectedTags": ["quiet", "vegan_options"]
+  },
+  {
+    "id": "chelsea-accessible-cafe",
+    "query": "An accessible coffee shop in Chelsea with outdoor seating",
+    "expectedCategory": "Cafes & Desserts",
+    "expectedNeighborhood": "Chelsea",
+    "expectedTags": ["wheelchair_accessible", "outdoor_seating"]
+  },
+  {
+    "id": "williamsburg-late-night",
+    "query": "A late-night group spot in Williamsburg under $200",
+    "expectedCategory": "Bars & Nightlife",
+    "expectedNeighborhood": "Williamsburg",
+    "expectedTags": ["late_night", "good_for_groups"]
+  }
+]

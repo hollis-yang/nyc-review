@@ -44,14 +44,14 @@ class ShopServiceImplSortValidationTest {
 
         Result invalidColumn = service.queryShopByType(1, 1, null, null, "RAND()", "asc");
         assertFalse(invalidColumn.getSuccess());
-        assertEquals("排序字段不合法", invalidColumn.getErrorMsg());
+        assertEquals("Invalid sort field", invalidColumn.getErrorMsg());
 
         Result invalidGeoColumn = service.queryShopByType(1, 1, 120.1, 30.2, "score desc", "asc");
         assertFalse(invalidGeoColumn.getSuccess());
-        assertEquals("排序字段不合法", invalidGeoColumn.getErrorMsg());
+        assertEquals("Invalid sort field", invalidGeoColumn.getErrorMsg());
 
         Result invalidOrder = service.queryShopByType(1, 1, null, null, "score", "sideways");
         assertFalse(invalidOrder.getSuccess());
-        assertEquals("排序方向不合法", invalidOrder.getErrorMsg());
+        assertEquals("Invalid sort direction", invalidOrder.getErrorMsg());
     }
 }

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 from app.rag.nyc_loader import load_generated_documents
 
 GENERATOR_PATH = Path(__file__).parents[2] / "scripts" / "mock-data-generator" / "generate.py"
+sys.path.insert(0, str(GENERATOR_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("agent_test_nyc_generator", GENERATOR_PATH)
 GENERATOR = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
@@ -19,6 +21,7 @@ def test_generated_nyc_content_is_loadable_as_rag_documents():
         GENERATOR.generate_dataset("small", 20260817, output)
 
         documents = load_generated_documents(output)
+        import_manifest = json.loads((output / "import_manifest.json").read_text())
 
         assert len(documents) == 36 + 144 + 48 + 96
         assert {document.content_type for document in documents} == {
@@ -30,3 +33,5 @@ def test_generated_nyc_content_is_loadable_as_rag_documents():
         }
         assert all(document.shop_id > 0 for document in documents)
         assert all(document.source_id for document in documents)
+        assert {document.shop_id for document in documents} == set(import_manifest["shopIds"])
+        assert {document.data_version for document in documents} == {import_manifest["dataVersion"]}

@@ -33,7 +33,7 @@ public class UploadController {
         try {
             Long userId = UserHolder.getUser().getId();
             if (!imageStorageService.delete(publicPath, userId)) {
-                return Result.fail("图片不存在");
+                return Result.fail("Image not found");
             }
             return Result.ok();
         } catch (IllegalArgumentException e) {

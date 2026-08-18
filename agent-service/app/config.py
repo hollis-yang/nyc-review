@@ -2,12 +2,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_RUN_STORE_PATH = str(Path(__file__).resolve().parents[1] / ".local" / "agent-runs.sqlite3")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="HMDP_AGENT_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="HMDP_AGENT_", extra="ignore", populate_by_name=True)
 
     app_name: str = "hmdp-agent-service"
     environment: str = "development"
@@ -24,6 +26,19 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = Field(default=64, ge=8, le=4096)
+    model_provider: Literal["heuristic", "deepseek", "openai"] = "heuristic"
+    model_base_url: str = "https://api.deepseek.com/v1"
+    model_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("HMDP_AGENT_MODEL_API_KEY", "DEEPSEEK_API_KEY"),
+    )
+    model_name: str = Field(
+        default="deepseek-chat",
+        validation_alias=AliasChoices("HMDP_AGENT_MODEL_NAME", "DEEPSEEK_MODEL"),
+    )
+    model_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    model_fallback_to_heuristic: bool = True
+    run_store_path: str = DEFAULT_RUN_STORE_PATH
     max_candidates: int = Field(default=5, ge=1, le=20)
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)

@@ -1,14 +1,22 @@
 package com.hmdp.agentapi.service;
 
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.hmdp.agentapi.dto.AgentBusinessHours;
 import com.hmdp.agentapi.dto.AgentEvidenceCitation;
 import com.hmdp.agentapi.dto.AgentShopCandidate;
 import com.hmdp.agentapi.dto.AgentShopEvidence;
 import com.hmdp.agentapi.dto.AgentShopSearchRequest;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Shop;
+import com.hmdp.entity.ShopBusinessHours;
 import com.hmdp.entity.ShopReview;
+import com.hmdp.entity.ShopSubcategory;
+import com.hmdp.entity.ShopTag;
 import com.hmdp.entity.ShopType;
+import com.hmdp.mapper.ShopBusinessHoursMapper;
+import com.hmdp.mapper.ShopSubcategoryMapper;
+import com.hmdp.mapper.ShopTagMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IShopReviewService;
 import com.hmdp.service.IShopService;
@@ -19,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -33,17 +42,26 @@ public class AgentShopToolService {
     private final IShopTypeService shopTypeService;
     private final IShopReviewService shopReviewService;
     private final IBlogService blogService;
+    private final ShopTagMapper shopTagMapper;
+    private final ShopBusinessHoursMapper shopBusinessHoursMapper;
+    private final ShopSubcategoryMapper shopSubcategoryMapper;
 
     public AgentShopToolService(
             IShopService shopService,
             IShopTypeService shopTypeService,
             IShopReviewService shopReviewService,
-            IBlogService blogService
+            IBlogService blogService,
+            ShopTagMapper shopTagMapper,
+            ShopBusinessHoursMapper shopBusinessHoursMapper,
+            ShopSubcategoryMapper shopSubcategoryMapper
     ) {
         this.shopService = shopService;
         this.shopTypeService = shopTypeService;
         this.shopReviewService = shopReviewService;
         this.blogService = blogService;
+        this.shopTagMapper = shopTagMapper;
+        this.shopBusinessHoursMapper = shopBusinessHoursMapper;
+        this.shopSubcategoryMapper = shopSubcategoryMapper;
     }
 
     public SearchResult search(AgentShopSearchRequest request) {
@@ -68,18 +86,78 @@ public class AgentShopToolService {
         List<Shop> shops = query.list();
         Map<Long, ShopType> typeMap = shopTypeService.list().stream()
                 .collect(Collectors.toMap(ShopType::getId, Function.identity(), (first, ignored) -> first));
+        Enrichment enrichment = loadEnrichment(shops);
+        Set<String> requiredTags = safeRequest.requiredTags() == null
+                ? Set.of()
+                : Set.copyOf(safeRequest.requiredTags());
         List<String> warnings = new ArrayList<>();
-        if (safeRequest.requiredTags() != null && !safeRequest.requiredTags().isEmpty()) {
-            warnings.add("Tag filtering will be enabled after the NYC tag migration is applied.");
-        }
 
         List<AgentShopCandidate> candidates = shops.stream()
-                .map(shop -> toCandidate(shop, typeMap, safeRequest.latitude(), safeRequest.longitude()))
+                .map(shop -> toCandidate(
+                        shop,
+                        typeMap,
+                        enrichment,
+                        safeRequest.latitude(),
+                        safeRequest.longitude()
+                ))
+                .filter(candidate -> candidate.tags().containsAll(requiredTags))
                 .filter(candidate -> withinRadius(candidate, safeRequest.radiusMeters()))
                 .sorted(candidateComparator(safeRequest.latitude(), safeRequest.longitude()))
                 .limit(limit)
                 .toList();
+        if (candidates.isEmpty()) {
+            warnings.add("No NYC shops matched every hard constraint.");
+        }
         return new SearchResult(candidates, warnings);
+    }
+
+    private Enrichment loadEnrichment(List<Shop> shops) {
+        if (shops.isEmpty()) {
+            return Enrichment.empty();
+        }
+        List<Long> shopIds = shops.stream().map(Shop::getId).toList();
+        Map<Long, List<String>> tagsByShop = shopTagMapper.selectList(
+                        Wrappers.lambdaQuery(ShopTag.class)
+                                .in(ShopTag::getShopId, shopIds)
+                                .orderByAsc(ShopTag::getTag)
+                ).stream()
+                .collect(Collectors.groupingBy(
+                        ShopTag::getShopId,
+                        Collectors.mapping(ShopTag::getTag, Collectors.toList())
+                ));
+        Map<Long, List<AgentBusinessHours>> hoursByShop = shopBusinessHoursMapper.selectList(
+                        Wrappers.lambdaQuery(ShopBusinessHours.class)
+                                .in(ShopBusinessHours::getShopId, shopIds)
+                                .orderByAsc(ShopBusinessHours::getDayOfWeek)
+                ).stream()
+                .collect(Collectors.groupingBy(
+                        ShopBusinessHours::getShopId,
+                        Collectors.mapping(AgentShopToolService::toBusinessHours, Collectors.toList())
+                ));
+        List<Long> subcategoryIds = shops.stream()
+                .map(Shop::getSubcategoryId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, ShopSubcategory> subcategoryById = subcategoryIds.isEmpty()
+                ? Map.of()
+                : shopSubcategoryMapper.selectBatchIds(subcategoryIds).stream()
+                .collect(Collectors.toMap(
+                        ShopSubcategory::getId,
+                        Function.identity(),
+                        (first, ignored) -> first
+                ));
+        return new Enrichment(tagsByShop, hoursByShop, subcategoryById);
+    }
+
+    private static AgentBusinessHours toBusinessHours(ShopBusinessHours hours) {
+        return new AgentBusinessHours(
+                hours.getDayOfWeek(),
+                Boolean.TRUE.equals(hours.getClosed()),
+                hours.getOpenTime(),
+                hours.getCloseTime(),
+                Boolean.TRUE.equals(hours.getClosesNextDay())
+        );
     }
 
     public AgentShopEvidence evidence(Long shopId, Integer requestedLimit) {
@@ -130,6 +208,7 @@ public class AgentShopToolService {
     private AgentShopCandidate toCandidate(
             Shop shop,
             Map<Long, ShopType> typeMap,
+            Enrichment enrichment,
             Double latitude,
             Double longitude
     ) {
@@ -137,20 +216,29 @@ public class AgentShopToolService {
                 ? null
                 : haversineMeters(latitude, longitude, shop.getY(), shop.getX());
         ShopType type = typeMap.get(shop.getTypeId());
+        ShopSubcategory subcategory = enrichment.subcategoryById().get(shop.getSubcategoryId());
         return new AgentShopCandidate(
                 shop.getId(),
                 shop.getName(),
                 shop.getTypeId(),
                 type == null ? null : type.getName(),
+                shop.getSubcategoryId(),
+                subcategory == null ? null : subcategory.getName(),
+                shop.getBorough(),
                 shop.getArea(),
                 shop.getAddress(),
+                shop.getDescription(),
                 shop.getY(),
                 shop.getX(),
                 shop.getAvgPrice() == null ? null : shop.getAvgPrice() * 100L,
+                shop.getPriceLevel(),
                 shop.getScore() == null ? null : shop.getScore() / 10.0,
                 shop.getComments(),
                 distance,
-                List.of()
+                shop.getTimezone(),
+                shop.getDataVersion(),
+                enrichment.tagsByShop().getOrDefault(shop.getId(), List.of()),
+                enrichment.hoursByShop().getOrDefault(shop.getId(), List.of())
         );
     }
 
@@ -208,5 +296,15 @@ public class AgentShopToolService {
     }
 
     public record SearchResult(List<AgentShopCandidate> candidates, List<String> warnings) {
+    }
+
+    private record Enrichment(
+            Map<Long, List<String>> tagsByShop,
+            Map<Long, List<AgentBusinessHours>> hoursByShop,
+            Map<Long, ShopSubcategory> subcategoryById
+    ) {
+        static Enrichment empty() {
+            return new Enrichment(Map.of(), Map.of(), Map.of());
+        }
     }
 }

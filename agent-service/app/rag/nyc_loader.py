@@ -26,6 +26,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 category=_category_name(shop["typeId"]),
                 neighborhood=shop["neighborhood"],
                 evidence_tags=shop.get("tags") or [],
+                data_version=shop.get("dataVersion"),
                 untrusted_content=False,
             )
         )
@@ -42,6 +43,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 category=_category_name(shop["typeId"]),
                 neighborhood=shop["neighborhood"],
                 evidence_tags=review.get("evidenceTags") or [],
+                data_version=shop.get("dataVersion"),
                 untrusted_content=True,
             )
         )
@@ -58,6 +60,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 category=_category_name(shop["typeId"]),
                 neighborhood=shop["neighborhood"],
                 evidence_tags=shop.get("tags") or [],
+                data_version=shop.get("dataVersion"),
                 untrusted_content=True,
             )
         )
@@ -75,6 +78,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 created_at=comment.get("createTime"),
                 category=_category_name(shop["typeId"]),
                 neighborhood=shop["neighborhood"],
+                data_version=shop.get("dataVersion"),
                 untrusted_content=True,
             )
         )

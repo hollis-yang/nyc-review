@@ -46,3 +46,11 @@ export async function translateShop(shopId: number | string, targetLang: string 
   if (val) setCached(key, String(val));
   return res;
 }
+
+export async function translateText(text: string, targetLang: string = 'en') {
+  return client.post(
+    '/translate/text',
+    { text, targetLang },
+    { skipAuthRedirect: true } as AuthAwareRequestConfig,
+  );
+}

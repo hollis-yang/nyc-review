@@ -9,6 +9,15 @@ function HomeIcon({ size = 26, color = 'currentColor' }: { size?: number; color?
     </svg>
   );
 }
+
+function AiIcon({ size = 26 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 2.8c.7 4.7 2.5 6.5 7.2 7.2-4.7.7-6.5 2.5-7.2 7.2-.7-4.7-2.5-6.5-7.2-7.2 4.7-.7 6.5-2.5 7.2-7.2Z" />
+      <path d="M19 16c.3 2 1 2.7 3 3-2 .3-2.7 1-3 3-.3-2-1-2.7-3-3 2-.3 2.7-1 3-3Z" />
+    </svg>
+  );
+}
 import styles from './FootBar.module.css';
 
 interface FootBarProps {
@@ -30,6 +39,8 @@ export default function FootBar({ activeBtn }: FootBarProps) {
       navigate('/messages');
     } else if (i === 4) {
       navigate('/profile');
+    } else if (i === 5) {
+      navigate('/ai');
     }
   };
 
@@ -50,7 +61,14 @@ export default function FootBar({ activeBtn }: FootBarProps) {
         <div className={styles.footText}>{t('nav.map')}</div>
       </div>
       <div className={styles.footBox} onClick={() => toPage(0)}>
-        <img className={styles.addBtn} src="/imgs/add.png" alt="" />
+        <img className={styles.addBtn} src="/imgs/add.png" alt={t('nav.create')} />
+      </div>
+      <div
+        className={`${styles.footBox} ${activeBtn === 5 ? styles.active : ''}`}
+        onClick={() => toPage(5)}
+      >
+        <div className={styles.footView}><AiIcon size={26} /></div>
+        <div className={styles.footText}>{t('nav.ai')}</div>
       </div>
       <div
         className={`${styles.footBox} ${activeBtn === 3 ? styles.active : ''}`}

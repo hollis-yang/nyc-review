@@ -6,6 +6,7 @@ import { getShopsByName } from '../../api/shop';
 import { uploadBlogImage, deleteBlogImage } from '../../api/upload';
 import { createBlog } from '../../api/blog';
 import { getMe } from '../../api/user';
+import { useTranslation } from 'react-i18next';
 import styles from './BlogEdit.module.css';
 
 interface ShopItem {
@@ -16,6 +17,7 @@ interface ShopItem {
 
 export default function BlogEdit() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileList, setFileList] = useState<string[]>([]);
   const [title, setTitle] = useState('');
@@ -32,7 +34,7 @@ export default function BlogEdit() {
       return;
     }
     getMe().catch(() => {
-      Toast.show({ icon: 'fail', content: '请先登录' });
+      Toast.show({ icon: 'fail', content: t('blogEdit.loginRequired') });
       setTimeout(() => navigate('/login'), 200);
     });
   }, [navigate]);
@@ -71,7 +73,7 @@ export default function BlogEdit() {
 
   const handleSubmit = async () => {
     if (!selectedShop) {
-      Toast.show({ icon: 'fail', content: '请选择关联商户' });
+      Toast.show({ icon: 'fail', content: t('blogEdit.shopRequired') });
       return;
     }
     try {
@@ -95,10 +97,10 @@ export default function BlogEdit() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.cancelBtn} onClick={handleBack}>取消</div>
-        <div className={styles.title}>发笔记</div>
+        <div className={styles.cancelBtn} onClick={handleBack}>{t('blogEdit.cancel')}</div>
+        <div className={styles.title}>{t('blogEdit.title')}</div>
         <div className={styles.commit}>
-          <div className={styles.commitBtn} onClick={handleSubmit}>发布</div>
+          <div className={styles.commitBtn} onClick={handleSubmit}>{t('blogEdit.publish')}</div>
         </div>
       </div>
 
@@ -112,7 +114,7 @@ export default function BlogEdit() {
         />
         <div className={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>
           <CameraOutline fontSize={22} />
-          <div className={styles.uploadText}>上传照片</div>
+          <div className={styles.uploadText}>{t('blogEdit.uploadPhoto')}</div>
         </div>
         <div className={styles.picList}>
           {fileList.map((f, i) => (
@@ -131,25 +133,25 @@ export default function BlogEdit() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           type="text"
-          placeholder="填写标题更容易上首页哦~"
+          placeholder={t('blogEdit.titlePlaceholder')}
         />
       </div>
       <div className={styles.blogContent}>
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="最近打卡了什么地方，有什么新奇体验呢？"
+          placeholder={t('blogEdit.contentPlaceholder')}
         />
       </div>
 
       <div className={styles.divider} />
 
       <div className={styles.blogShop} onClick={() => { setShowDialog(true); queryShops(); }}>
-        <div className={styles.shopLeft}>关联商户</div>
+        <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
         {selectedShop ? (
           <div>{selectedShop.name}</div>
         ) : (
-          <div className={styles.selectHint}>去选择 &gt;</div>
+          <div className={styles.selectHint}>{t('blogEdit.selectShop')}</div>
         )}
       </div>
 
@@ -158,7 +160,7 @@ export default function BlogEdit() {
           <div className={styles.mask} onClick={() => setShowDialog(false)} />
           <div className={styles.shopDialog}>
             <div className={styles.dialogHeader}>
-              <div className={styles.shopLeft}>关联商户</div>
+              <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
             </div>
             <div className={styles.searchBar}>
               <div className={styles.citySelect}>NYC</div>
@@ -168,7 +170,7 @@ export default function BlogEdit() {
                   value={shopName}
                   onChange={(e) => setShopName(e.target.value)}
                   type="text"
-                  placeholder="搜索商户名称"
+                  placeholder={t('blogEdit.searchShop')}
                   onKeyDown={(e) => { if (e.key === 'Enter') queryShops(); }}
                 />
               </div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -42,6 +43,14 @@ class UserConstraints(BaseModel):
     visit_time: str | None = None
 
 
+class BusinessHours(BaseModel):
+    day_of_week: int = Field(ge=1, le=7)
+    closed: bool = False
+    open_time: str | None = None
+    close_time: str | None = None
+    closes_next_day: bool = False
+
+
 class ShopCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -55,6 +64,17 @@ class ShopCandidate(BaseModel):
     score: float = Field(ge=0, le=5)
     tags: list[str] = Field(default_factory=list)
     source: str = "hmdp"
+    subcategory_id: int | None = None
+    subcategory: str | None = None
+    borough: str | None = None
+    address: str | None = None
+    description: str | None = None
+    price_level: int | None = Field(default=None, ge=1, le=4)
+    comments: int | None = Field(default=None, ge=0)
+    distance_meters: int | None = Field(default=None, ge=0)
+    timezone: str | None = None
+    data_version: str | None = None
+    business_hours: list[BusinessHours] = Field(default_factory=list)
 
 
 class CandidateSet(BaseModel):
@@ -114,6 +134,28 @@ class AgentRunRequest(BaseModel):
     constraints: UserConstraints
 
 
+class AgentRunCreateRequest(BaseModel):
+    """Natural-language entry point used by the product UI.
+
+    Optional fields are user-provided hints. The model gateway extracts the rest
+    from ``query`` and the resulting ``UserConstraints`` remains the only object
+    shared by workflow nodes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: AgentMode = AgentMode.MULTI
+    query: str = Field(min_length=1, max_length=2_000)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    neighborhood: str | None = Field(default=None, max_length=80)
+    category: str | None = Field(default=None, max_length=80)
+    party_size: int | None = Field(default=None, ge=1, le=50)
+    budget_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    desired_tags: list[str] = Field(default_factory=list, max_length=20)
+    visit_time: str | None = None
+
+
 class AgentRunResponse(BaseModel):
     mode: AgentMode
     status: RunStatus
@@ -123,3 +165,31 @@ class AgentRunResponse(BaseModel):
     verification: VerificationReport
     summary: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentRunEvent(BaseModel):
+    sequence: int = Field(ge=1)
+    event: str
+    agent: str | None = None
+    status: str
+    message: str
+    created_at: datetime
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentRunCreated(BaseModel):
+    run_id: str
+    status: RunStatus
+    stream_url: str
+
+
+class AgentRunSnapshot(BaseModel):
+    run_id: str
+    mode: AgentMode
+    query: str
+    status: RunStatus
+    created_at: datetime
+    updated_at: datetime
+    events: list[AgentRunEvent] = Field(default_factory=list)
+    result: AgentRunResponse | None = None
+    error: str | None = None

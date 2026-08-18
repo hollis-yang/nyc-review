@@ -173,10 +173,10 @@ export default function MyProfile() {
               </div>
               <div className={styles.actions}>
                 <div className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
-                  编辑资料
+                  {t('profile.editProfile')}
                 </div>
                 <div className={styles.logoutBtn} onClick={handleLogout}>
-                  退出登录
+                  {t('profile.logout')}
                 </div>
               </div>
             </div>
@@ -195,7 +195,7 @@ export default function MyProfile() {
           <div className={styles.signSection}>
             {signedToday ? (
               <div className={styles.signedBadge}>
-                ✅ 已签到 <span className={styles.signDaysNum}>{signDays}</span> 天
+                ✅ Checked in <span className={styles.signDaysNum}>{signDays}</span> days
               </div>
             ) : (
               <div className={styles.signBtn} onClick={handleSign}>
@@ -215,7 +215,7 @@ export default function MyProfile() {
             '--active-title-color': '#ff6633',
           } as React.CSSProperties}
         >
-          <Tabs.Tab title="笔记" key="1">
+          <Tabs.Tab title={t('profile.notes')} key="1">
             <div className={styles.tabContent}>
               {blogs.map((b) => (
                 <div
@@ -240,7 +240,7 @@ export default function MyProfile() {
               ))}
             </div>
           </Tabs.Tab>
-          <Tabs.Tab title="关注" key="4">
+          <Tabs.Tab title={t('profile.following')} key="4">
             <div className={styles.tabContent} onScroll={handleScroll} ref={containerRef}>
               {followBlogs.map((b) => (
                 <FeedCard

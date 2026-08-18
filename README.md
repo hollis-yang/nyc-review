@@ -38,7 +38,8 @@ cp .env.example .env
 | `HMDP_REDIS_USERNAME` | 否 | Redis ACL 用户名，默认空 |
 | `HMDP_REDIS_PASSWORD` | 否 | Redis 密码，默认空 |
 | `DEEPSEEK_API_KEY` | 是 | DeepSeek API Key，无默认值 |
-| `DEEPSEEK_MODEL` | 否 | 翻译模型，默认 `deepseek-v4-flash` |
+| `DEEPSEEK_MODEL` | 否 | 翻译与 Agent 模型，默认 `deepseek-chat` |
+| `DEEPSEEK_BASE_URL` | 否 | DeepSeek OpenAI-compatible API 地址 |
 | `HMDP_IMAGE_UPLOAD_DIR` | 否 | 用户图片保存目录，默认 `./uploads/imgs`；Nginx 部署时应指向其图片目录 |
 
 `.env` 和 `application-local.yaml` 已被 Git 忽略。`.env` 自动导入依赖当前工作目录；请从项目根目录启动后端。不要把真实凭据写入 `.env.example`、`application.yaml`、README 或提交记录。
@@ -58,6 +59,7 @@ mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 ```bash
 mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p4_nyc_domain.sql
 ```
 
 生成稳定、可复现的 NYC Mock 数据：
@@ -68,7 +70,14 @@ python3 scripts/mock-data-generator/generate.py \
   --output data/generated/nyc-small
 ```
 
-生成结果包括六个顶级分类、商户、营业时间、评论、博客、嵌套评论、普通优惠券与必须手动参与的秒杀券。详细说明见 [Mock 数据生成器](scripts/mock-data-generator/README.md)。
+生成结果包括六个顶级分类、商户、营业时间、评论、博客、嵌套评论、普通优惠券与必须手动参与的秒杀券，以及 MySQL/Redis 导入包。生成动作不会连接数据库；下面两条命令会归档当前杭州数据并替换开发环境中的活动数据，执行前应停止服务并确认目标实例：
+
+```bash
+mysql -u root -p hmdp_new < data/generated/nyc-small/mysql_import.sql
+redis-cli --pipe < data/generated/nyc-small/redis_seed.resp
+```
+
+详细步骤与校验查询见 [P1 NYC 数据 Runbook](docs/p1-nyc-data-runbook.md) 和 [Mock 数据生成器](scripts/mock-data-generator/README.md)。
 
 ## 启动后端
 
@@ -88,10 +97,11 @@ uv sync --dev
 HMDP_AGENT_RAG_ADAPTER=qdrant \
 HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
 HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+HMDP_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --reload --port 8090
 ```
 
-配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 使用生成的 NYC 数据作为只读业务 Tool；需要连接 Spring Boot Tool API 时设置 `HMDP_AGENT_ADAPTER=http`。完整配置见 [Agent Service README](agent-service/README.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
+配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会校验导入清单并使用同一组 shopId 重建 Qdrant 索引；需要连接 Spring Boot Tool API 时设置 `HMDP_AGENT_ADAPTER=http`。`HMDP_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
 
 ## 启动前端开发环境
 

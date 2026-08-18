@@ -8,6 +8,7 @@ from typing import Protocol
 import httpx
 
 from app.domain.models import (
+    BusinessHours,
     CandidateSet,
     EvidenceCitation,
     EvidencePack,
@@ -17,6 +18,7 @@ from app.domain.models import (
     ShopEvidence,
     UserConstraints,
 )
+from app.request_context import request_authorization
 
 
 class ShopToolService(Protocol):
@@ -102,6 +104,17 @@ class GeneratedNycShopToolService:
             raise ValueError("Generated shops.json must contain a list.")
         self._shops: list[dict] = shops
         self._max_candidates = max_candidates
+        hours_path = data_directory / "shop_business_hours.json"
+        subcategories_path = data_directory / "shop_subcategories.json"
+        self._hours_by_shop: dict[int, list[dict]] = {}
+        if hours_path.is_file():
+            with hours_path.open(encoding="utf-8") as handle:
+                for item in json.load(handle):
+                    self._hours_by_shop.setdefault(item["shopId"], []).append(item)
+        self._subcategories: dict[int, dict] = {}
+        if subcategories_path.is_file():
+            with subcategories_path.open(encoding="utf-8") as handle:
+                self._subcategories = {item["id"]: item for item in json.load(handle)}
 
     async def search(self, constraints: UserConstraints) -> CandidateSet:
         per_person_budget = (
@@ -150,6 +163,26 @@ class GeneratedNycShopToolService:
                 score=shop["score"] / 10,
                 tags=shop.get("tags") or [],
                 source="nyc-generated",
+                subcategory_id=shop.get("subcategoryId"),
+                subcategory=(self._subcategories.get(shop.get("subcategoryId")) or {}).get("name"),
+                borough=shop.get("borough"),
+                address=shop.get("address"),
+                description=shop.get("description"),
+                price_level=shop.get("priceLevel"),
+                comments=shop.get("comments"),
+                distance_meters=distance,
+                timezone=shop.get("timezone"),
+                data_version=shop.get("dataVersion"),
+                business_hours=[
+                    BusinessHours(
+                        day_of_week=item["dayOfWeek"],
+                        closed=item["closed"],
+                        open_time=item.get("openTime"),
+                        close_time=item.get("closeTime"),
+                        closes_next_day=item.get("closesNextDay", False),
+                    )
+                    for item in self._hours_by_shop.get(shop["id"], [])
+                ],
             )
             for shop, category, _, _ in rows[: self._max_candidates]
         ]
@@ -185,7 +218,8 @@ class HttpShopToolService:
         self._max_candidates = max_candidates
 
     async def search(self, constraints: UserConstraints) -> CandidateSet:
-        headers = {"authorization": self._auth_token} if self._auth_token else {}
+        authorization = request_authorization.get() or self._auth_token
+        headers = {"authorization": authorization} if authorization else {}
         payload = {
             # Natural language belongs to the Agent/RAG layer, not a literal shop-name LIKE filter.
             "query": None,
@@ -202,12 +236,21 @@ class HttpShopToolService:
             "limit": self._max_candidates,
         }
         async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-            response = await client.post(
-                f"{self._base_url}/internal/agent/tools/shops/search",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
+            response = None
+            for attempt in range(2):
+                try:
+                    response = await client.post(
+                        f"{self._base_url}/internal/agent/tools/shops/search",
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    break
+                except (httpx.TimeoutException, httpx.NetworkError):
+                    if attempt == 1:
+                        raise
+            if response is None:
+                raise RuntimeError("Shop tool did not return a response.")
         body = response.json()
         candidates = [self._to_candidate(item) for item in body.get("data") or []]
         applied = []
@@ -238,6 +281,26 @@ class HttpShopToolService:
             score=item.get("score") or 0,
             tags=item.get("tags") or [],
             source="hmdp-spring",
+            subcategory_id=item.get("subcategoryId"),
+            subcategory=item.get("subcategory"),
+            borough=item.get("borough"),
+            address=item.get("address"),
+            description=item.get("description"),
+            price_level=item.get("priceLevel"),
+            comments=item.get("comments"),
+            distance_meters=item.get("distanceMeters"),
+            timezone=item.get("timezone"),
+            data_version=item.get("dataVersion"),
+            business_hours=[
+                BusinessHours(
+                    day_of_week=hours["dayOfWeek"],
+                    closed=hours.get("closed", False),
+                    open_time=hours.get("openTime"),
+                    close_time=hours.get("closeTime"),
+                    closes_next_day=hours.get("closesNextDay", False),
+                )
+                for hours in item.get("businessHours") or []
+            ],
         )
 
 

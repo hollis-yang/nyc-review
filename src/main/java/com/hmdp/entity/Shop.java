@@ -36,6 +36,11 @@ public class Shop implements Serializable {
     private Long typeId;
 
     /**
+     * NYC 子分类 id
+     */
+    private Long subcategoryId;
+
+    /**
      * 商铺图片，多个图片以','隔开
      */
     private String images;
@@ -46,9 +51,19 @@ public class Shop implements Serializable {
     private String area;
 
     /**
+     * NYC borough
+     */
+    private String borough;
+
+    /**
      * 地址
      */
     private String address;
+
+    /**
+     * 商户介绍，供传统详情页与 RAG 使用
+     */
+    private String description;
 
     /**
      * 经度
@@ -64,6 +79,11 @@ public class Shop implements Serializable {
      * 均价，取整数
      */
     private Long avgPrice;
+
+    /**
+     * 价格等级 1~4
+     */
+    private Integer priceLevel;
 
     /**
      * 销量
@@ -84,6 +104,12 @@ public class Shop implements Serializable {
      * 营业时间，例如 10:00-22:00
      */
     private String openHours;
+
+    private String timezone;
+
+    private String sourceType;
+
+    private String dataVersion;
 
     /**
      * 创建时间

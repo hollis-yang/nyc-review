@@ -74,3 +74,53 @@ async def test_qdrant_rag_filters_by_shop_and_returns_traceable_citations():
     assert by_shop[101].citations[0].untrusted_content is True
     assert all(citation.shop_id == 102 for citation in by_shop[102].citations)
     await client.close()
+
+
+async def test_qdrant_rag_filters_same_shop_id_by_data_version():
+    client = AsyncQdrantClient(location=":memory:")
+    rag = QdrantRagService(
+        client=client,
+        embeddings=DeterministicHashEmbeddingService(dimensions=64),
+        collection_name="test_hmdp_versioned_content",
+    )
+    await rag.index(
+        [
+            RagDocument(
+                document_id="review:v1:1",
+                shop_id=101,
+                content_type="shop_review",
+                source_id="shop_review:v1:1",
+                text="Old dataset evidence.",
+                data_version="nyc-mock-v0",
+            ),
+            RagDocument(
+                document_id="review:v2:1",
+                shop_id=101,
+                content_type="shop_review",
+                source_id="shop_review:v2:1",
+                text="Current dataset evidence.",
+                data_version="nyc-mock-v1",
+            ),
+        ]
+    )
+    result = await rag.retrieve(
+        UserConstraints(query="current evidence"),
+        CandidateSet(
+            candidates=[
+                ShopCandidate(
+                    shop_id=101,
+                    name="Versioned Fixture",
+                    category="Food & Dining",
+                    neighborhood="Midtown",
+                    latitude=40.76,
+                    longitude=-73.98,
+                    avg_price_cents=4000,
+                    score=4.7,
+                    data_version="nyc-mock-v1",
+                )
+            ]
+        ),
+    )
+
+    assert [citation.source_id for citation in result.evidence[0].citations] == ["shop_review:v2:1"]
+    await client.close()

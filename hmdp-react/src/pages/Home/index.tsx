@@ -4,7 +4,6 @@ import { SearchOutline } from 'antd-mobile-icons';
 import { getShopTypes, getShopsByName } from '../../api/shop';
 import { useTranslation } from 'react-i18next';
 import { getHotBlogs } from '../../api/blog';
-import { translateBlog } from '../../api/translate';
 import BlogCard, { type BlogData } from '../../components/BlogCard';
 import FootBar from '../../components/FootBar';
 import styles from './Home.module.css';
@@ -16,9 +15,7 @@ interface ShopType {
 }
 
 export default function Home() {
-  const { t, i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
-  const [titleTL, setTitleTL] = useState<Record<number, string>>({});
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [types, setTypes] = useState<ShopType[]>([]);
   const [blogs, setBlogs] = useState<BlogData[]>([]);
@@ -90,22 +87,6 @@ export default function Home() {
     loadBlogs();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (blogs.length > 0 && isEn) {
-      blogs.forEach(b => {
-        if (!titleTL[b.id]) {
-          translateBlog(b.id, 'en').then(res => {
-            const txt = String(res.data ?? res);
-            if (txt && txt !== 'Translation failed') {
-              const firstLine = txt.split('\n')[0].trim();
-              setTitleTL(prev => ({ ...prev, [b.id]: firstLine }));
-            }
-          }).catch(() => {});
-        }
-      });
-    }
-  }, [blogs.length, isEn]);
-
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -164,7 +145,7 @@ export default function Home() {
                   />
                   <div className={styles.suggestInfo}>
                     <div className={styles.suggestName}>{s.name}</div>
-                    <div className={styles.suggestHint}>{s.typeId && getTypeInfo(s.typeId) ? getTypeInfo(s.typeId)!.name : '点击查看详情'}</div>
+                    <div className={styles.suggestHint}>{s.typeId && getTypeInfo(s.typeId) ? getTypeInfo(s.typeId)!.name : 'View details'}</div>
                   </div>
                 </div>
               ))}
@@ -197,7 +178,7 @@ export default function Home() {
 
       <div className={styles.blogList} onScroll={handleScroll} ref={containerRef}>
         {blogs.map((b) => (
-          <BlogCard key={b.id} blog={{ ...b, title: titleTL[b.id] || b.title }} onLikeUpdate={handleLikeUpdate} />
+          <BlogCard key={b.id} blog={b} onLikeUpdate={handleLikeUpdate} />
         ))}
         {loading && <div className={styles.loading}>{t('home.loading')}</div>}
       </div>

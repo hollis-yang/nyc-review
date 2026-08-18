@@ -10,11 +10,13 @@ import math
 import os
 import random
 import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
+from import_bundle import build_import_bundle
 
 DATA_VERSION = "nyc-mock-v1"
 DEFAULT_SEED = 20260817
@@ -511,6 +513,14 @@ def update_shop_comment_counts(shops: list[dict[str, Any]], reviews: Iterable[di
         shop["comments"] = counts.get(shop["id"], 0)
 
 
+def update_blog_comment_counts(blogs: list[dict[str, Any]], comments: Iterable[dict[str, Any]]) -> None:
+    counts: dict[int, int] = {}
+    for comment in comments:
+        counts[comment["blogId"]] = counts.get(comment["blogId"], 0) + 1
+    for blog in blogs:
+        blog["comments"] = counts.get(blog["id"], 0)
+
+
 def write_json_atomic(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -545,6 +555,7 @@ def generate_dataset(profile_name: str, seed: int, output: Path) -> dict[str, An
         shops,
     )
     update_shop_comment_counts(shops, reviews)
+    update_blog_comment_counts(blogs, blog_comments)
 
     datasets = {
         "shop_types.json": [
@@ -566,6 +577,15 @@ def generate_dataset(profile_name: str, seed: int, output: Path) -> dict[str, An
     for filename, payload in datasets.items():
         write_json_atomic(output / filename, payload)
 
+    dataset_files = {
+        filename: {"sha256": sha256(output / filename)}
+        for filename in sorted(datasets)
+    }
+    dataset_sha256 = hashlib.sha256(
+        json.dumps(dataset_files, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    import_bundle = build_import_bundle(output, datasets, profile_name, seed, dataset_sha256)
+
     manifest = {
         "dataVersion": DATA_VERSION,
         "profile": profile_name,
@@ -573,11 +593,15 @@ def generate_dataset(profile_name: str, seed: int, output: Path) -> dict[str, An
         "generatedAt": "deterministic-output",
         "timezone": "America/New_York",
         "currency": "USD",
+        "datasetSha256": dataset_sha256,
         "counts": {filename.removesuffix(".json"): len(payload) for filename, payload in datasets.items()},
         "files": {
             filename: {"sha256": sha256(output / filename)}
-            for filename in sorted(datasets)
+            for filename in sorted(
+                [*datasets, "mysql_import.sql", "redis_seed.resp", "import_manifest.json"]
+            )
         },
+        "importBundle": import_bundle,
     }
     write_json_atomic(output / "manifest.json", manifest)
     return manifest

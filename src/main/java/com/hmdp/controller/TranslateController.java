@@ -1,6 +1,7 @@
 package com.hmdp.controller;
 
 import com.hmdp.dto.Result;
+import com.hmdp.dto.TranslateTextRequest;
 import com.hmdp.service.TranslateService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
@@ -25,5 +26,16 @@ public class TranslateController {
     @PostMapping("/shop")
     public Result translateShop(@RequestParam Long shopId, @RequestParam(defaultValue = "en") String targetLang) {
         return translateService.translateShop(shopId, targetLang);
+    }
+
+    @PostMapping("/text")
+    public Result translateText(@RequestBody TranslateTextRequest request) {
+        if (request == null || request.getText() == null || request.getText().isBlank()) {
+            return Result.fail("Text cannot be empty");
+        }
+        if (request.getText().length() > 5000) {
+            return Result.fail("Text cannot exceed 5,000 characters");
+        }
+        return translateService.translateText(request.getText(), request.getTargetLang());
     }
 }

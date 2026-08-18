@@ -14,4 +14,5 @@ class RagDocument(BaseModel):
     category: str | None = None
     neighborhood: str | None = None
     evidence_tags: list[str] = Field(default_factory=list)
+    data_version: str | None = None
     untrusted_content: bool = True

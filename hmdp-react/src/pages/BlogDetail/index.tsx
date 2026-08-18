@@ -51,8 +51,7 @@ interface CommentInfo {
 
 export default function BlogDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t, i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
@@ -142,7 +141,7 @@ export default function BlogDetail() {
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) {
-      try { await navigator.share({ title: blog?.title ?? '笔记详情', url }); } catch {}
+      try { await navigator.share({ title: blog?.title ?? 'Note details', url }); } catch {}
     } else {
       await navigator.clipboard.writeText(url);
       Toast.show({ icon: 'success', content: t('blogDetail.linkCopied') });
@@ -197,48 +196,6 @@ export default function BlogDetail() {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
-
-  useEffect(() => {
-    if (blog && isEn && !blogTL && !blogTLLoading) {
-      handleTranslateBlog();
-    }
-  }, [blog, isEn, blogTL]);
-
-  useEffect(() => {
-    if (comments.length > 0 && isEn) {
-      const allIds: number[] = [];
-      const collect = (list: any[]) => {
-        list.forEach((c: any) => {
-          allIds.push(c.id);
-          if (c.children?.length) collect(c.children);
-        });
-      };
-      collect(comments);
-      const untranslated = allIds.filter(id => !commentTL[id]);
-      if (untranslated.length > 0) {
-        untranslated.forEach(id => {
-          translateComment(id, 'en').then(res => {
-            const txt = String(res.data ?? res);
-            if (txt && txt !== 'Translation failed') {
-              setCommentTL(prev => ({ ...prev, [id]: txt }));
-            }
-          }).catch(() => {});
-        });
-      }
-    }
-  }, [comments.length, isEn]);
-
-  useEffect(() => {
-    if (comments.length > 0 && isEn) {
-      comments.forEach(c => {
-        if (!commentTL[c.id]) {
-          translateComment(c.id, 'en').then(res => {
-            setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
-          }).catch(() => {});
-        }
-      });
-    }
-  }, [comments, isEn]);
 
   const handleTranslateBlog = async () => {
     if (!blog || blogTL) { setBlogTL(null); setBlogTitleTL(null); return; }
@@ -309,11 +266,9 @@ export default function BlogDetail() {
 
   const formatDate = (d: string) => {
     const date = new Date(d);
-    if (isEn) {
-      const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return `${m[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
-    }
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    }).format(date);
   };
 
   const formatDateTime = (d: string) => {
@@ -374,7 +329,7 @@ export default function BlogDetail() {
                 </span>
               )}
                 <span className={styles.replyBtn}
-                  style={{ marginLeft: 4, display: isEn ? 'inline' : 'none' }}
+                  style={{ marginLeft: 4, display: 'inline' }}
                   onClick={async () => {
                     if (commentTL[c.id]) {
                       const next = { ...commentTL };
@@ -387,7 +342,7 @@ export default function BlogDetail() {
                       setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
                     } catch {}
                   }}>
-                  🌐
+                  ✦ DeepSeek translate
                 </span>
             </div>
             {currentUser && currentUser.id === c.userId && (
@@ -498,7 +453,7 @@ export default function BlogDetail() {
           <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
             <span style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}
               onClick={handleTranslateBlog}>
-              {isEn ? (blogTLLoading ? '⏳ ...' : blogTL ? t('blogDetail.original') : '🌐 ' + t('blogDetail.translate')) : ''}
+              {blogTLLoading ? 'Translating with DeepSeek…' : blogTL ? t('blogDetail.original') : `✦ ${t('blogDetail.translate')} with DeepSeek`}
             </span>
           </div>
           {blogTL && (
@@ -520,7 +475,7 @@ export default function BlogDetail() {
               <span style={{ fontSize: 12, color: '#F63', fontWeight: 600 }}>
                 ★ {shop.score / 10}
               </span>
-              <div className={styles.shopAvg}>${shop.avgPrice}/人</div>
+              <div className={styles.shopAvg}>${shop.avgPrice}/person</div>
             </div>
           </div>
         )}
@@ -546,7 +501,7 @@ export default function BlogDetail() {
         <div className={styles.comments} id="comments-section">
           <div className={styles.commentsHead}>
             <div>
-              网友评价 <span>（{totalCommentCount}）</span>
+              {t('blogDetail.comments')} <span>({totalCommentCount})</span>
             </div>
             <div className={styles.commentsHeadArrow} onClick={scrollToComments}>&gt;</div>
           </div>

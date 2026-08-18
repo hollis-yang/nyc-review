@@ -58,7 +58,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         Boolean alreadySigned = stringRedisTemplate.opsForValue()
                 .setBit(key, dayOfMonth - 1, true);
         if (Boolean.TRUE.equals(alreadySigned)) {
-            return Result.fail("今日已签到！");
+            return Result.fail("You have already checked in today");
         }
         return Result.ok();
     }
@@ -110,7 +110,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 1.校验手机号
         if (RegexUtils.isPhoneInvalid(phone)) {
             // 2.如果不符合，返回错误信息
-            return Result.fail("手机号格式错误!");
+            return Result.fail("Invalid phone number format");
         }
 
         // 3.符合，生成验证码
@@ -132,7 +132,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 1.校验手机号
         String phone = loginForm.getPhone();
         if (RegexUtils.isPhoneInvalid(phone)) {
-            return Result.fail("手机号格式错误!");
+            return Result.fail("Invalid phone number format");
         }
 
         // 2.校验验证码
@@ -140,7 +140,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String code = loginForm.getCode();
         if (cacheCode == null || !cacheCode.equals(code)) {
             // 3.不一致，报错
-            return Result.fail("验证码错误!");
+            return Result.fail("Invalid verification code");
         }
 
         // 4.一致，根据手机号查询用户
@@ -182,7 +182,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         userInfo.setCredits(0);
         userInfo.setLevel(false);
         if (!userInfoService.save(userInfo)) {
-            throw new IllegalStateException("用户资料初始化失败");
+            throw new IllegalStateException("Failed to initialize the user profile");
         }
         return user;
     }

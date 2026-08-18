@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Rate } from 'antd-mobile';
+import { useTranslation } from 'react-i18next';
 import { getShopById, getShopReviews } from '../../api/shop';
 import styles from './ShopReviews.module.css';
 
@@ -21,7 +22,8 @@ export default function ShopReviews() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [shopName, setShopName] = useState(searchParams.get('name') || '全部评价');
+  const { t } = useTranslation();
+  const [shopName, setShopName] = useState(searchParams.get('name') || t('shopReviews.allReviews'));
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [current, setCurrent] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -84,7 +86,7 @@ export default function ShopReviews() {
         <div className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={18} color="white" />
         </div>
-        <div className={styles.title}>{shopName} - 评价</div>
+        <div className={styles.title}>{t('shopReviews.title', { name: shopName })}</div>
         <div className={styles.placeholder} />
       </div>
 
@@ -113,14 +115,14 @@ export default function ShopReviews() {
                     ))}
                   </div>
                 )}
-                <div className={styles.footer}>点赞{review.liked}</div>
+                <div className={styles.footer}>{t('shopDetail.like', { n: review.liked })}</div>
               </div>
             </div>
           );
         })}
-        {loading && <div className={styles.loading}>加载中...</div>}
+        {loading && <div className={styles.loading}>{t('shopReviews.loading')}</div>}
         {!hasMore && reviews.length > 0 && (
-          <div className={styles.loading}>— 已显示全部{reviews.length}条评价 —</div>
+          <div className={styles.loading}>{t('shopReviews.end', { n: reviews.length })}</div>
         )}
       </div>
     </div>

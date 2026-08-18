@@ -33,7 +33,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
 
         List<ShopType> typeList = query().orderByAsc("sort").list();
         if (typeList == null || typeList.isEmpty()) {
-            return Result.fail("商铺类型不存在!");
+            return Result.fail("Shop category not found");
         }
         stringRedisTemplate.opsForValue().set(CACHE_SHOP_TYPE_KEY, JSONUtil.toJsonStr(typeList), CACHE_SHOP_TYPE_TTL, TimeUnit.MINUTES);
         return Result.ok(typeList);

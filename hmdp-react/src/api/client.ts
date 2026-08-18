@@ -26,7 +26,7 @@ client.interceptors.request.use(
 client.interceptors.response.use(
   (response) => {
     if (!response.data.success) {
-      return Promise.reject(response.data.errorMsg || '请求失败');
+      return Promise.reject(response.data.errorMsg || 'Request failed');
     }
     return response.data;
   },
@@ -39,9 +39,9 @@ client.interceptors.response.use(
           window.location.href = '/login';
         }, 200);
       }
-      return Promise.reject('请先登录');
+      return Promise.reject('Please sign in first');
     }
-    return Promise.reject(error.response?.data?.errorMsg || '服务器异常');
+    return Promise.reject(error.response?.data?.errorMsg || 'The server is unavailable');
   }
 );
 

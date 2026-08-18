@@ -12,7 +12,7 @@ import styles from './ProfileEdit.module.css';
 type EditField = 'nickname' | 'introduce' | null;
 
 export default function ProfileEdit() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
@@ -23,7 +23,6 @@ export default function ProfileEdit() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [cityPickerVisible, setCityPickerVisible] = useState(false);
-  const [langPickerVisible, setLangPickerVisible] = useState(false);
 
   useEffect(() => {
     getMe()
@@ -134,10 +133,10 @@ export default function ProfileEdit() {
 
   const genderLabel =
     info.gender === true || info.gender === 'true'
-      ? '男'
+      ? t('profileEdit.male')
       : info.gender === false || info.gender === 'false'
-        ? '女'
-        : '选择';
+        ? t('profileEdit.female')
+        : t('profileEdit.select');
 
   return (
     <div className={styles.container}>
@@ -190,7 +189,7 @@ export default function ProfileEdit() {
           <div className={styles.infoItem} onClick={() => setCityPickerVisible(true)}>
             <div className={styles.infoLabel}>{t('profileEdit.city')}</div>
             <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.city || '选择'}</div>
+              <div className={styles.infoValue}>{info.city || t('profileEdit.select')}</div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
@@ -223,16 +222,6 @@ export default function ProfileEdit() {
           </div>
         </div>
 
-        <div className={styles.infoBox}>
-          <div className={styles.infoItem} onClick={() => setLangPickerVisible(true)}>
-            <div className={styles.infoLabel}>{t('profileEdit.language')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{i18n.language === 'en' ? 'English' : '中文'}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-        </div>
-
         {/* 文本编辑弹出层 */}
         <Popup
           visible={!!editField}
@@ -247,7 +236,7 @@ export default function ProfileEdit() {
             <TextArea
               value={editValue}
               onChange={(val) => setEditValue(val)}
-              placeholder="介绍一下自己"
+              placeholder={t('profileEdit.introPlaceholder')}
               rows={4}
               maxLength={128}
               style={{ '--font-size': '15px' }}
@@ -270,7 +259,7 @@ export default function ProfileEdit() {
             onClick={handleTextSave}
             style={{ marginTop: 20, borderRadius: 22 }}
           >
-            保存
+            {t('profileEdit.save')}
           </Button>
         </Popup>
 
@@ -312,19 +301,6 @@ export default function ProfileEdit() {
             }
           }}
           title={t('profileEdit.selectCity')}
-        />
-        <Picker
-          columns={[[{ label: '中文', value: 'zh-CN' }, { label: 'English', value: 'en' }]]}
-          visible={langPickerVisible}
-          onClose={() => setLangPickerVisible(false)}
-          value={[i18n.language]}
-          onConfirm={async (value: any[]) => {
-            setLangPickerVisible(false);
-            const lang = value[0] as string;
-            i18n.changeLanguage(lang);
-            localStorage.setItem('appLanguage', lang);
-          }}
-          title={t('profileEdit.language')}
         />
       </div>
 

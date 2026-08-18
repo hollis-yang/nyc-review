@@ -2,6 +2,7 @@ package com.hmdp.config;
 
 import com.hmdp.controller.TranslateController;
 import com.hmdp.controller.VoucherOrderController;
+import com.hmdp.dto.TranslateTextRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +32,10 @@ class CoreCapabilityCompatibilityTest {
         assertPostMapping(
                 TranslateController.class.getDeclaredMethod("translateShop", Long.class, String.class),
                 "/shop"
+        );
+        assertPostMapping(
+                TranslateController.class.getDeclaredMethod("translateText", TranslateTextRequest.class),
+                "/text"
         );
     }
 

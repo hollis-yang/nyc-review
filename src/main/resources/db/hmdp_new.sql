@@ -1,4 +1,8 @@
 SET NAMES utf8mb4;
+-- Treat seed timestamps as UTC so local DST gaps (for example NYC 2026-03-08 02:00)
+-- cannot make otherwise valid fixture rows fail during import.
+SET @HMDP_OLD_TIME_ZONE = @@SESSION.time_zone;
+SET SESSION time_zone = '+00:00';
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS `tb_shop_type`;
@@ -1374,3 +1378,4 @@ INSERT INTO tb_shop_review VALUES (257,58,2,3,'款式选择挺多的，但做出
 INSERT INTO tb_shop_review VALUES (258,58,3,5,'做完美甲心情都变好了！款式超多，美甲师技术很好，画得很精细。用的胶也很好，快一个月了还没掉。已经推荐给姐妹们了💅','https://picsum.photos/seed/review258_0/300/300',1,'2026-04-11 02:00:00','2026-04-11 02:00:00');
 
 SET FOREIGN_KEY_CHECKS = 1;
+SET SESSION time_zone = @HMDP_OLD_TIME_ZONE;

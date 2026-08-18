@@ -30,6 +30,8 @@ public class ShopType implements Serializable {
      */
     private String name;
 
+    private String slug;
+
     /**
      * 图标
      */

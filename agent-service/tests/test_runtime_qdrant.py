@@ -1,8 +1,21 @@
+import importlib.util
 import json
+import sys
+from pathlib import Path
+
+import pytest
 
 from app.config import Settings
 from app.domain.models import AgentRunRequest, UserConstraints
-from app.runtime import AgentRuntime
+from app.runtime import AgentRuntime, _validate_data_directory
+
+GENERATOR_PATH = Path(__file__).parents[2] / "scripts" / "mock-data-generator" / "generate.py"
+sys.path.insert(0, str(GENERATOR_PATH.parent))
+SPEC = importlib.util.spec_from_file_location("runtime_test_nyc_generator", GENERATOR_PATH)
+GENERATOR = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+sys.modules[SPEC.name] = GENERATOR
+SPEC.loader.exec_module(GENERATOR)
 
 
 def _write_json(path, value) -> None:
@@ -93,3 +106,14 @@ async def test_multi_agent_runtime_uses_qdrant_citations(tmp_path):
         } <= {"shop_description", "shop_review", "blog", "blog_comment", "nested_comment"}
     finally:
         await runtime.close()
+
+
+def test_dataset_identity_rejects_tampered_generated_file(tmp_path):
+    GENERATOR.generate_dataset("small", 20260817, tmp_path)
+    reviews_path = tmp_path / "shop_reviews.json"
+    reviews = json.loads(reviews_path.read_text())
+    reviews[0]["content"] = "tampered after manifest generation"
+    _write_json(reviews_path, reviews)
+
+    with pytest.raises(ValueError, match="checksum"):
+        _validate_data_directory(tmp_path)

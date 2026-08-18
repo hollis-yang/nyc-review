@@ -101,7 +101,7 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
               className={`${styles.btn} ${disabled ? styles.disableBtn : ''}`}
               onClick={handleSeckill}
             >
-              限时抢购
+              {t('voucher.flashSale')}
             </div>
             <div className={styles.stock}>
               {t('voucher.remaining', { n: v.stock })}

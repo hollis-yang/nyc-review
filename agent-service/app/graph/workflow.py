@@ -8,6 +8,7 @@ from app.agents.nodes import (
     DiscoveryAgent,
     EvidenceAgent,
     ItineraryAgent,
+    SingleAgent,
     SupervisorAgent,
     VerifierAgent,
 )
@@ -43,6 +44,25 @@ def build_multi_agent_graph(services: WorkflowServices):
     graph.add_edge("discovery", "itinerary")
     graph.add_edge("evidence", "verifier")
     graph.add_edge("itinerary", "verifier")
+    graph.add_edge("verifier", "supervisor_finalize")
+    graph.add_edge("supervisor_finalize", END)
+    return graph.compile()
+
+
+def build_single_agent_graph(services: WorkflowServices):
+    supervisor = SupervisorAgent()
+    single = SingleAgent(services.shops, services.rag, services.itinerary)
+    verifier = VerifierAgent()
+
+    graph = StateGraph(AgentState)
+    graph.add_node("supervisor_plan", supervisor.plan)
+    graph.add_node("single_agent", single.run)
+    graph.add_node("verifier", verifier.run)
+    graph.add_node("supervisor_finalize", supervisor.finalize)
+
+    graph.add_edge(START, "supervisor_plan")
+    graph.add_edge("supervisor_plan", "single_agent")
+    graph.add_edge("single_agent", "verifier")
     graph.add_edge("verifier", "supervisor_finalize")
     graph.add_edge("supervisor_finalize", END)
     return graph.compile()
