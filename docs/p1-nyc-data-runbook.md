@@ -70,7 +70,7 @@ SELECT COUNT(*) AS seckill_vouchers FROM tb_seckill_voucher;
 redis-cli --pipe < data/generated/nyc-small/redis_seed.resp
 ```
 
-该脚本只清理本项目的数据派生键，重建 `shop:geo:1` 至 `shop:geo:6` 和 `seckill:stock:<voucherId>`，并清空与旧数据集绑定的订单流。它不会运行 `FLUSHDB`，也不会清理 `translate:*`，所以原翻译缓存与翻译功能边界保持不变。
+该脚本只清理本项目的数据派生键，重建 `shop:geo:1` 至 `shop:geo:6` 和 `seckill:stock:<voucherId>`，并清空待发布订单和历史订单流。它不会运行 `FLUSHDB`，也不会清理 `translate:*`，所以原翻译缓存与翻译功能边界保持不变。
 
 验证 Redis：
 
@@ -79,7 +79,7 @@ redis-cli ZCARD shop:geo:1
 redis-cli GET seckill:stock:9
 redis-cli GET seckill:stock:10
 redis-cli GET seckill:stock:11
-redis-cli XLEN stream:orders
+redis-cli ZCARD seckill:pending:orders
 ```
 
 具体秒杀券 ID 和库存以 `import_manifest.json`、`seckill_vouchers.json` 为准。秒杀仍由用户在前端手动触发，Agent Tool Catalog 不包含秒杀执行工具。

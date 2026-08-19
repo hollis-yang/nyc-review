@@ -1,0 +1,8 @@
+{
+  "minCompletionRate": 1.0,
+  "minVerificationRate": 1.0,
+  "minConstraintMatchRate": 1.0,
+  "minMeanCitationCoverage": 1.0,
+  "maxP95LatencyMs": 1500,
+  "maxTraceFailures": 0
+}

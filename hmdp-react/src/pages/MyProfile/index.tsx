@@ -1,11 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Tabs, Toast } from 'antd-mobile';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo, sign, signCount } from '../../api/user';
-import { useTranslation } from 'react-i18next';
 import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
+import {
+  deleteAgentMemory,
+  getProfileAssets,
+  updateAgentMemory,
+  type ProfileAssets,
+} from '../../api/profile';
 import FeedCard from '../../components/FeedCard';
 import FootBar from '../../components/FootBar';
 import type { BlogData } from '../../components/BlogCard';
@@ -19,21 +25,36 @@ export default function MyProfile() {
   const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
   const [blogs, setBlogs] = useState<BlogData[]>([]);
   const [followBlogs, setFollowBlogs] = useState<BlogData[]>([]);
-  const [activeTab, setActiveTab] = useState('1');
+  const [activeTab, setActiveTab] = useState('notes');
   const [params, setParams] = useState({ minTime: 0, offset: 0 });
   const [loading, setLoading] = useState(false);
   const [signDays, setSignDays] = useState(0);
   const [signedToday, setSignedToday] = useState(false);
+  const [assets, setAssets] = useState<ProfileAssets | null>(null);
+  const [assetsLoading, setAssetsLoading] = useState(true);
+  const [memoryDrafts, setMemoryDrafts] = useState<Record<number, string>>({});
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const applyAssets = (profileAssets: ProfileAssets) => {
+    setAssets(profileAssets);
+    setMemoryDrafts(Object.fromEntries(
+      profileAssets.memories.map((memory) => [memory.id, memory.value])
+    ));
+  };
+
+  const reloadAssets = async () => {
+    const response = await getProfileAssets();
+    applyAssets((response.data ?? response) as ProfileAssets);
+  };
 
   useEffect(() => {
     getMe()
       .then((res) => {
-        const u = res.data ?? res;
-        setUser(u);
-        getUserInfo(u.id)
-          .then((r) => {
-            const infoData = r.data ?? r;
+        const currentUser = res.data ?? res;
+        setUser(currentUser);
+        getUserInfo(currentUser.id)
+          .then((response) => {
+            const infoData = response.data ?? response;
             if (infoData) {
               setInfo(infoData);
               sessionStorage.setItem('userInfo', JSON.stringify(infoData));
@@ -41,12 +62,14 @@ export default function MyProfile() {
           })
           .catch(() => {});
         getBlogsOfMe()
-          .then((r) => setBlogs(r.data ?? r))
+          .then((response) => setBlogs(response.data ?? response))
           .catch(() => {});
+        getProfileAssets()
+          .then((response) => applyAssets((response.data ?? response) as ProfileAssets))
+          .catch(() => setAssets(null))
+          .finally(() => setAssetsLoading(false));
       })
-      .catch(() => {
-        navigate('/login');
-      });
+      .catch(() => navigate('/login'));
   }, [navigate]);
 
   useEffect(() => {
@@ -74,21 +97,19 @@ export default function MyProfile() {
     if (loading) return;
     setLoading(true);
     try {
-      const p = clear
+      const requestParams = clear
         ? { offset: 0, lastId: Date.now() + 1 }
         : { offset: params.offset, lastId: params.minTime || Date.now() + 1 };
-      const res = await getBlogsOfFollow(p);
-      const data = res.data ?? res;
+      const response = await getBlogsOfFollow(requestParams);
+      const data = response.data ?? response;
       if (!data) return;
       const { list, ...rest } = data;
-      const enriched = (list || []).map((b: BlogData) => ({
-        ...b,
-        img: b.images ? b.images.split(',')[0] : '',
+      const enriched = (list || []).map((blog: BlogData) => ({
+        ...blog,
+        img: blog.images ? blog.images.split(',')[0] : '',
       }));
-      setFollowBlogs(clear ? enriched : (prev) => [...prev, ...enriched]);
+      setFollowBlogs(clear ? enriched : (previous) => [...previous, ...enriched]);
       setParams(rest);
-    } catch {
-      // ignore
     } finally {
       setLoading(false);
     }
@@ -96,34 +117,27 @@ export default function MyProfile() {
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
-    if (key === '4') {
-      loadFollowBlogs(true);
-    }
+    if (key === 'following') loadFollowBlogs(true);
   };
 
   const handleScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const { scrollTop, offsetHeight, scrollHeight } = el;
-    if (scrollTop === 0) {
-      loadFollowBlogs(true);
-    } else if (scrollTop + offsetHeight + 1 > scrollHeight && !loading) {
-      loadFollowBlogs();
-    }
+    const element = containerRef.current;
+    if (!element) return;
+    const { scrollTop, offsetHeight, scrollHeight } = element;
+    if (scrollTop === 0) loadFollowBlogs(true);
+    else if (scrollTop + offsetHeight + 1 > scrollHeight && !loading) loadFollowBlogs();
   }, [loadFollowBlogs, loading]);
 
   const handleLikeUpdate = async (blogId: number) => {
     try {
       await likeBlog(blogId);
-      const r = await getBlogById(blogId);
-      const data = r.data ?? r;
-      setFollowBlogs((prev) =>
-        prev.map((b) =>
-          b.id === blogId ? { ...b, liked: data.liked, isLike: data.isLike } : b
-        )
-      );
+      const response = await getBlogById(blogId);
+      const data = response.data ?? response;
+      setFollowBlogs((previous) => previous.map((blog) =>
+        blog.id === blogId ? { ...blog, liked: data.liked, isLike: data.isLike } : blog
+      ));
     } catch {
-      // ignore
+      // Keep the optimistic feed stable when the refresh request fails.
     }
   };
 
@@ -140,15 +154,51 @@ export default function MyProfile() {
   const handleSign = async () => {
     try {
       await sign();
-      const res = await signCount();
-      const count = res.data ?? res;
+      const response = await signCount();
+      const count = response.data ?? response;
       setSignDays(typeof count === 'number' ? count : 0);
       setSignedToday(true);
       Toast.show({ icon: 'success', content: t('sign.success') });
-    } catch (err: any) {
-      Toast.show({ icon: 'fail', content: String(err) });
+    } catch (error) {
+      Toast.show({ icon: 'fail', content: String(error) });
     }
   };
+
+  const saveMemory = async (id: number) => {
+    try {
+      await updateAgentMemory(id, memoryDrafts[id] || '');
+      await reloadAssets();
+      Toast.show({ icon: 'success', content: t('profile.memoryUpdated') });
+    } catch (error) {
+      Toast.show({ icon: 'fail', content: String(error) });
+    }
+  };
+
+  const removeMemory = async (id: number) => {
+    try {
+      await deleteAgentMemory(id);
+      await reloadAssets();
+      Toast.show({ icon: 'success', content: t('profile.memoryDeleted') });
+    } catch (error) {
+      Toast.show({ icon: 'fail', content: String(error) });
+    }
+  };
+
+  const formatDate = (value?: string) => value
+    ? new Intl.DateTimeFormat(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(value))
+    : '';
+
+  const firstImage = (images?: string) =>
+    images?.split(',').find(Boolean) || '/imgs/icons/default-icon.png';
+
+  const empty = (label: string) => (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}>◇</div>
+      <div>{label}</div>
+    </div>
+  );
 
   return (
     <div className={styles.container}>
@@ -168,16 +218,14 @@ export default function MyProfile() {
             <div className={styles.profileInfo}>
               <div className={styles.nickName}>{user.nickName}</div>
               <div className={styles.city}>{info.city || t('profile.notSet')}</div>
-              <div className={styles.intro}>
-                {info.introduce || t('profile.defaultIntro')}
-              </div>
+              <div className={styles.intro}>{info.introduce || t('profile.defaultIntro')}</div>
               <div className={styles.actions}>
-                <div className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
+                <button className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
                   {t('profile.editProfile')}
-                </div>
-                <div className={styles.logoutBtn} onClick={handleLogout}>
+                </button>
+                <button className={styles.logoutBtn} onClick={handleLogout}>
                   {t('profile.logout')}
-                </div>
+                </button>
               </div>
             </div>
           </div>
@@ -194,60 +242,159 @@ export default function MyProfile() {
           </div>
           <div className={styles.signSection}>
             {signedToday ? (
-              <div className={styles.signedBadge}>
-                ✅ Checked in <span className={styles.signDaysNum}>{signDays}</span> days
-              </div>
+              <div className={styles.signedBadge}>{t('profile.signedIn', { n: signDays })}</div>
             ) : (
-              <div className={styles.signBtn} onClick={handleSign}>
-                {t('profile.signIn')}
-              </div>
+              <button className={styles.signBtn} onClick={handleSign}>{t('profile.signIn')}</button>
             )}
+          </div>
+          <div className={styles.assetSummary}>
+            {[
+              ['favorites', assets?.counts.favorites ?? 0, t('profile.favorites')],
+              ['itineraries', assets?.counts.itineraries ?? 0, t('profile.itineraries')],
+              ['vouchers', assets?.counts.vouchers ?? 0, t('profile.myVouchers')],
+              ['reminders', assets?.counts.reminders ?? 0, t('profile.reminders')],
+            ].map(([key, count, label]) => (
+              <button key={String(key)} className={styles.assetSummaryItem}
+                onClick={() => setActiveTab(String(key))}>
+                <span>{count}</span>
+                <small>{label}</small>
+              </button>
+            ))}
           </div>
         </div>
       )}
 
       <div className={styles.content}>
-        <Tabs
-          activeKey={activeTab}
-          onChange={handleTabChange}
-          style={{
-            '--active-line-color': '#ff6633',
-            '--active-title-color': '#ff6633',
-          } as React.CSSProperties}
-        >
-          <Tabs.Tab title={t('profile.notes')} key="1">
+        <Tabs activeKey={activeTab} onChange={handleTabChange} style={{
+          '--active-line-color': '#ff6633',
+          '--active-title-color': '#ff6633',
+        } as React.CSSProperties}>
+          <Tabs.Tab title={t('profile.notes')} key="notes">
             <div className={styles.tabContent}>
-              {blogs.map((b) => (
-                <div
-                  key={b.id}
-                  className={styles.blogItem}
-                  onClick={() => navigate(`/blog-detail/${b.id}`)}
-                >
-                  <div className={styles.blogItemImg}>
-                    <img
-                      src={b.images ? b.images.split(',')[0] : ''}
-                      alt=""
-                    />
-                  </div>
-                  <div className={styles.blogItemInfo}>
-                    <div className={styles.blogItemTitle}>{b.title}</div>
-                    <div className={styles.blogItemMeta}>
-                      <span>👍 {b.liked}</span>
-                      <span style={{ marginLeft: 10 }}>💬 {b.comments ?? 0}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {blogs.length ? blogs.map((blog) => (
+                <button key={blog.id} className={styles.blogItem}
+                  onClick={() => navigate(`/blog-detail/${blog.id}`)}>
+                  <span className={styles.blogItemImg}>
+                    <img src={blog.images ? blog.images.split(',')[0] : ''} alt="" />
+                  </span>
+                  <span className={styles.blogItemInfo}>
+                    <span className={styles.blogItemTitle}>{blog.title}</span>
+                    <span className={styles.blogItemMeta}>👍 {blog.liked}　💬 {blog.comments ?? 0}</span>
+                  </span>
+                </button>
+              )) : empty(t('profile.noNotes'))}
             </div>
           </Tabs.Tab>
-          <Tabs.Tab title={t('profile.following')} key="4">
+
+          <Tabs.Tab title={`${t('profile.favorites')} ${assets?.counts.favorites ?? 0}`} key="favorites">
+            <div className={styles.tabContent}>
+              {assetsLoading ? <div className={styles.loadingMore}>{t('home.loading')}</div> :
+                assets?.favorites.length ? assets.favorites.map((favorite) => (
+                  <button className={styles.assetCard} key={favorite.id}
+                    onClick={() => navigate(`/shop-detail/${favorite.shopId}`)}>
+                    <img className={styles.assetImage} src={firstImage(favorite.images)} alt="" />
+                    <span className={styles.assetBody}>
+                      <strong>{favorite.name}</strong>
+                      <small>{[favorite.neighborhood, favorite.borough].filter(Boolean).join(', ')}</small>
+                      <small>{favorite.address}</small>
+                    </span>
+                    <span className={styles.assetArrow}>›</span>
+                  </button>
+                )) : empty(t('profile.noFavorites'))}
+            </div>
+          </Tabs.Tab>
+
+          <Tabs.Tab title={`${t('profile.itineraries')} ${assets?.counts.itineraries ?? 0}`} key="itineraries">
+            <div className={styles.tabContent}>
+              {assets?.itineraries.length ? assets.itineraries.map((trip) => (
+                <div className={styles.assetCard} key={trip.id}>
+                  <span className={styles.assetGlyph}>⌖</span>
+                  <span className={styles.assetBody}>
+                    <strong>{trip.title}</strong>
+                    <small>{trip.shopNames.join(' · ')}</small>
+                    <span className={styles.assetMeta}>
+                      {t('profile.stops', { n: trip.shopIds.length })}
+                      {trip.itinerary.total_estimated_cost_cents != null &&
+                        ` · $${(trip.itinerary.total_estimated_cost_cents / 100).toFixed(0)}`}
+                      {' · '}{formatDate(trip.updatedAt)}
+                    </span>
+                  </span>
+                </div>
+              )) : empty(t('profile.noItineraries'))}
+            </div>
+          </Tabs.Tab>
+
+          <Tabs.Tab title={`${t('profile.myVouchers')} ${assets?.counts.vouchers ?? 0}`} key="vouchers">
+            <div className={styles.tabContent}>
+              {assets?.vouchers.length ? assets.vouchers.map((voucher) => (
+                <button className={styles.voucherAsset} key={voucher.orderId}
+                  onClick={() => voucher.shopId && navigate(`/shop-detail/${voucher.shopId}`)}>
+                  <span className={styles.voucherValue}>${(voucher.actualValue / 100).toFixed(0)}</span>
+                  <span className={styles.assetBody}>
+                    <strong>{voucher.title}</strong>
+                    <small>{voucher.shopName || t('profile.shopUnavailable')}</small>
+                    <span className={styles.assetMeta}>
+                      {t('profile.paid', { amount: (voucher.payValue / 100).toFixed(2) })}
+                      {' · '}{t(`profile.voucherStatus.${voucher.orderStatus}`, {
+                        defaultValue: t('profile.voucherStatus.unknown'),
+                      })}
+                    </span>
+                  </span>
+                  <span className={styles.assetArrow}>›</span>
+                </button>
+              )) : empty(t('profile.noVouchers'))}
+            </div>
+          </Tabs.Tab>
+
+          <Tabs.Tab title={`${t('profile.reminders')} ${assets?.counts.reminders ?? 0}`} key="reminders">
+            <div className={styles.tabContent}>
+              {assets?.reminders.length ? assets.reminders.map((reminder) => (
+                <button className={styles.assetCard} key={reminder.id}
+                  onClick={() => reminder.shopId && navigate(`/shop-detail/${reminder.shopId}`)}>
+                  <span className={styles.assetGlyph}>◷</span>
+                  <span className={styles.assetBody}>
+                    <strong>{reminder.voucherTitle}</strong>
+                    <small>{reminder.shopName}</small>
+                    <span className={styles.assetMeta}>
+                      {t('profile.remindAt', { time: formatDate(reminder.remindAt) })}
+                    </span>
+                  </span>
+                  <span className={styles.statusPill}>{t(
+                    `profile.reminderStatus.${reminder.status.toLowerCase()}`,
+                    { defaultValue: reminder.status }
+                  )}</span>
+                </button>
+              )) : empty(t('profile.noReminders'))}
+            </div>
+          </Tabs.Tab>
+
+          <Tabs.Tab title={t('profile.aiMemory')} key="memory">
+            <div className={styles.tabContent}>
+              <div className={styles.memoryNotice}>{t('profile.memoryNotice')}</div>
+              {assets?.memories.length ? assets.memories.map((memory) => (
+                <div className={styles.memoryCard} key={memory.id}>
+                  <label>{t(`profile.memoryKeys.${memory.key}`, { defaultValue: memory.key })}</label>
+                  <input value={memoryDrafts[memory.id] ?? memory.value}
+                    onChange={(event) => setMemoryDrafts((previous) => ({
+                      ...previous,
+                      [memory.id]: event.target.value,
+                    }))} />
+                  <div className={styles.memoryActions}>
+                    <span>{t('profile.memorySource', { source: memory.source })}</span>
+                    <button onClick={() => removeMemory(memory.id)}>{t('common.delete')}</button>
+                    <button className={styles.memorySave} onClick={() => saveMemory(memory.id)}>
+                      {t('common.save')}
+                    </button>
+                  </div>
+                </div>
+              )) : empty(t('profile.noMemory'))}
+            </div>
+          </Tabs.Tab>
+
+          <Tabs.Tab title={t('profile.following')} key="following">
             <div className={styles.tabContent} onScroll={handleScroll} ref={containerRef}>
-              {followBlogs.map((b) => (
-                <FeedCard
-                  key={b.id}
-                  blog={b}
-                  onLikeUpdate={() => handleLikeUpdate(b.id)}
-                />
+              {followBlogs.map((blog) => (
+                <FeedCard key={blog.id} blog={blog} onLikeUpdate={() => handleLikeUpdate(blog.id)} />
               ))}
               {loading && <div className={styles.loadingMore}>{t('home.loading')}</div>}
             </div>

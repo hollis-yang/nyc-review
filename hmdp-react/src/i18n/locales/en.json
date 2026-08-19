@@ -46,7 +46,45 @@
     "signedIn": "Checked in {{n}} days",
     "signIn": "Check In",
     "signSuccess": "Check-in successful!",
-    "city": "New York City"
+    "city": "New York City",
+    "favorites": "Favorites",
+    "itineraries": "Trips",
+    "myVouchers": "Coupons",
+    "reminders": "Reminders",
+    "aiMemory": "AI Memory",
+    "noNotes": "No notes yet",
+    "noFavorites": "Favorite a recommendation in AI Guide and it will appear here.",
+    "noItineraries": "Save an AI Guide itinerary and it will appear here.",
+    "noVouchers": "Claim or purchase a coupon and it will appear here.",
+    "noReminders": "Flash-sale reminders will appear here.",
+    "noMemory": "No long-term preferences have been learned yet.",
+    "stops": "{{n}} stops",
+    "paid": "Paid ${{amount}}",
+    "shopUnavailable": "Shop unavailable",
+    "remindAt": "Reminder: {{time}}",
+    "memoryNotice": "AI Guide learns these preferences from approved actions. You remain in control and can edit or delete them.",
+    "memorySource": "Source: {{source}}",
+    "memoryUpdated": "AI preference updated",
+    "memoryDeleted": "AI preference deleted",
+    "memoryKeys": {
+      "preferred_category": "Preferred category",
+      "preferred_neighborhood": "Preferred neighborhood",
+      "preferred_tags": "Preferred features"
+    },
+    "voucherStatus": {
+      "1": "Pending payment",
+      "2": "Paid",
+      "3": "Redeemed",
+      "4": "Cancelled",
+      "5": "Refunding",
+      "6": "Refunded",
+      "unknown": "Order recorded"
+    },
+    "reminderStatus": {
+      "pending": "Pending",
+      "sent": "Sent",
+      "cancelled": "Cancelled"
+    }
   },
   "profileEdit": {
     "title": "Edit Profile",
@@ -150,8 +188,6 @@
     "comments": "{{n}} reviews",
     "navigate": "Navigate",
     "hours": "Business Hours",
-    "collapse": "Collapse",
-    "expand": "View Details",
     "vouchers": "Vouchers",
     "reviews": "Reviews",
     "like": "Like {{n}}",

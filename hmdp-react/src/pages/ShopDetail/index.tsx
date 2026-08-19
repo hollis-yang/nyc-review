@@ -41,7 +41,6 @@ export default function ShopDetail() {
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [reviewTotal, setReviewTotal] = useState(0);
-  const [showHours, setShowHours] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
@@ -181,29 +180,24 @@ export default function ShopDetail() {
           <span>🕐</span>
           <div>{t('shopDetail.hours')}</div>
           <div style={{ flex: 1, fontSize: 12 }}>{shop.openHours}</div>
-          <span className={styles.lineRight} onClick={() => setShowHours(!showHours)} style={{ cursor: 'pointer' }}>
-            {showHours ? t('shopDetail.collapse') : t('shopDetail.expand')}
-          </span>
         </div>
-        {showHours && (
-          <div style={{ padding: '8px 0 0', fontSize: 12, color: '#666', width: '100%' }}>
-            {shop.openHours}
-          </div>
+
+        <div className={styles.divider} />
+
+        {vouchers.length > 0 && (
+          <>
+            <div className={styles.voucherSection}>
+              <div>
+                <span className={styles.voucherIcon}>%</span>
+                <span style={{ fontWeight: 'bold' }}>{t('shopDetail.vouchers')}</span>
+              </div>
+              {vouchers.map((v) => (
+                <VoucherCard key={v.id} voucher={v} onSeckill={handleSeckill} />
+              ))}
+            </div>
+            <div className={styles.divider} />
+          </>
         )}
-
-        <div className={styles.divider} />
-
-        <div className={styles.voucherSection}>
-          <div>
-            <span className={styles.voucherIcon}>%</span>
-            <span style={{ fontWeight: 'bold' }}>{t('shopDetail.vouchers')}</span>
-          </div>
-          {vouchers.map((v) => (
-            <VoucherCard key={v.id} voucher={v} onSeckill={handleSeckill} />
-          ))}
-        </div>
-
-        <div className={styles.divider} />
 
         <div className={styles.comments}>
           <div className={styles.commentsHead}>

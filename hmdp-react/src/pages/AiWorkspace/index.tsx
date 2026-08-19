@@ -333,6 +333,9 @@ export default function AiWorkspace() {
                     hour: '2-digit', minute: '2-digit', second: '2-digit',
                   })}</time>
                   <span>{eventMessage(event)}</span>
+                  {typeof event.details.durationMs === 'number' && (
+                    <small>{Math.round(event.details.durationMs)} ms</small>
+                  )}
                 </div>
               ))}
             </div>

@@ -188,9 +188,9 @@ export default function Login({ mode = 'sms' }: LoginProps) {
           </div>
           <div className={styles.agreementText}>
             {t('login.agreement')}
-            <a href="javascript:void(0)">{t('login.tos')}</a>
+            <a href="#terms" onClick={(event) => event.preventDefault()}>{t('login.tos')}</a>
             {' and '}
-            <a href="javascript:void(0)">{t('login.privacy')}</a>
+            <a href="#privacy" onClick={(event) => event.preventDefault()}>{t('login.privacy')}</a>
           </div>
         </div>
       </div>

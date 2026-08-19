@@ -27,11 +27,11 @@ curl -sS -X POST http://127.0.0.1:8090/v1/agent/runs \
   -d '{"mode":"multi","query":"Quiet vegan dinner in Midtown for 2 under $120"}'
 ```
 
-使用响应中的 `run_id` 读取实时协作事件和最终快照：
+使用响应中的 `run_id` 和相同登录 token 读取实时协作事件和最终快照：
 
 ```bash
-curl -N http://127.0.0.1:8090/v1/agent/runs/<run-id>/events
-curl -sS http://127.0.0.1:8090/v1/agent/runs/<run-id>
+curl -N -H 'authorization: <current-user-token>' http://127.0.0.1:8090/v1/agent/runs/<run-id>/events
+curl -sS -H 'authorization: <current-user-token>' http://127.0.0.1:8090/v1/agent/runs/<run-id>
 ```
 
 Run、事件与最终结果默认持久化到 `./.local/agent-runs.sqlite3`。接口同时支持 `single` 和 `multi`；多 Agent 仍由 Supervisor、Discovery、Evidence、Itinerary、Verifier 协作，Evidence 与 Itinerary 并行。
@@ -43,12 +43,29 @@ Run、事件与最终结果默认持久化到 `./.local/agent-runs.sqlite3`。�
 ```bash
 curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/approve \
   -H 'authorization: <current-user-token>'
-curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/reject
+curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/reject \
+  -H 'authorization: <current-user-token>'
 curl -H 'authorization: <current-user-token>' '/v1/agent/runs?limit=5'
 curl /v1/agent/metrics
 ```
 
 前端产品入口只暴露 Multi Agent；Single Agent 继续保留在 Eval 中用于质量和延迟对照。完整步骤见 [P3 Runbook](../docs/p3-agent-actions-runbook.md)。
+
+## P4 Observability、恢复与安全
+
+- 每个 Run 持久化 model、tool、agent node、action 和 total span；`GET /v1/agent/runs/{id}/trace` 返回完整 Trace。
+- `/v1/agent/metrics` 聚合操作次数、失败数、P50/P95 延迟和模型 Token；配置 `HMDP_AGENT_METRICS_TOKEN` 后需传 `x-metrics-token`。
+- Agent 启动时会恢复未完成且尚未产生写操作的 Run；单次执行受 `HMDP_AGENT_RUN_TIMEOUT_SECONDS` 限制。
+- Run Snapshot、SSE、Trace、取消和 Action 均校验创建者 token 的 SHA-256 owner key；不保存原始 token。
+- Prompt Guard 拒绝显式系统提示词窃取与绕过审批指令，创建 Run 还受按 owner/IP 的滑动窗口限流。
+
+```bash
+curl -H 'authorization: <current-user-token>' \
+  http://127.0.0.1:8090/v1/agent/runs/<run-id>/trace
+
+curl -H 'x-metrics-token: <metrics-token>' \
+  http://127.0.0.1:8090/v1/agent/metrics
+```
 
 ## DeepSeek 模型网关
 
@@ -101,8 +118,9 @@ HMDP_AGENT_BACKEND_AUTH_TOKEN=<current-user-token>
 
 ## Eval
 
-同一份用例对比 Single/Multi 的约束解析、合法商户 ID、引用覆盖率、Verifier 与延迟：
+同一份用例对比 Single/Multi 的约束解析、合法商户 ID、引用覆盖率、Verifier、Trace 与延迟。Multi Agent 未达到 `evals/quality_gate.json` 时命令返回非零：
 
 ```bash
 uv run python -m evals.run_eval
+uv run python -m evals.run_eval --output .local/p4-eval-report.json
 ```

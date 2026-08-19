@@ -99,10 +99,10 @@ public class AgentActionExecutionService {
                 userId
         ));
         preferences.put("neighborhood", firstValue(
-                "SELECT s.neighborhood AS value FROM tb_shop_favorite f " +
+                "SELECT s.area AS value FROM tb_shop_favorite f " +
                         "JOIN tb_shop s ON s.id = f.shop_id " +
-                        "WHERE f.user_id = ? AND s.neighborhood IS NOT NULL " +
-                        "GROUP BY s.neighborhood ORDER BY COUNT(*) DESC, MAX(f.create_time) DESC LIMIT 1",
+                        "WHERE f.user_id = ? AND s.area IS NOT NULL " +
+                        "GROUP BY s.area ORDER BY COUNT(*) DESC, MAX(f.create_time) DESC LIMIT 1",
                 userId
         ));
         List<String> tags = jdbcTemplate.queryForList(
@@ -119,6 +119,11 @@ public class AgentActionExecutionService {
                 userId
         );
         preferences.put("favoriteCount", favoriteCount == null ? 0 : favoriteCount);
+        preferences.put("memories", jdbcTemplate.queryForList(
+                "SELECT memory_key AS `key`, memory_value AS `value`, source, confidence " +
+                        "FROM tb_agent_user_memory WHERE user_id = ? ORDER BY update_time DESC",
+                userId
+        ));
         return Result.ok(preferences);
     }
 
@@ -189,7 +194,46 @@ public class AgentActionExecutionService {
                 userId,
                 shopId
         );
+        refreshFavoriteMemory(userId);
         return mutableResult("shopId", shopId);
+    }
+
+    private void refreshFavoriteMemory(Long userId) {
+        String category = firstValue(
+                "SELECT st.name AS value FROM tb_shop_favorite f JOIN tb_shop s ON s.id = f.shop_id " +
+                        "JOIN tb_shop_type st ON st.id = s.type_id WHERE f.user_id = ? GROUP BY st.name " +
+                        "ORDER BY COUNT(*) DESC, MAX(f.create_time) DESC LIMIT 1",
+                userId
+        );
+        String neighborhood = firstValue(
+                "SELECT s.area AS value FROM tb_shop_favorite f JOIN tb_shop s ON s.id = f.shop_id " +
+                        "WHERE f.user_id = ? AND s.area IS NOT NULL GROUP BY s.area " +
+                        "ORDER BY COUNT(*) DESC, MAX(f.create_time) DESC LIMIT 1",
+                userId
+        );
+        List<String> tags = jdbcTemplate.queryForList(
+                "SELECT t.tag FROM tb_shop_favorite f JOIN tb_shop_tag t ON t.shop_id = f.shop_id " +
+                        "WHERE f.user_id = ? GROUP BY t.tag ORDER BY COUNT(*) DESC, t.tag LIMIT 5",
+                String.class,
+                userId
+        );
+        upsertMemory(userId, "preferred_category", category);
+        upsertMemory(userId, "preferred_neighborhood", neighborhood);
+        upsertMemory(userId, "preferred_tags", tags.isEmpty() ? null : String.join(", ", tags));
+    }
+
+    private void upsertMemory(Long userId, String key, String value) {
+        if (value == null || value.isBlank()) return;
+        jdbcTemplate.update(
+                "INSERT INTO tb_agent_user_memory(user_id, memory_key, memory_value, source, confidence, " +
+                        "create_time, update_time) VALUES (?, ?, ?, 'favorite', 0.900, NOW(), NOW()) " +
+                        "ON DUPLICATE KEY UPDATE memory_value = VALUES(memory_value), " +
+                        "source = IF(source = 'explicit', source, VALUES(source)), " +
+                        "confidence = IF(source = 'explicit', confidence, VALUES(confidence)), update_time = NOW()",
+                userId,
+                key,
+                value
+        );
     }
 
     private Map<String, Object> saveItinerary(Long userId, String runId, Map<String, Object> payload) {

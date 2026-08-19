@@ -194,6 +194,19 @@ class AgentRunEvent(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentTraceSpan(BaseModel):
+    span_id: str
+    run_id: str
+    operation: str
+    agent: str | None = None
+    kind: str = "agent"
+    status: str
+    started_at: datetime
+    duration_ms: float = Field(ge=0)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+
+
 class AgentActionProposal(BaseModel):
     action_id: str
     action_type: AgentActionType

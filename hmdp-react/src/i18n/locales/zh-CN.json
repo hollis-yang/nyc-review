@@ -46,7 +46,45 @@
     "signedIn": "✅ 已签到 {{n}} 天",
     "signIn": "✍️ 签到",
     "signSuccess": "签到成功！",
-    "city": "纽约市"
+    "city": "纽约市",
+    "favorites": "收藏",
+    "itineraries": "行程",
+    "myVouchers": "优惠券",
+    "reminders": "提醒",
+    "aiMemory": "AI 记忆",
+    "noNotes": "还没有发布笔记",
+    "noFavorites": "在 AI 向导中批准收藏后，会显示在这里。",
+    "noItineraries": "在 AI 向导中保存行程后，会显示在这里。",
+    "noVouchers": "领取或购买的优惠券会显示在这里。",
+    "noReminders": "秒杀提醒会显示在这里。",
+    "noMemory": "AI 尚未学习到长期偏好。",
+    "stops": "{{n}} 个地点",
+    "paid": "支付 ${{amount}}",
+    "shopUnavailable": "商铺不可用",
+    "remindAt": "提醒时间：{{time}}",
+    "memoryNotice": "AI 向导只会从你批准的操作中学习这些偏好。你可以随时修改或删除。",
+    "memorySource": "来源：{{source}}",
+    "memoryUpdated": "AI 偏好已更新",
+    "memoryDeleted": "AI 偏好已删除",
+    "memoryKeys": {
+      "preferred_category": "偏好分类",
+      "preferred_neighborhood": "偏好街区",
+      "preferred_tags": "偏好特征"
+    },
+    "voucherStatus": {
+      "1": "待支付",
+      "2": "已支付",
+      "3": "已核销",
+      "4": "已取消",
+      "5": "退款中",
+      "6": "已退款",
+      "unknown": "订单已记录"
+    },
+    "reminderStatus": {
+      "pending": "待提醒",
+      "sent": "已提醒",
+      "cancelled": "已取消"
+    }
   },
   "profileEdit": {
     "title": "资料编辑",
@@ -150,8 +188,6 @@
     "comments": "{{n}}条",
     "navigate": "导航",
     "hours": "营业时间",
-    "collapse": "收起",
-    "expand": "查看详情",
     "vouchers": "代金券",
     "reviews": "网友评价",
     "like": "点赞{{n}}",

@@ -27,6 +27,20 @@ spring:
           max-idle: 10
           min-idle: 1
           time-between-eviction-runs: 10s
+  rabbitmq:
+    host: ${HMDP_RABBITMQ_HOST:localhost}
+    port: ${HMDP_RABBITMQ_PORT:5672}
+    username: ${HMDP_RABBITMQ_USERNAME:guest}
+    password: ${HMDP_RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        prefetch: 16
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
 mybatis-plus:
@@ -42,3 +56,7 @@ deepseek:
 hmdp:
   upload:
     image-dir: ${HMDP_IMAGE_UPLOAD_DIR:./uploads/imgs}
+  rabbitmq:
+    confirm-timeout: ${HMDP_RABBITMQ_CONFIRM_TIMEOUT:5s}
+    replay-interval-ms: ${HMDP_RABBITMQ_REPLAY_INTERVAL_MS:5000}
+    replay-batch-size: ${HMDP_RABBITMQ_REPLAY_BATCH_SIZE:50}

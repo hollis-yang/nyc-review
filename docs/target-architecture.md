@@ -19,10 +19,10 @@ Python Agent Service
 Spring Boot Business Backend
   - 用户、商户、博客、评论、关注
   - 优惠券、手动秒杀、订单
-  - MySQL、Redis、Redisson、Lua、Redis Stream
+  - MySQL、Redis、Redisson、Lua、RabbitMQ
         |
         +--> Qdrant：评论和博客向量索引
-        +--> OpenTelemetry：模型、Agent、Tool、DB 和 Redis Trace
+        +--> SQLite Trace Store：模型、Agent、Tool 和 Action Trace
 ```
 
 Spring Boot 是业务事实来源。Agent 不允许直连业务数据库，也不允许获得任意 SQL 或任意 HTTP 工具。Python Agent Service 只通过带用户身份和权限范围的领域 Tool API 访问业务能力。

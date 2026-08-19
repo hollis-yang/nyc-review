@@ -351,11 +351,13 @@ def build_redis_resp(datasets: dict[str, list[dict[str, Any]]]) -> bytes:
             "cache:shop-review:*",
             "seckill:stock:*",
             "seckill:order:*",
+            "seckill:pending:*",
             "blog:liked:*",
             "follows:*",
             "feed:*",
             "sign:*",
         ),
+        # Remove P2/P3 legacy Stream keys during a clean import; P4 never recreates them.
         _resp_command("DEL", "cache:shopType:list", "stream:orders", "stream:orders:dead-letter"),
     ]
     by_type: dict[int, list[dict[str, Any]]] = {}

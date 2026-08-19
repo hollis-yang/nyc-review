@@ -14,6 +14,7 @@ from app.domain.models import (
     AgentRunEvent,
     AgentRunResponse,
     AgentRunSnapshot,
+    AgentTraceSpan,
     RunStatus,
 )
 
@@ -40,7 +41,9 @@ class SQLiteRunStore:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 result_json TEXT,
-                error TEXT
+                error TEXT,
+                request_json TEXT,
+                attempt INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS agent_run_events (
                 run_id TEXT NOT NULL,
@@ -56,6 +59,21 @@ class SQLiteRunStore:
                 PRIMARY KEY (run_id, action_id),
                 FOREIGN KEY (run_id) REFERENCES agent_runs(run_id)
             );
+            CREATE TABLE IF NOT EXISTS agent_run_spans (
+                span_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                agent TEXT,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                duration_ms REAL NOT NULL,
+                attributes_json TEXT NOT NULL,
+                error TEXT,
+                FOREIGN KEY (run_id) REFERENCES agent_runs(run_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_run_spans_run_time
+                ON agent_run_spans(run_id, started_at);
             """
         )
         columns = {
@@ -65,6 +83,12 @@ class SQLiteRunStore:
         if "owner_key" not in columns:
             self._connection.execute(
                 "ALTER TABLE agent_runs ADD COLUMN owner_key TEXT NOT NULL DEFAULT ''"
+            )
+        if "request_json" not in columns:
+            self._connection.execute("ALTER TABLE agent_runs ADD COLUMN request_json TEXT")
+        if "attempt" not in columns:
+            self._connection.execute(
+                "ALTER TABLE agent_runs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0"
             )
         self._connection.commit()
 
@@ -77,8 +101,8 @@ class SQLiteRunStore:
         now = utc_now().isoformat()
         async with self._lock:
             self._connection.execute(
-                "INSERT INTO agent_runs(run_id, owner_key, mode, query, status, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO agent_runs(run_id, owner_key, mode, query, status, created_at, updated_at, "
+                "request_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     run_id,
                     owner_key,
@@ -87,9 +111,25 @@ class SQLiteRunStore:
                     RunStatus.CREATED.value,
                     now,
                     now,
+                    request.model_dump_json(),
                 ),
             )
             self._connection.commit()
+
+    async def increment_attempt(self, run_id: str) -> int:
+        async with self._lock:
+            self._connection.execute(
+                "UPDATE agent_runs SET attempt = attempt + 1, updated_at = ? WHERE run_id = ?",
+                (utc_now().isoformat(), run_id),
+            )
+            row = self._connection.execute(
+                "SELECT attempt FROM agent_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            self._connection.commit()
+            return int(row["attempt"])
 
     async def set_status(
         self,
@@ -246,6 +286,85 @@ class SQLiteRunStore:
             ).fetchall()
         return [AgentRunEvent.model_validate_json(row["event_json"]) for row in rows]
 
+    async def record_span(self, span: AgentTraceSpan) -> None:
+        async with self._lock:
+            self._connection.execute(
+                "INSERT OR REPLACE INTO agent_run_spans(span_id, run_id, operation, agent, kind, "
+                "status, started_at, duration_ms, attributes_json, error) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    span.span_id,
+                    span.run_id,
+                    span.operation,
+                    span.agent,
+                    span.kind,
+                    span.status,
+                    span.started_at.isoformat(),
+                    span.duration_ms,
+                    json.dumps(span.attributes, separators=(",", ":"), sort_keys=True),
+                    span.error,
+                ),
+            )
+            self._connection.commit()
+
+    async def spans(self, run_id: str) -> list[AgentTraceSpan]:
+        async with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM agent_run_spans WHERE run_id = ? ORDER BY started_at, rowid",
+                (run_id,),
+            ).fetchall()
+        return [
+            AgentTraceSpan(
+                span_id=row["span_id"],
+                run_id=row["run_id"],
+                operation=row["operation"],
+                agent=row["agent"],
+                kind=row["kind"],
+                status=row["status"],
+                started_at=datetime.fromisoformat(row["started_at"]),
+                duration_ms=float(row["duration_ms"]),
+                attributes=json.loads(row["attributes_json"]),
+                error=row["error"],
+            )
+            for row in rows
+        ]
+
+    async def owner_matches(self, run_id: str, owner_key: str) -> bool:
+        async with self._lock:
+            row = self._connection.execute(
+                "SELECT owner_key FROM agent_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return row is not None and row["owner_key"] == owner_key
+
+    async def recoverable_runs(
+        self,
+        max_attempts: int,
+    ) -> list[tuple[str, AgentRunCreateRequest]]:
+        if max_attempts <= 0:
+            return []
+        async with self._lock:
+            rows = self._connection.execute(
+                "SELECT r.run_id, r.mode, r.query, r.request_json FROM agent_runs r "
+                "WHERE r.status IN (?, ?, ?) AND r.attempt < ? "
+                "AND NOT EXISTS (SELECT 1 FROM agent_run_actions a WHERE a.run_id = r.run_id) "
+                "ORDER BY r.created_at",
+                (
+                    RunStatus.CREATED.value,
+                    RunStatus.PLANNING.value,
+                    RunStatus.TOOL_RUNNING.value,
+                    max_attempts,
+                ),
+            ).fetchall()
+        result = []
+        for row in rows:
+            if row["request_json"]:
+                request = AgentRunCreateRequest.model_validate_json(row["request_json"])
+            else:
+                request = AgentRunCreateRequest(mode=AgentMode(row["mode"]), query=row["query"])
+            result.append((row["run_id"], request))
+        return result
+
     async def list_runs(self, owner_key: str, limit: int = 10) -> list[AgentRunSnapshot]:
         async with self._lock:
             rows = self._connection.execute(
@@ -271,16 +390,50 @@ class SQLiteRunStore:
             event_count = self._connection.execute(
                 "SELECT COUNT(*) AS count FROM agent_run_events"
             ).fetchone()["count"]
+            span_rows = self._connection.execute(
+                "SELECT operation, status, duration_ms, attributes_json FROM agent_run_spans"
+            ).fetchall()
         action_counts: dict[str, int] = {}
         for row in action_rows:
             status = AgentActionProposal.model_validate_json(row["action_json"]).status.value
             action_counts[status] = action_counts.get(status, 0) + 1
+        durations = sorted(float(row["duration_ms"]) for row in span_rows)
+        operations: dict[str, dict[str, int | float]] = {}
+        input_tokens = 0
+        output_tokens = 0
+        for row in span_rows:
+            operation = operations.setdefault(
+                row["operation"], {"count": 0, "failures": 0, "totalDurationMs": 0.0}
+            )
+            operation["count"] += 1
+            operation["failures"] += int(row["status"] == "failed")
+            operation["totalDurationMs"] = round(
+                float(operation["totalDurationMs"]) + float(row["duration_ms"]), 3
+            )
+            attributes = json.loads(row["attributes_json"])
+            input_tokens += int(attributes.get("inputTokens") or 0)
+            output_tokens += int(attributes.get("outputTokens") or 0)
         return {
             "runs": {row["status"]: row["count"] for row in run_rows},
             "actions": action_counts,
             "events": event_count,
+            "traces": {
+                "count": len(span_rows),
+                "failures": sum(row["status"] == "failed" for row in span_rows),
+                "p50DurationMs": percentile(durations, 0.50),
+                "p95DurationMs": percentile(durations, 0.95),
+                "operations": operations,
+            },
+            "tokens": {"input": input_tokens, "output": output_tokens},
         }
 
     async def close(self) -> None:
         async with self._lock:
             self._connection.close()
+
+
+def percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    index = min(len(values) - 1, max(0, round((len(values) - 1) * quantile)))
+    return round(values[index], 3)

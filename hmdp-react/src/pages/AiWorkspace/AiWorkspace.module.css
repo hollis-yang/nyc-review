@@ -391,7 +391,7 @@
 .eventLog div {
   padding: 4px 0;
   display: grid;
-  grid-template-columns: 66px 1fr;
+  grid-template-columns: 66px minmax(0, 1fr) auto;
   gap: 7px;
   color: #666;
   font-size: 10px;
@@ -399,6 +399,12 @@
 }
 
 .eventLog time { color: #aaa; }
+
+.eventLog small {
+  color: #b3a8a3;
+  font-size: 9px;
+  white-space: nowrap;
+}
 
 .errorCard {
   margin-top: 8px;

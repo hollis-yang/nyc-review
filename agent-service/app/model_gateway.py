@@ -52,6 +52,8 @@ class ConstraintExtraction:
     model: str
     prompt_version: str = "constraints-v1"
     fallback_used: bool = False
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class ModelGateway(Protocol):
@@ -226,7 +228,9 @@ class OpenAICompatibleModelGateway:
                     json=body,
                 )
                 response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
+            response_body = response.json()
+            content = response_body["choices"][0]["message"]["content"]
+            usage = response_body.get("usage") or {}
             parsed = json.loads(content)
             parsed["query"] = request.query.strip()
             for field in (
@@ -251,6 +255,8 @@ class OpenAICompatibleModelGateway:
                 constraints=constraints,
                 provider=self._provider,
                 model=self._model,
+                input_tokens=int(usage.get("prompt_tokens") or 0),
+                output_tokens=int(usage.get("completion_tokens") or 0),
             )
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
             return await self._fallback_result(request, str(exc))
@@ -269,4 +275,6 @@ class OpenAICompatibleModelGateway:
             model=fallback.model,
             prompt_version=fallback.prompt_version,
             fallback_used=True,
+            input_tokens=fallback.input_tokens,
+            output_tokens=fallback.output_tokens,
         )

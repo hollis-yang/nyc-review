@@ -23,9 +23,8 @@ public class RedisConstants {
     public static final Long CACHE_SHOP_REVIEW_TTL = 30L;
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
-    public static final String SECKILL_ORDER_STREAM_KEY = "stream:orders";
-    public static final String SECKILL_ORDER_DEAD_LETTER_STREAM_KEY = "stream:orders:dead-letter";
-    public static final String SECKILL_ORDER_GROUP = "voucher-order-group";
+    public static final String SECKILL_PENDING_ORDER_KEY = "seckill:pending:order:";
+    public static final String SECKILL_PENDING_ORDER_INDEX_KEY = "seckill:pending:orders";
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FOLLOW_KEY = "follows:";
     public static final String FEED_KEY = "feed:";

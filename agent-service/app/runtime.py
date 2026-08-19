@@ -21,6 +21,7 @@ from app.rag.nyc_loader import load_generated_documents
 from app.rag.qdrant_store import QdrantRagService
 from app.runs.manager import AgentRunManager
 from app.runs.store import SQLiteRunStore
+from app.security import SlidingWindowRateLimiter
 from app.tools.services import (
     GeneratedNycShopToolService,
     HaversineItineraryService,
@@ -43,6 +44,8 @@ class AgentRuntime:
     run_manager: AgentRunManager | None = None
     model_provider: str = "heuristic"
     action_service: AgentActionService | None = None
+    rate_limiter: SlidingWindowRateLimiter | None = None
+    metrics_token: str = ""
 
     @classmethod
     async def create(cls, settings: Settings) -> AgentRuntime:
@@ -100,13 +103,18 @@ class AgentRuntime:
                 if settings.adapter == "http"
                 else InMemoryActionGateway()
             ),
+            rate_limiter=SlidingWindowRateLimiter(settings.runs_per_minute),
+            metrics_token=settings.metrics_token,
         )
         model_gateway = _build_model_gateway(settings)
         runtime.run_manager = AgentRunManager(
             runtime,
             SQLiteRunStore(settings.run_store_path),
             model_gateway,
+            run_timeout_seconds=settings.run_timeout_seconds,
+            max_recovery_attempts=settings.max_recovery_attempts,
         )
+        await runtime.run_manager.recover()
         return runtime
 
     async def close(self) -> None:

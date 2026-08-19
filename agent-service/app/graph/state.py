@@ -22,3 +22,4 @@ class AgentState(TypedDict):
     verification: NotRequired[VerificationReport]
     summary: NotRequired[str]
     events: Annotated[list[str], operator.add]
+    traces: Annotated[list[dict], operator.add]

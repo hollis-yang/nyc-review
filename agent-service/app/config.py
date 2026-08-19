@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     max_candidates: int = Field(default=5, ge=1, le=20)
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)
+    run_timeout_seconds: float = Field(default=45.0, gt=1, le=300)
+    max_recovery_attempts: int = Field(default=2, ge=0, le=5)
+    runs_per_minute: int = Field(default=10, ge=1, le=120)
+    metrics_token: str = ""
 
 
 @lru_cache

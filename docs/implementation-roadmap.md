@@ -8,7 +8,7 @@
 - 已让 Spring Tool API 与 Qdrant 使用相同的 shopId、`dataVersion` 和数据集清单。
 - 将地图、货币、距离、时区和地区选择切换到 NYC。
 - 保留博客、评论、关注、Feed、点赞、签到和翻译。
-- 将秒杀订单升级为 Redis Stream，保留用户手动秒杀。
+- 已将秒杀 MQ 迁移为 RabbitMQ，保留 Redis Lua 预扣、用户手动秒杀、Publisher Confirm、重放和错误队列。
 
 ## M2：类型安全的 Agent Tool 层
 
@@ -30,6 +30,6 @@
 
 ## M5：Action、AgentOps 和 MCP
 
-- 实现普通优惠券领取、收藏、行程保存和秒杀提醒的人工审批。
-- 实现 Trace、重放、Eval Dashboard、Prompt/模型版本管理。
+- 已实现普通优惠券领取、收藏、行程保存和秒杀提醒的人工审批。
+- 已实现 Trace、重放、自动 Eval Gate、Prompt Guard 和模型版本记录；Dashboard 作为后续可视化增强。
 - 对只读领域能力增加 MCP Server；秒杀操作不进入 MCP。

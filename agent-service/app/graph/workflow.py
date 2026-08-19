@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
@@ -23,6 +26,32 @@ class WorkflowServices:
     itinerary: ItineraryService
 
 
+def traced_node(name: str, agent: str, operation):
+    async def invoke(state: AgentState) -> dict:
+        started_at = datetime.now(UTC)
+        started = time.perf_counter()
+        try:
+            update = await operation(state)
+        except Exception:
+            raise
+        duration_ms = round((time.perf_counter() - started) * 1_000, 3)
+        update["traces"] = [
+            {
+                "span_id": str(uuid4()),
+                "operation": name,
+                "agent": agent,
+                "kind": "agent",
+                "status": "completed",
+                "started_at": started_at.isoformat(),
+                "duration_ms": duration_ms,
+                "attributes": {},
+            }
+        ]
+        return update
+
+    return invoke
+
+
 def build_multi_agent_graph(services: WorkflowServices):
     supervisor = SupervisorAgent()
     discovery = DiscoveryAgent(services.shops)
@@ -31,12 +60,15 @@ def build_multi_agent_graph(services: WorkflowServices):
     verifier = VerifierAgent()
 
     graph = StateGraph(AgentState)
-    graph.add_node("supervisor_plan", supervisor.plan)
-    graph.add_node("discovery", discovery.run)
-    graph.add_node("evidence", evidence.run)
-    graph.add_node("itinerary", itinerary.run)
-    graph.add_node("verifier", verifier.run)
-    graph.add_node("supervisor_finalize", supervisor.finalize)
+    graph.add_node("supervisor_plan", traced_node("supervisor_plan", "Supervisor", supervisor.plan))
+    graph.add_node("discovery", traced_node("discovery", "Discovery", discovery.run))
+    graph.add_node("evidence", traced_node("evidence", "Evidence", evidence.run))
+    graph.add_node("itinerary", traced_node("itinerary", "Itinerary", itinerary.run))
+    graph.add_node("verifier", traced_node("verifier", "Verifier", verifier.run))
+    graph.add_node(
+        "supervisor_finalize",
+        traced_node("supervisor_finalize", "Supervisor", supervisor.finalize),
+    )
 
     graph.add_edge(START, "supervisor_plan")
     graph.add_edge("supervisor_plan", "discovery")
@@ -55,10 +87,13 @@ def build_single_agent_graph(services: WorkflowServices):
     verifier = VerifierAgent()
 
     graph = StateGraph(AgentState)
-    graph.add_node("supervisor_plan", supervisor.plan)
-    graph.add_node("single_agent", single.run)
-    graph.add_node("verifier", verifier.run)
-    graph.add_node("supervisor_finalize", supervisor.finalize)
+    graph.add_node("supervisor_plan", traced_node("supervisor_plan", "Supervisor", supervisor.plan))
+    graph.add_node("single_agent", traced_node("single_agent", "Single Agent", single.run))
+    graph.add_node("verifier", traced_node("verifier", "Verifier", verifier.run))
+    graph.add_node(
+        "supervisor_finalize",
+        traced_node("supervisor_finalize", "Supervisor", supervisor.finalize),
+    )
 
     graph.add_edge(START, "supervisor_plan")
     graph.add_edge("supervisor_plan", "single_agent")

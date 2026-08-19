@@ -47,7 +47,8 @@ async def test_user_can_approve_and_reject_persisted_actions():
     runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
     try:
         created = await runtime.run_manager.create(
-            AgentRunCreateRequest(query="A quiet dinner in Midtown")
+            AgentRunCreateRequest(query="A quiet dinner in Midtown"),
+            "test-token",
         )
         snapshot = await wait_for_terminal(runtime, created.run_id)
         favorite, itinerary = snapshot.actions
@@ -66,6 +67,7 @@ async def test_user_can_approve_and_reject_persisted_actions():
         after_rejection = await runtime.run_manager.reject_action(
             created.run_id,
             itinerary.action_id,
+            "test-token",
         )
         rejected = next(
             action for action in after_rejection.actions if action.action_id == itinerary.action_id
@@ -101,6 +103,16 @@ async def test_run_history_is_isolated_by_hashed_authorization():
         metrics = await runtime.run_manager.metrics()
         assert metrics["runs"]["waiting_confirmation"] == 2
         assert metrics["actions"]["proposed"] == 4
+        assert metrics["traces"]["count"] > 0
+        assert metrics["traces"]["failures"] == 0
+        assert await runtime.run_manager.get_owned(first.run_id, "token-b") is None
+        trace = await runtime.run_manager.trace(first.run_id, "token-a")
+        assert trace is not None
+        assert {span.operation for span in trace} >= {
+            "model.extract_constraints",
+            "discovery",
+            "run.total",
+        }
     finally:
         await runtime.close()
 

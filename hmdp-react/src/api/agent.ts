@@ -101,6 +101,8 @@ export interface AgentRunResponse {
     modelProvider?: string;
     model?: string;
     modelFallbackUsed?: boolean;
+    traceId?: string;
+    tokenUsage?: { input: number; output: number };
     constraints?: Record<string, unknown>;
     personalization?: {
       category?: string;
@@ -209,6 +211,7 @@ export async function rejectAgentAction(
 
 const STREAM_EVENTS = [
   'run.created',
+  'run.recovered',
   'model.started',
   'model.completed',
   'agent.completed',
@@ -229,18 +232,41 @@ export function subscribeToAgentRun(
   onClosed: () => void,
   onError: () => void,
 ): () => void {
-  const source = new EventSource(`${AGENT_BASE_URL}/v1/agent/runs/${runId}/events`);
-  STREAM_EVENTS.forEach((eventName) => {
-    source.addEventListener(eventName, (rawEvent) => {
-      onEvent(JSON.parse((rawEvent as MessageEvent).data) as AgentRunEvent);
-    });
-  });
-  source.addEventListener('stream.closed', () => {
-    source.close();
-    onClosed();
-  });
-  source.onerror = () => {
-    if (source.readyState === EventSource.CLOSED) onError();
-  };
-  return () => source.close();
+  const controller = new AbortController();
+  const token = sessionStorage.getItem('token');
+  void (async () => {
+    try {
+      const response = await fetch(`${AGENT_BASE_URL}/v1/agent/runs/${runId}/events`, {
+        headers: token ? { authorization: token } : {},
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) throw new Error(`Agent stream returned ${response.status}`);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!controller.signal.aborted) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const frames = buffer.split(/\r?\n\r?\n/);
+        buffer = frames.pop() || '';
+        for (const frame of frames) {
+          const eventName = frame.match(/^event:\s*(.+)$/m)?.[1]?.trim();
+          const data = frame.match(/^data:\s*(.+)$/m)?.[1];
+          if (!eventName) continue;
+          if (eventName === 'stream.closed') {
+            onClosed();
+            controller.abort();
+            return;
+          }
+          if (data && STREAM_EVENTS.includes(eventName)) {
+            onEvent(JSON.parse(data) as AgentRunEvent);
+          }
+        }
+        if (done) break;
+      }
+    } catch {
+      if (!controller.signal.aborted) onError();
+    }
+  })();
+  return () => controller.abort();
 }

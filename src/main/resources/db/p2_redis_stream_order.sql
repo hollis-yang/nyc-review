@@ -1,5 +1,5 @@
 -- Apply after hmdp_new.sql in the NYC development database.
--- The unique key is the final idempotency guard for Redis Stream redelivery.
+-- The unique key is the final idempotency guard for asynchronous MQ redelivery.
 -- Legacy fixture data contains one duplicate user/voucher pair. Archive every
 -- non-canonical row, retain the earliest order, then add the guard idempotently.
 

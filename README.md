@@ -1,6 +1,6 @@
 # hm-dianping
 
-黑马点评 NYC AI 全栈改造项目。Spring Boot、MySQL 和 Redis 继续承载传统业务与手动秒杀；React 提供 NYC 地图和 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent 与 Qdrant RAG。
+黑马点评 NYC AI 全栈改造项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
 
 架构边界与不可回退能力见 [目标架构](docs/target-architecture.md) 和 [验收标准](docs/acceptance-criteria.md)。
 
@@ -10,6 +10,7 @@
 - Maven 3.9+
 - MySQL 8+
 - Redis 6+
+- RabbitMQ 4+
 - Node.js 20+
 - npm 10+
 - Nginx（仅部署时需要）
@@ -37,6 +38,10 @@ cp .env.example .env
 | `HMDP_REDIS_DATABASE` | 否 | Redis 数据库编号，默认 `0` |
 | `HMDP_REDIS_USERNAME` | 否 | Redis ACL 用户名，默认空 |
 | `HMDP_REDIS_PASSWORD` | 否 | Redis 密码，默认空 |
+| `HMDP_RABBITMQ_HOST` | 否 | RabbitMQ 地址，默认 `localhost` |
+| `HMDP_RABBITMQ_PORT` | 否 | AMQP 端口，默认 `5672` |
+| `HMDP_RABBITMQ_USERNAME` | 否 | RabbitMQ 用户名，本地默认 `guest` |
+| `HMDP_RABBITMQ_PASSWORD` | 否 | RabbitMQ 密码，本地默认 `guest` |
 | `DEEPSEEK_API_KEY` | 是 | DeepSeek API Key，无默认值 |
 | `DEEPSEEK_MODEL` | 否 | 翻译与 Agent 模型，默认 `deepseek-chat` |
 | `DEEPSEEK_BASE_URL` | 否 | DeepSeek OpenAI-compatible API 地址 |
@@ -54,13 +59,14 @@ mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 
 默认 Redis 地址为 `localhost:6379`，统一使用数据库编号 `0`。Spring Data Redis 与 Redisson 共用同一套连接配置。部分 GEO、秒杀库存和 Feed 数据需要按项目初始化流程写入 Redis；不要直接运行整个测试类，因为其中包含清表和测试数据回填操作。
 
-新的 Redis Stream 秒杀订单链路还需要应用幂等唯一键：
+秒杀订单最终幂等唯一键以及 NYC、Agent、P4 Memory 迁移：
 
 ```bash
 mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p4_nyc_domain.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p5_agent_actions.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
 ```
 
 生成稳定、可复现的 NYC Mock 数据：
@@ -82,7 +88,7 @@ redis-cli --pipe < data/generated/nyc-small/redis_seed.resp
 
 ## 启动后端
 
-确认 MySQL、Redis 和环境变量均已就绪：
+确认 MySQL、Redis、RabbitMQ 和环境变量均已就绪：
 
 ```bash
 mvn spring-boot:run
@@ -105,6 +111,8 @@ uv run uvicorn app.main:app --reload --port 8090
 配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会校验导入清单并使用同一组 shopId 重建 Qdrant 索引；需要连接 Spring Boot Tool API 时设置 `HMDP_AGENT_ADAPTER=http`。`HMDP_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
 
 P3 增加人工审批操作、幂等执行、MySQL 审计、收藏偏好、Run 历史与指标；React 默认英语，可在 `Profile → Edit Profile` 切换中文，DeepSeek 翻译入口只在中文模式显示。迁移、接口和 Docker Compose 验证见 [P3 Runbook](docs/p3-agent-actions-runbook.md)。
+
+P4 将秒杀 MQ 从 Redis Stream 迁移到 RabbitMQ，并增加 Publisher Confirm、Redis 生产侧恢复记录、消费重试和错误队列；Profile 可查看收藏、行程、优惠券、提醒和可控 AI Memory；Agent 增加所有权隔离、Prompt Guard、限流、Trace、Token/延迟指标、超时恢复和自动质量门禁。见 [P4 Runbook](docs/p4-production-agent-runbook.md)。
 
 ## 启动前端开发环境
 

@@ -5,6 +5,8 @@ local voucherId = ARGV[1]
 local userId = ARGV[2]
 -- 1.3.订单id
 local orderId = ARGV[3]
+-- 1.4.当前毫秒时间戳，用于RabbitMQ发布恢复索引
+local acceptedAt = ARGV[4]
 
 -- 2.数据key
 -- 2.1.库存key
@@ -28,9 +30,12 @@ end
 redis.call('incrby', stockKey, -1)
 -- 3.5.下单（保存用户）sadd orderKey userId
 redis.call('sadd', orderKey, userId)
--- 3.6.将订单写入Redis Stream，由消费者组可靠落库
-redis.call('xadd', 'stream:orders', '*',
+-- 3.6.记录RabbitMQ待发布订单。它是生产侧恢复记录，不承担消息队列消费。
+local pendingKey = 'seckill:pending:order:' .. orderId
+redis.call('hset', pendingKey,
     'id', orderId,
     'userId', userId,
     'voucherId', voucherId)
+redis.call('expire', pendingKey, 604800)
+redis.call('zadd', 'seckill:pending:orders', acceptedAt, orderId)
 return 0

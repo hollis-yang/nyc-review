@@ -5,7 +5,9 @@ import com.hmdp.agentapi.dto.AgentActionExecuteRequest;
 import com.hmdp.controller.TranslateController;
 import com.hmdp.controller.VoucherOrderController;
 import com.hmdp.dto.TranslateTextRequest;
+import com.hmdp.profile.controller.ProfileAssetsController;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -66,6 +68,18 @@ class CoreCapabilityCompatibilityTest {
                 ),
                 "/execute"
         );
+    }
+
+    @Test
+    void profileExposesApprovedAgentAssets() throws Exception {
+        RequestMapping baseMapping = ProfileAssetsController.class.getAnnotation(RequestMapping.class);
+        assertNotNull(baseMapping);
+        assertArrayEquals(new String[]{"/profile/assets"}, baseMapping.value());
+
+        GetMapping mapping = ProfileAssetsController.class
+                .getDeclaredMethod("assets")
+                .getAnnotation(GetMapping.class);
+        assertNotNull(mapping);
     }
 
     private void assertPostMapping(Method method, String expectedPath) {

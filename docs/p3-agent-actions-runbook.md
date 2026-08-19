@@ -50,7 +50,8 @@ curl -sS -X POST http://127.0.0.1:8090/v1/agent/runs \
 推荐完成后，Snapshot 状态应为 `waiting_confirmation`，`actions` 中会出现收藏、保存行程，以及候选商户存在对应券时的普通券领取或秒杀提醒。
 
 ```bash
-curl -sS http://127.0.0.1:8090/v1/agent/runs/<run-id>
+curl -sS http://127.0.0.1:8090/v1/agent/runs/<run-id> \
+  -H 'authorization: <current-user-token>'
 ```
 
 批准或拒绝单项操作：
@@ -61,7 +62,8 @@ curl -sS -X POST \
   -H 'authorization: <current-user-token>'
 
 curl -sS -X POST \
-  http://127.0.0.1:8090/v1/agent/runs/<run-id>/actions/<action-id>/reject
+  http://127.0.0.1:8090/v1/agent/runs/<run-id>/actions/<action-id>/reject \
+  -H 'authorization: <current-user-token>'
 ```
 
 相同 `actionId` 重复批准不会重复写入。失败操作保留 `failed` 状态，并可以在 UI 中重试。所有提案处理完后 Run 转为 `completed`。
