@@ -1,5 +1,9 @@
 import './i18n';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ConfigProvider } from 'antd-mobile';
+import enUS from 'antd-mobile/es/locales/en-US';
+import zhCN from 'antd-mobile/es/locales/zh-CN';
+import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './contexts/AuthContext';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -17,9 +21,13 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LegacyRedirect from './components/LegacyRedirect';
 
 export default function App() {
+  const { i18n } = useTranslation();
+  const mobileLocale = i18n.resolvedLanguage?.startsWith('zh') ? zhCN : enUS;
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ConfigProvider locale={mobileLocale}>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -52,7 +60,8 @@ export default function App() {
           <Route path="/shop-list.html" element={<LegacyRedirect />} />
           <Route path="/other-info.html" element={<LegacyRedirect />} />
         </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </ConfigProvider>
   );
 }

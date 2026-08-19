@@ -159,7 +159,7 @@ export default function ShopList() {
               >
                 <img
                   className={styles.typeIcon}
-                  src={`/imgs/${tp.icon}`}
+                  src={`/imgs${tp.icon.startsWith('/') ? tp.icon : `/${tp.icon}`}`}
                   alt={tp.name}
                 />
                 <span className={styles.typeName}>{t(`shopTypes.${tp.name}`, tp.name)}</span>

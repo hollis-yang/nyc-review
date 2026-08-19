@@ -51,19 +51,20 @@
 }
 
 .typeList {
-  height: 25%;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-around;
-  align-content: center;
+  min-height: 196px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 1fr);
+  align-items: center;
+  gap: 8px 18px;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  padding: 8px 0;
+  padding: 12px 18px;
   flex-shrink: 0;
 }
 
 .typeBox {
-  width: 17%;
+  min-width: 0;
   text-align: center;
   cursor: pointer;
   transition: transform var(--transition-fast);
@@ -74,12 +75,20 @@
 }
 
 .typeBox img {
-  width: 100%;
+  width: 54px;
+  height: 54px;
+  display: block;
+  margin: 0 auto;
 }
 
 .typeView {
-  width: 100%;
-  background: #fafafa;
+  width: 66px;
+  height: 66px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff8f4;
   border-radius: var(--radius-md);
   padding: 6px;
   box-sizing: border-box;
@@ -97,6 +106,8 @@
   margin-top: 6px;
   margin-bottom: 2px;
   font-weight: 500;
+  line-height: 1.25;
+  min-height: 28px;
 }
 
 .blogList {

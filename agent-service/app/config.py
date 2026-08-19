@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     max_recovery_attempts: int = Field(default=2, ge=0, le=5)
     runs_per_minute: int = Field(default=10, ge=1, le=120)
     metrics_token: str = ""
+    mcp_enabled: bool = True
+    mcp_api_key: str = ""
 
 
 @lru_cache

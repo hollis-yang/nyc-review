@@ -28,12 +28,12 @@ LEGACY_TABLES = (
     "tb_shop_review",
 )
 CATEGORY_ICONS = {
-    1: "/types/ms.png",
-    2: "/types/ms.png",
-    3: "/types/jiuba.png",
-    4: "/types/qzyl.png",
-    5: "/types/jsyd.png",
-    6: "/types/lrmf.png",
+    1: "/types/nyc-dining.svg",
+    2: "/types/nyc-cafe.svg",
+    3: "/types/nyc-nightlife.svg",
+    4: "/types/nyc-entertainment.svg",
+    5: "/types/nyc-wellness.svg",
+    6: "/types/nyc-beauty.svg",
 }
 
 

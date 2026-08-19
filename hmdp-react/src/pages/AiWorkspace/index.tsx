@@ -38,10 +38,10 @@ const EVENT_KEYS: Record<string, string> = {
   'action.rejected': 'actionRejected',
 };
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message;
-  return 'The service is temporarily unavailable.';
+  return fallback;
 }
 
 export default function AiWorkspace() {
@@ -101,7 +101,7 @@ export default function AiWorkspace() {
         listAgentRuns(5).then(setHistory).catch(() => {});
       }
     } catch (error) {
-      setRunError(errorMessage(error));
+      setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
     } finally {
       setRunning(false);
     }
@@ -140,7 +140,7 @@ export default function AiWorkspace() {
       );
     } catch (error) {
       setRunning(false);
-      setRunError(errorMessage(error));
+      setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
     }
   };
 
@@ -155,7 +155,7 @@ export default function AiWorkspace() {
         Toast.show({ icon: 'success', content: t('aiGuide.translationSuccess') });
       }
     } catch (error) {
-      Toast.show({ icon: 'fail', content: errorMessage(error) });
+      Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
     } finally {
       setTranslating(false);
     }
@@ -168,7 +168,7 @@ export default function AiWorkspace() {
       closeStreamRef.current?.();
       setRunning(false);
     } catch (error) {
-      Toast.show({ icon: 'fail', content: errorMessage(error) });
+      Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
     }
   };
 
@@ -193,7 +193,7 @@ export default function AiWorkspace() {
         });
       }
     } catch (error) {
-      Toast.show({ icon: 'fail', content: errorMessage(error) });
+      Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
     } finally {
       setActionBusy(null);
     }

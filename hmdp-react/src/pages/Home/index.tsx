@@ -14,6 +14,11 @@ interface ShopType {
   icon: string;
 }
 
+const shopTypeIconUrl = (icon?: string) => {
+  if (!icon) return '/imgs/types/nyc-dining.svg';
+  return `/imgs${icon.startsWith('/') ? icon : `/${icon}`}`;
+};
+
 export default function Home() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -140,12 +145,16 @@ export default function Home() {
                 >
                   <img
                     className={styles.suggestIcon}
-                    src={s.typeId && getTypeInfo(s.typeId) ? `/imgs/${getTypeInfo(s.typeId)!.icon}` : '/imgs/types/ms.png'}
+                    src={shopTypeIconUrl(s.typeId ? getTypeInfo(s.typeId)?.icon : undefined)}
                     alt=""
                   />
                   <div className={styles.suggestInfo}>
                     <div className={styles.suggestName}>{s.name}</div>
-                    <div className={styles.suggestHint}>{s.typeId && getTypeInfo(s.typeId) ? getTypeInfo(s.typeId)!.name : 'View details'}</div>
+                    <div className={styles.suggestHint}>
+                      {s.typeId && getTypeInfo(s.typeId)
+                        ? t(`shopTypes.${getTypeInfo(s.typeId)!.name}`, getTypeInfo(s.typeId)!.name)
+                        : t('home.viewDetails')}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -169,7 +178,7 @@ export default function Home() {
             }
           >
             <div className={styles.typeView}>
-              <img src={`/imgs/${tp.icon}`} alt="" />
+              <img src={shopTypeIconUrl(tp.icon)} alt="" />
             </div>
             <div className={styles.typeText}>{t(`shopTypes.${tp.name}`, tp.name)}</div>
           </div>

@@ -15,3 +15,8 @@ body {
 html, body, #root {
   height: 100%;
 }
+
+/* Picker wheels must own touch gestures instead of allowing page scroll to steal them. */
+.adm-picker-view-column-wheel {
+  touch-action: none;
+}

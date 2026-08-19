@@ -86,7 +86,7 @@ export default function ShopDetail() {
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) {
-      try { await navigator.share({ title: shop?.name ?? 'Shop details', url }); } catch {}
+      try { await navigator.share({ title: shop?.name ?? t('shopDetail.notFound'), url }); } catch {}
     } else {
       await navigator.clipboard.writeText(url);
       Toast.show({ icon: 'success', content: t('shopDetail.linkCopied') });

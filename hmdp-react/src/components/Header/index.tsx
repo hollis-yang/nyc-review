@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LeftOutline, UserOutline } from 'antd-mobile-icons';
+import { useTranslation } from 'react-i18next';
 import styles from './Header.module.css';
 
 interface HeaderProps {
@@ -19,6 +20,7 @@ export default function Header({
   onRightClick,
 }: HeaderProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -37,7 +39,7 @@ export default function Header({
           </div>
         )}
       </div>
-      <div className={styles.title}>{title || 'NYC Review'}</div>
+      <div className={styles.title}>{title || t('login.brand')}</div>
       <div className={styles.right}>
         {showUser && (
           <div className={styles.icon} onClick={onRightClick}>

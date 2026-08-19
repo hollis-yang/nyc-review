@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.routes import router
 from app.config import get_settings
+from app.mcp.server import McpApiKeyMiddleware, bind_runtime, mcp, unbind_runtime
 from app.runtime import AgentRuntime
 
 settings = get_settings()
@@ -13,9 +14,15 @@ settings = get_settings()
 async def lifespan(application: FastAPI):
     runtime = await AgentRuntime.create(settings)
     application.state.agent_runtime = runtime
+    bind_runtime(runtime)
     try:
-        yield
+        if settings.mcp_enabled:
+            async with mcp.session_manager.run():
+                yield
+        else:
+            yield
     finally:
+        unbind_runtime()
         await runtime.close()
 
 
@@ -31,4 +38,9 @@ async def health() -> dict[str, str]:
         "adapter": settings.adapter,
         "rag": settings.rag_adapter,
         "model": settings.model_provider,
+        "mcp": "enabled" if settings.mcp_enabled else "disabled",
     }
+
+
+if settings.mcp_enabled:
+    app.mount("/", McpApiKeyMiddleware(mcp.streamable_http_app(), settings.mcp_api_key))

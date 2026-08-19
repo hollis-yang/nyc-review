@@ -122,6 +122,12 @@ class AgentActionService:
         except (httpx.HTTPError, RuntimeError, ValueError):
             return {}
 
+    async def available_vouchers(self, shop_id: int, authorization: str = "") -> list[dict]:
+        try:
+            return await self._gateway.available_vouchers(shop_id, authorization)
+        except (httpx.HTTPError, RuntimeError, ValueError):
+            return []
+
     async def propose(
         self,
         run_id: str,

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Wellness">
+  <circle cx="32" cy="32" r="30" fill="#e8f8ef"/>
+  <path d="M32 15c7 7 7 14 0 21-7-7-7-14 0-21Zm0 21c-11-1-16-6-17-15 10 0 16 5 17 15Zm0 0c11-1 16-6 17-15-10 0-16 5-17 15Z" fill="#73c994" stroke="#318b5d" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M17 45c9-6 21-6 30 0M22 51h20" fill="none" stroke="#318b5d" stroke-width="3" stroke-linecap="round"/>
+</svg>

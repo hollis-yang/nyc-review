@@ -51,6 +51,12 @@ RAG 至少索引以下第一方 Mock 内容：
 
 每个检索片段必须包含 `shopId`、内容类型、分类、区域、语言、创建时间等元数据。Agent 输出中的主观结论必须包含可回溯引用。用户内容一律作为不可信数据处理，评论中的指令不得覆盖系统指令。
 
+## 5. Read-only MCP
+
+本地 coding agent harness 通过 Streamable HTTP MCP 复用相同的 Shop、RAG、Route 与 Verifier 服务。工具清单只能包含 `search_shops`、`get_shop_detail`、`get_shop_evidence`、`get_available_vouchers`、`calculate_route` 和 `validate_itinerary`。
+
+MCP 不得发布收藏、保存行程、领券、提醒或秒杀写操作；秒杀仍只能由用户在传统 UI 手动发起。配置 `HMDP_AGENT_MCP_API_KEY` 时，无正确 Bearer key 的 MCP 请求必须返回 401。
+
 ## 完成定义
 
 完整演示必须同时通过以下两条路径：

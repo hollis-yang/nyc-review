@@ -9,7 +9,8 @@
   "home": {
     "searchPlaceholder": "Search shops, locations...",
     "searchResults": "Search Results",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "viewDetails": "View details"
   },
   "login": {
     "titlePwd": "Password Login",
@@ -93,17 +94,15 @@
     "intro": "Bio",
     "introPlaceholder": "Tell us about yourself",
     "gender": "Gender",
-    "city": "City",
+    "community": "Community",
     "birthday": "Birthday",
-    "credits": "My Credits",
-    "level": "Membership Level",
     "editNickname": "Edit Nickname",
     "editIntro": "Edit Bio",
     "enterText": "Enter text",
     "save": "Save",
     "selectGender": "Select Gender",
     "selectBirthday": "Select Birthday",
-    "selectCity": "Select City",
+    "selectCommunity": "Select Community",
     "select": "Select",
     "male": "Male",
     "female": "Female",
@@ -112,7 +111,7 @@
     "updated": "Updated",
     "genderUpdated": "Gender updated",
     "birthdayUpdated": "Birthday updated",
-    "cityUpdated": "City updated",
+    "communityUpdated": "Community updated",
     "language": "Language",
     "selectLanguage": "Select Language",
     "languageUpdated": "Language updated"
@@ -251,6 +250,12 @@
     "days": "days"
   },
   "shopTypes": {
+    "Food & Dining": "Food & Dining",
+    "Cafes & Desserts": "Cafes & Desserts",
+    "Bars & Nightlife": "Bars & Nightlife",
+    "Entertainment & Attractions": "Entertainment & Attractions",
+    "Fitness & Wellness": "Fitness & Wellness",
+    "Beauty & Personal Care": "Beauty & Personal Care",
     "美食": "Food",
     "KTV": "KTV",
     "丽人·美发": "Beauty & Hair",
@@ -282,6 +287,7 @@
     "translatePrompt": "Translate prompt to English with DeepSeek",
     "translating": "DeepSeek is translating…",
     "translationSuccess": "Translated to English with DeepSeek",
+    "serviceUnavailable": "The service is temporarily unavailable.",
     "run": "Ask the agent team",
     "running": "Agents are working…",
     "cancel": "Cancel run",

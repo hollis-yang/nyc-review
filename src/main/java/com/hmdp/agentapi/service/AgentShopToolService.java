@@ -111,6 +111,19 @@ public class AgentShopToolService {
         return new SearchResult(candidates, warnings);
     }
 
+    public AgentShopCandidate detail(Long shopId) {
+        if (shopId == null || shopId <= 0) {
+            return null;
+        }
+        Shop shop = shopService.getById(shopId);
+        if (shop == null) {
+            return null;
+        }
+        Map<Long, ShopType> typeMap = shopTypeService.list().stream()
+                .collect(Collectors.toMap(ShopType::getId, Function.identity(), (first, ignored) -> first));
+        return toCandidate(shop, typeMap, loadEnrichment(List.of(shop)), null, null);
+    }
+
     private Enrichment loadEnrichment(List<Shop> shops) {
         if (shops.isEmpty()) {
             return Enrichment.empty();

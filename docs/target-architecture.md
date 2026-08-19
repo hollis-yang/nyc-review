@@ -14,7 +14,7 @@ Python Agent Service
   - LangGraph 单 Agent / 多 Agent 工作流
   - RAG、Checkpoint、Eval
         |
-        | 类型安全 OpenAPI；后续增加 MCP
+        | 类型安全 OpenAPI
         v
 Spring Boot Business Backend
   - 用户、商户、博客、评论、关注
@@ -23,9 +23,17 @@ Spring Boot Business Backend
         |
         +--> Qdrant：评论和博客向量索引
         +--> SQLite Trace Store：模型、Agent、Tool 和 Action Trace
+
+Local Coding Agent Harness
+        |
+        | Streamable HTTP MCP（仅六个只读领域工具）
+        v
+Python Agent Service
 ```
 
 Spring Boot 是业务事实来源。Agent 不允许直连业务数据库，也不允许获得任意 SQL 或任意 HTTP 工具。Python Agent Service 只通过带用户身份和权限范围的领域 Tool API 访问业务能力。
+
+MCP Server 复用相同的 Shop、RAG、Route 和 Verifier 服务。它只发布表格中的六个查询/计算工具；所有写操作继续由产品 UI 人工审批或手动执行。
 
 ## Agent 工作流
 

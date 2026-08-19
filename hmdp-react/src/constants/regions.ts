@@ -1,55 +1,87 @@
-// NYC borough/neighborhood cascade used by the profile editor.
-const regions = [
+export interface CommunityOption {
+  label: string;
+  value: string;
+  children?: CommunityOption[];
+}
+
+interface BoroughDefinition {
+  value: string;
+  labelZh: string;
+  communities: string[];
+}
+
+// Canonical values stay in English for backend compatibility. Only labels are localized.
+const boroughs: BoroughDefinition[] = [
   {
-    label: 'Manhattan',
     value: 'Manhattan',
-    children: [
-      { label: 'Midtown', value: 'Midtown' },
-      { label: 'Chelsea', value: 'Chelsea' },
-      { label: 'SoHo', value: 'SoHo' },
-      { label: 'East Village', value: 'East Village' },
-      { label: 'Upper West Side', value: 'Upper West Side' },
-      { label: 'Harlem', value: 'Harlem' },
+    labelZh: '曼哈顿',
+    communities: [
+      'Battery Park City', 'Chelsea', 'Chinatown', 'Civic Center', 'East Harlem',
+      'East Village', 'Financial District', 'Flatiron District', 'Gramercy Park',
+      'Greenwich Village', 'Harlem', "Hell's Kitchen", 'Inwood', 'Little Italy',
+      'Lower East Side', 'Midtown', 'Morningside Heights', 'NoHo', 'Nolita', 'SoHo',
+      'Tribeca', 'Upper East Side', 'Upper West Side', 'Washington Heights', 'West Village',
     ],
   },
   {
-    label: 'Brooklyn',
     value: 'Brooklyn',
-    children: [
-      { label: 'Williamsburg', value: 'Williamsburg' },
-      { label: 'DUMBO', value: 'DUMBO' },
-      { label: 'Park Slope', value: 'Park Slope' },
-      { label: 'Bushwick', value: 'Bushwick' },
-      { label: 'Coney Island', value: 'Coney Island' },
+    labelZh: '布鲁克林',
+    communities: [
+      'Bay Ridge', 'Bedford-Stuyvesant', 'Bensonhurst', 'Boerum Hill', 'Borough Park',
+      'Brighton Beach', 'Brooklyn Heights', 'Brownsville', 'Bushwick', 'Carroll Gardens',
+      'Clinton Hill', 'Cobble Hill', 'Coney Island', 'Crown Heights', 'Downtown Brooklyn',
+      'DUMBO', 'East New York', 'Flatbush', 'Fort Greene', 'Gowanus', 'Greenpoint',
+      'Park Slope', 'Prospect Heights', 'Red Hook', 'Sheepshead Bay', 'Sunset Park',
+      'Williamsburg',
     ],
   },
   {
-    label: 'Queens',
     value: 'Queens',
-    children: [
-      { label: 'Long Island City', value: 'Long Island City' },
-      { label: 'Astoria', value: 'Astoria' },
-      { label: 'Flushing', value: 'Flushing' },
-      { label: 'Jackson Heights', value: 'Jackson Heights' },
+    labelZh: '皇后区',
+    communities: [
+      'Astoria', 'Bayside', 'Corona', 'Elmhurst', 'Far Rockaway', 'Flushing',
+      'Forest Hills', 'Fresh Meadows', 'Glendale', 'Jackson Heights', 'Jamaica',
+      'Kew Gardens', 'Long Island City', 'Maspeth', 'Middle Village', 'Ozone Park',
+      'Queens Village', 'Rego Park', 'Ridgewood', 'Rockaway Beach', 'Sunnyside',
+      'Whitestone', 'Woodhaven', 'Woodside',
     ],
   },
   {
-    label: 'Bronx',
     value: 'Bronx',
-    children: [
-      { label: 'Fordham', value: 'Fordham' },
-      { label: 'Riverdale', value: 'Riverdale' },
-      { label: 'Mott Haven', value: 'Mott Haven' },
+    labelZh: '布朗克斯',
+    communities: [
+      'Belmont', 'City Island', 'Concourse', 'East Tremont', 'Fordham', 'Highbridge',
+      'Hunts Point', 'Kingsbridge', 'Melrose', 'Morris Park', 'Mott Haven', 'Norwood',
+      'Parkchester', 'Pelham Bay', 'Riverdale', 'Soundview', 'Throgs Neck',
+      'University Heights', 'Wakefield', 'West Farms', 'Williamsbridge',
     ],
   },
   {
-    label: 'Staten Island',
     value: 'Staten Island',
-    children: [
-      { label: 'St. George', value: 'St. George' },
-      { label: 'New Dorp', value: 'New Dorp' },
+    labelZh: '史泰登岛',
+    communities: [
+      'Arrochar', 'Bay Terrace', 'Bulls Head', 'Castleton Corners', 'Clifton',
+      'Dongan Hills', 'Eltingville', 'Great Kills', 'Grymes Hill', 'Huguenot',
+      'New Dorp', 'New Springville', 'Oakwood', 'Port Richmond', "Prince's Bay",
+      'Rosebank', 'St. George', 'Stapleton', 'Todt Hill', 'Tompkinsville',
+      'Tottenville', 'West Brighton',
     ],
   },
 ];
 
-export default regions;
+export function getCommunityOptions(language: string): CommunityOption[] {
+  const chinese = language.startsWith('zh');
+  return boroughs.map((borough) => ({
+    label: chinese ? borough.labelZh : borough.value,
+    value: borough.value,
+    children: borough.communities.map((community) => ({
+      label: community,
+      value: community,
+    })),
+  }));
+}
+
+export const communityCount = boroughs.reduce(
+  (total, borough) => total + borough.communities.length,
+  0,
+);

@@ -142,7 +142,7 @@ export default function BlogDetail() {
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) {
-      try { await navigator.share({ title: blog?.title ?? 'Note details', url }); } catch {}
+      try { await navigator.share({ title: blog?.title ?? t('blogDetail.title'), url }); } catch {}
     } else {
       await navigator.clipboard.writeText(url);
       Toast.show({ icon: 'success', content: t('blogDetail.linkCopied') });

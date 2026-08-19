@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { getMe, getUserInfo, updateUser, updateUserInfo } from '../../api/user';
 import { uploadBlogImage } from '../../api/upload';
 import FootBar from '../../components/FootBar';
-import regions from '../../constants/regions';
+import { getCommunityOptions } from '../../constants/regions';
 import styles from './ProfileEdit.module.css';
 
 type EditField = 'nickname' | 'introduce' | null;
@@ -22,7 +22,7 @@ export default function ProfileEdit() {
   const [editField, setEditField] = useState<EditField>(null);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
-  const [cityPickerVisible, setCityPickerVisible] = useState(false);
+  const [communityPickerVisible, setCommunityPickerVisible] = useState(false);
   const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
 
   useEffect(() => {
@@ -212,8 +212,8 @@ export default function ProfileEdit() {
             </div>
           </div>
           <div className={styles.divider} />
-          <div className={styles.infoItem} onClick={() => setCityPickerVisible(true)}>
-            <div className={styles.infoLabel}>{t('profileEdit.city')}</div>
+          <div className={styles.infoItem} onClick={() => setCommunityPickerVisible(true)}>
+            <div className={styles.infoLabel}>{t('profileEdit.community')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{info.city || t('profileEdit.select')}</div>
               <RightOutline fontSize={14} color="#ccc" />
@@ -224,25 +224,6 @@ export default function ProfileEdit() {
             <div className={styles.infoLabel}>{t('profileEdit.birthday')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>{info.birthday || t('profileEdit.add')}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-        </div>
-
-        {/* 积分/会员 */}
-        <div className={styles.infoBox}>
-          <div className={styles.infoItem}>
-            <div className={styles.infoLabel}>{t('profileEdit.credits')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.credits ?? 0}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-          <div className={styles.divider} />
-          <div className={styles.infoItem}>
-            <div className={styles.infoLabel}>{t('profileEdit.level')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>Lv.{info.level ?? 0}</div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>
           </div>
@@ -318,24 +299,24 @@ export default function ProfileEdit() {
           title={t('profileEdit.selectBirthday')}
         />
 
-        {/* 城市选择 */}
+        {/* 社区选择；仍写入兼容字段 city。 */}
         <CascadePicker
-          options={regions}
-          visible={cityPickerVisible}
-          onClose={() => setCityPickerVisible(false)}
+          options={getCommunityOptions(i18n.resolvedLanguage || i18n.language)}
+          visible={communityPickerVisible}
+          onClose={() => setCommunityPickerVisible(false)}
           onConfirm={async (value: any[]) => {
-            setCityPickerVisible(false);
-            const cityStr = value.filter(Boolean).join(' ');
-            if (!cityStr) return;
+            setCommunityPickerVisible(false);
+            const community = value.filter(Boolean).join(' ');
+            if (!community) return;
             try {
-              await updateUserInfo({ city: cityStr });
-              setInfo((prev) => ({ ...prev, city: cityStr }));
-              Toast.show({ icon: 'success', content: t('profileEdit.cityUpdated') });
+              await updateUserInfo({ city: community });
+              setInfo((prev) => ({ ...prev, city: community }));
+              Toast.show({ icon: 'success', content: t('profileEdit.communityUpdated') });
             } catch (err: any) {
               Toast.show({ icon: 'fail', content: String(err) });
             }
           }}
-          title={t('profileEdit.selectCity')}
+          title={t('profileEdit.selectCommunity')}
         />
       </div>
 

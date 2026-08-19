@@ -24,6 +24,8 @@ from app.request_context import request_authorization
 class ShopToolService(Protocol):
     async def search(self, constraints: UserConstraints) -> CandidateSet: ...
 
+    async def detail(self, shop_id: int) -> ShopCandidate | None: ...
+
 
 class RagService(Protocol):
     async def retrieve(self, constraints: UserConstraints, candidates: CandidateSet) -> EvidencePack: ...
@@ -82,6 +84,13 @@ class MockShopToolService:
             candidates=fixtures,
             applied_constraints=["category", "location", "budget", "desired_tags"],
             warnings=[] if fixtures else ["No mock candidates matched every hard constraint."],
+        )
+
+    async def detail(self, shop_id: int) -> ShopCandidate | None:
+        candidates = await self.search(UserConstraints(query="shop detail"))
+        return next(
+            (candidate for candidate in candidates.candidates if candidate.shop_id == shop_id),
+            None,
         )
 
 
@@ -164,39 +173,8 @@ class GeneratedNycShopToolService:
             )
         )
         candidates = [
-            ShopCandidate(
-                shop_id=shop["id"],
-                name=shop["name"],
-                category=category,
-                neighborhood=shop["neighborhood"],
-                latitude=shop["y"],
-                longitude=shop["x"],
-                avg_price_cents=shop["avgPriceCents"],
-                score=shop["score"] / 10,
-                tags=shop.get("tags") or [],
-                source="nyc-generated",
-                subcategory_id=shop.get("subcategoryId"),
-                subcategory=(self._subcategories.get(shop.get("subcategoryId")) or {}).get("name"),
-                borough=shop.get("borough"),
-                address=shop.get("address"),
-                description=shop.get("description"),
-                price_level=shop.get("priceLevel"),
-                comments=shop.get("comments"),
-                distance_meters=distance,
-                timezone=shop.get("timezone"),
-                data_version=shop.get("dataVersion"),
-                business_hours=[
-                    BusinessHours(
-                        day_of_week=item["dayOfWeek"],
-                        closed=item["closed"],
-                        open_time=item.get("openTime"),
-                        close_time=item.get("closeTime"),
-                        closes_next_day=item.get("closesNextDay", False),
-                    )
-                    for item in self._hours_by_shop.get(shop["id"], [])
-                ],
-            )
-            for shop, category, _, _, _ in selected_rows[: self._max_candidates]
+            self._to_candidate(shop, category, distance)
+            for shop, category, distance, _, _ in selected_rows[: self._max_candidates]
         ]
         return CandidateSet(
             candidates=candidates,
@@ -207,6 +185,51 @@ class GeneratedNycShopToolService:
                 if warnings
                 else ([] if candidates else ["No generated NYC shops matched every hard constraint."])
             ),
+        )
+
+    async def detail(self, shop_id: int) -> ShopCandidate | None:
+        shop = next((item for item in self._shops if item["id"] == shop_id), None)
+        if shop is None:
+            return None
+        return self._to_candidate(shop, self.CATEGORY_NAMES[shop["typeId"]], None)
+
+    def _to_candidate(
+        self,
+        shop: dict,
+        category: str,
+        distance_meters: int | None,
+    ) -> ShopCandidate:
+        return ShopCandidate(
+            shop_id=shop["id"],
+            name=shop["name"],
+            category=category,
+            neighborhood=shop["neighborhood"],
+            latitude=shop["y"],
+            longitude=shop["x"],
+            avg_price_cents=shop["avgPriceCents"],
+            score=shop["score"] / 10,
+            tags=shop.get("tags") or [],
+            source="nyc-generated",
+            subcategory_id=shop.get("subcategoryId"),
+            subcategory=(self._subcategories.get(shop.get("subcategoryId")) or {}).get("name"),
+            borough=shop.get("borough"),
+            address=shop.get("address"),
+            description=shop.get("description"),
+            price_level=shop.get("priceLevel"),
+            comments=shop.get("comments"),
+            distance_meters=distance_meters,
+            timezone=shop.get("timezone"),
+            data_version=shop.get("dataVersion"),
+            business_hours=[
+                BusinessHours(
+                    day_of_week=item["dayOfWeek"],
+                    closed=item["closed"],
+                    open_time=item.get("openTime"),
+                    close_time=item.get("closeTime"),
+                    closes_next_day=item.get("closesNextDay", False),
+                )
+                for item in self._hours_by_shop.get(shop["id"], [])
+            ],
         )
 
 
@@ -280,6 +303,20 @@ class HttpShopToolService:
             relaxed_constraints=relaxed_constraints,
             warnings=warnings,
         )
+
+    async def detail(self, shop_id: int) -> ShopCandidate | None:
+        authorization = request_authorization.get() or self._auth_token
+        headers = {"authorization": authorization} if authorization else {}
+        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            response = await client.get(
+                f"{self._base_url}/internal/agent/tools/shops/{shop_id}",
+                headers=headers,
+            )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        item = response.json().get("data")
+        return self._to_candidate(item) if isinstance(item, dict) else None
 
     async def _post_search(self, payload: dict, headers: dict[str, str]) -> dict:
         async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:

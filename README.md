@@ -67,6 +67,8 @@ mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p4_nyc_domain.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p5_agent_actions.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p7_p5_mcp_ui.sql
+redis-cli DEL cache:shopType:list
 ```
 
 生成稳定、可复现的 NYC Mock 数据：
@@ -113,6 +115,8 @@ uv run uvicorn app.main:app --reload --port 8090
 P3 增加人工审批操作、幂等执行、MySQL 审计、收藏偏好、Run 历史与指标；React 默认英语，可在 `Profile → Edit Profile` 切换中文，DeepSeek 翻译入口只在中文模式显示。迁移、接口和 Docker Compose 验证见 [P3 Runbook](docs/p3-agent-actions-runbook.md)。
 
 P4 将秒杀 MQ 从 Redis Stream 迁移到 RabbitMQ，并增加 Publisher Confirm、Redis 生产侧恢复记录、消费重试和错误队列；Profile 可查看收藏、行程、优惠券、提醒和可控 AI Memory；Agent 增加所有权隔离、Prompt Guard、限流、Trace、Token/延迟指标、超时恢复和自动质量门禁。见 [P4 Runbook](docs/p4-production-agent-runbook.md)。
+
+P5 在 Agent Service 的 `/mcp` 提供 Streamable HTTP MCP Server，复用 Spring Tool API、Qdrant RAG、路线估算与 Verifier，并且只暴露六个只读工具。收藏、保存、领券和秒杀不会通过 MCP 执行。接入本地 coding agent harness 与协议验证见 [P5 MCP Runbook](docs/p5-mcp-runbook.md)。
 
 ## 启动前端开发环境
 

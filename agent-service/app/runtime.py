@@ -46,6 +46,10 @@ class AgentRuntime:
     action_service: AgentActionService | None = None
     rate_limiter: SlidingWindowRateLimiter | None = None
     metrics_token: str = ""
+    settings: Settings | None = None
+    shop_service: Any = None
+    rag_service: Any = None
+    itinerary_service: Any = None
 
     @classmethod
     async def create(cls, settings: Settings) -> AgentRuntime:
@@ -75,10 +79,11 @@ class AgentRuntime:
         else:
             rag = InMemoryRagService()
 
+        itinerary = HaversineItineraryService()
         services = WorkflowServices(
             shops=shops,
             rag=rag,
-            itinerary=HaversineItineraryService(),
+            itinerary=itinerary,
         )
         workflows = {
             AgentMode.SINGLE: build_single_agent_graph(services),
@@ -105,6 +110,10 @@ class AgentRuntime:
             ),
             rate_limiter=SlidingWindowRateLimiter(settings.runs_per_minute),
             metrics_token=settings.metrics_token,
+            settings=settings,
+            shop_service=shops,
+            rag_service=rag,
+            itinerary_service=itinerary,
         )
         model_gateway = _build_model_gateway(settings)
         runtime.run_manager = AgentRunManager(

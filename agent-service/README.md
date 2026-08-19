@@ -116,6 +116,12 @@ HMDP_AGENT_BACKEND_AUTH_TOKEN=<current-user-token>
 - `seckill_voucher` 不在模型 Tool Catalog 中；用户手动秒杀由 React 直接调用 Spring Boot。
 - RAG 返回的评论和博客必须标记为不可信内容，并携带可回溯引用。
 
+## P5 Read-only MCP Server
+
+Agent Service 同时在 `http://127.0.0.1:8090/mcp` 提供 Streamable HTTP MCP。它复用 AI Guide 的领域服务，只发布 `search_shops`、`get_shop_detail`、`get_shop_evidence`、`get_available_vouchers`、`calculate_route` 和 `validate_itinerary`。MCP Tool Catalog 不包含任何写操作。
+
+本地可设置 `HMDP_AGENT_MCP_API_KEY`，客户端随后使用 `Authorization: Bearer <key>`。HTTP Adapter 访问 Spring 时仍使用独立的 `HMDP_AGENT_BACKEND_AUTH_TOKEN`；不要把用户登录 token 当作 MCP 服务密钥。完整接入和测试步骤见 [P5 Runbook](../docs/p5-mcp-runbook.md)。
+
 ## Eval
 
 同一份用例对比 Single/Multi 的约束解析、合法商户 ID、引用覆盖率、Verifier、Trace 与延迟。Multi Agent 未达到 `evals/quality_gate.json` 时命令返回非零：

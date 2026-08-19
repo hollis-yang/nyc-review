@@ -16,7 +16,8 @@ services:
       - ./src/main/resources/db/p4_nyc_domain.sql:/docker-entrypoint-initdb.d/04-nyc-domain.sql:ro
       - ./src/main/resources/db/p5_agent_actions.sql:/docker-entrypoint-initdb.d/05-agent-actions.sql:ro
       - ./src/main/resources/db/p6_rabbitmq_profile_memory.sql:/docker-entrypoint-initdb.d/06-agent-memory.sql:ro
-      - ./data/generated/nyc-small/mysql_import.sql:/docker-entrypoint-initdb.d/07-nyc-mock.sql:ro
+      - ./src/main/resources/db/p7_p5_mcp_ui.sql:/docker-entrypoint-initdb.d/07-p5-ui.sql:ro
+      - ./data/generated/nyc-small/mysql_import.sql:/docker-entrypoint-initdb.d/08-nyc-mock.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -113,6 +114,7 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       HMDP_AGENT_RUN_STORE_PATH: /data/runs/agent-runs.sqlite3
       HMDP_AGENT_METRICS_TOKEN: ${HMDP_AGENT_METRICS_TOKEN:-}
+      HMDP_AGENT_MCP_API_KEY: ${HMDP_AGENT_MCP_API_KEY:-}
     depends_on:
       - spring
       - qdrant

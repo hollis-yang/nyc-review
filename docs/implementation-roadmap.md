@@ -32,4 +32,4 @@
 
 - 已实现普通优惠券领取、收藏、行程保存和秒杀提醒的人工审批。
 - 已实现 Trace、重放、自动 Eval Gate、Prompt Guard 和模型版本记录；Dashboard 作为后续可视化增强。
-- 对只读领域能力增加 MCP Server；秒杀操作不进入 MCP。
+- 已对六个只读领域能力增加 Streamable HTTP MCP Server；收藏、领券、保存、提醒和秒杀操作均不进入 MCP。

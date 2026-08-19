@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.UUID;
@@ -46,5 +48,15 @@ public class AgentShopToolController {
                 traceId,
                 toolService.evidence(shopId, limit)
         );
+    }
+
+    @GetMapping("/{shopId}")
+    public AgentToolResponse<AgentShopCandidate> detail(@PathVariable Long shopId) {
+        String traceId = UUID.randomUUID().toString();
+        AgentShopCandidate candidate = toolService.detail(shopId);
+        if (candidate == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Shop not found");
+        }
+        return AgentToolResponse.ok("get_shop_detail", traceId, candidate);
     }
 }
