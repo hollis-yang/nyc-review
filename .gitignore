@@ -63,4 +63,5 @@ __pycache__/
 .ruff_cache/
 .venv/
 data/generated/
+data/sources/nyc-nta-2020-26b.geojson
 agent-service/.local/

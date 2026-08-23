@@ -13,6 +13,7 @@ public class LoginInterceptor implements HandlerInterceptor {
 
     private static final Set<String> PUBLIC_GET_PATHS = Set.of(
             "/shop/list",
+            "/shop/map",
             "/shop/of/type",
             "/shop/of/name",
             "/shop-type/list",

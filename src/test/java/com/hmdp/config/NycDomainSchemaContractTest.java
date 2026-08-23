@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NycDomainSchemaContractTest {
@@ -78,6 +79,21 @@ class NycDomainSchemaContractTest {
             assertTrue(migration.contains("source_fetched_at"));
             assertTrue(migration.contains("synthetic_fields JSON"));
             assertTrue(migration.contains("uk_shop_source_external"));
+        }
+    }
+
+    @Test
+    void p9MigrationPinsAndRepairsLegacyCompatibleCollation() throws IOException {
+        try (InputStream input = getClass().getResourceAsStream("/db/p9_p7_map_geospatial.sql")) {
+            assertNotNull(input);
+            String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            String tableCollation = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;";
+            String repairCollation =
+                    "CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci";
+            assertEquals(6, migration.split(tableCollation, -1).length - 1);
+            assertEquals(6, migration.split(repairCollation, -1).length - 1);
+            assertTrue(migration.contains("COLLATION_NAME <> 'utf8mb4_general_ci'"));
         }
     }
 }

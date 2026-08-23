@@ -18,7 +18,8 @@ services:
       - ./src/main/resources/db/p6_rabbitmq_profile_memory.sql:/docker-entrypoint-initdb.d/06-agent-memory.sql:ro
       - ./src/main/resources/db/p7_p5_mcp_ui.sql:/docker-entrypoint-initdb.d/07-p5-ui.sql:ro
       - ./src/main/resources/db/p8_p6_data_provenance.sql:/docker-entrypoint-initdb.d/08-p6-provenance.sql:ro
-      - ./data/generated/nyc-small/mysql_import.sql:/docker-entrypoint-initdb.d/09-nyc-data.sql:ro
+      - ./src/main/resources/db/p9_p7_map_geospatial.sql:/docker-entrypoint-initdb.d/09-p7-map-schema.sql:ro
+      - ./data/generated/nyc-medium-hybrid/mysql_import.sql:/docker-entrypoint-initdb.d/10-nyc-data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -43,7 +44,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./data/generated/nyc-small/redis_seed.resp:/seed/redis_seed.resp:ro
+      - ./data/generated/nyc-medium-hybrid/redis_seed.resp:/seed/redis_seed.resp:ro
     command: ["sh", "-c", "redis-cli -h redis --pipe < /seed/redis_seed.resp"]
     restart: "no"
 
@@ -108,7 +109,7 @@ services:
       HMDP_AGENT_BACKEND_BASE_URL: http://spring:8081
       HMDP_AGENT_RAG_ADAPTER: qdrant
       HMDP_AGENT_QDRANT_LOCATION: http://qdrant:6333
-      HMDP_AGENT_RAG_DATA_DIRECTORY: /data/nyc-small
+      HMDP_AGENT_RAG_DATA_DIRECTORY: /data/nyc-medium-hybrid
       HMDP_AGENT_MODEL_PROVIDER: ${HMDP_AGENT_MODEL_PROVIDER:-deepseek}
       HMDP_AGENT_MODEL_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
@@ -122,7 +123,7 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      - ./data/generated/nyc-small:/data/nyc-small:ro
+      - ./data/generated/nyc-medium-hybrid:/data/nyc-medium-hybrid:ro
       - hmdp-agent-runs:/data/runs
 
   web:

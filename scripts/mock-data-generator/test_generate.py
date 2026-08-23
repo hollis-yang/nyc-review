@@ -20,6 +20,20 @@ NYC_OPEN_DATA = importlib.util.module_from_spec(NYC_SPEC)
 assert NYC_SPEC and NYC_SPEC.loader
 sys.modules[NYC_SPEC.name] = NYC_OPEN_DATA
 NYC_SPEC.loader.exec_module(NYC_OPEN_DATA)
+NYC_NTA_PATH = MODULE_PATH.with_name("nyc_nta.py")
+NYC_NTA_SPEC = importlib.util.spec_from_file_location("nyc_nta", NYC_NTA_PATH)
+NYC_NTA = importlib.util.module_from_spec(NYC_NTA_SPEC)
+assert NYC_NTA_SPEC and NYC_NTA_SPEC.loader
+sys.modules[NYC_NTA_SPEC.name] = NYC_NTA
+NYC_NTA_SPEC.loader.exec_module(NYC_NTA)
+P7_IMPORT_PATH = MODULE_PATH.with_name("build_neighborhood_import.py")
+P7_IMPORT_SPEC = importlib.util.spec_from_file_location(
+    "build_neighborhood_import_test", P7_IMPORT_PATH
+)
+P7_IMPORT = importlib.util.module_from_spec(P7_IMPORT_SPEC)
+assert P7_IMPORT_SPEC and P7_IMPORT_SPEC.loader
+sys.modules[P7_IMPORT_SPEC.name] = P7_IMPORT
+P7_IMPORT_SPEC.loader.exec_module(P7_IMPORT)
 SNAPSHOT_PATH = MODULE_PATH.parents[1] / ".." / "data" / "sources" / "nyc-open-data-restaurants-2026-08-23.json"
 
 
@@ -115,6 +129,9 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertIn("INSERT INTO `tb_data_import`", mysql_sql)
             self.assertIn("`external_id`", mysql_sql)
             self.assertIn("`synthetic_fields`", mysql_sql)
+            self.assertIn("tb_shop_map_location", mysql_sql)
+            self.assertIn("tb_neighborhood_shop_count", mysql_sql)
+            self.assertIn("tb_borough_shop_count", mysql_sql)
             self.assertIn("ON DUPLICATE KEY UPDATE", mysql_sql)
             self.assertIn("America/New_York", mysql_sql)
             pin_utc = mysql_sql.index("SET SESSION time_zone = '+00:00'")
@@ -204,6 +221,194 @@ class GenerateDatasetTest(unittest.TestCase):
             ]
         )
         self.assertEqual(1, len(records))
+
+    def test_nta_geometry_respects_polygon_holes(self):
+        geometry = {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]],
+                    [[1, 1], [3, 1], [3, 3], [1, 3], [1, 1]],
+                ]
+            ],
+        }
+        self.assertTrue(NYC_NTA.contains_point(geometry, 0.5, 0.5))
+        self.assertFalse(NYC_NTA.contains_point(geometry, 2, 2))
+        self.assertTrue(NYC_NTA.contains_point(geometry, 0, 2))
+
+    def test_p7_import_assigns_official_polygon_and_preserves_agent_area(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = root / "dataset"
+            dataset.mkdir()
+            shops = [
+                {
+                    "id": 1,
+                    "typeId": 1,
+                    "dataVersion": "test-v1",
+                    "x": -73.99,
+                    "y": 40.75,
+                    "borough": "Manhattan",
+                    "area": "Midtown",
+                    "sourceType": "NYC_OPEN_DATA",
+                },
+                {
+                    "id": 2,
+                    "typeId": 1,
+                    "dataVersion": "test-v1",
+                    "x": -74.5,
+                    "y": 41.5,
+                    "borough": "Manhattan",
+                    "area": "Midtown",
+                    "sourceType": "MOCK",
+                },
+            ]
+            shop_ids = [1, 2]
+            shop_ids_sha256 = hashlib.sha256(
+                json.dumps(shop_ids, separators=(",", ":")).encode()
+            ).hexdigest()
+            (dataset / "shops.json").write_text(json.dumps(shops))
+            (dataset / "import_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "dataVersion": "test-v1",
+                        "datasetSha256": "d" * 64,
+                        "shopIds": shop_ids,
+                        "shopIdsSha256": shop_ids_sha256,
+                    }
+                )
+            )
+            snapshot_document = {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "nta2020": "MN0001",
+                            "ntaname": "Fixture NTA",
+                            "boroname": "Manhattan",
+                            "ntatype": "0",
+                            "cdta2020": "MN00",
+                        },
+                        "geometry": {
+                            "type": "MultiPolygon",
+                            "coordinates": [
+                                [[
+                                    [-74.1, 40.6],
+                                    [-73.8, 40.6],
+                                    [-73.8, 40.9],
+                                    [-74.1, 40.9],
+                                    [-74.1, 40.6],
+                                ]]
+                            ],
+                        },
+                    }
+                ],
+            }
+            snapshot_payload = json.dumps(snapshot_document, separators=(",", ":")).encode()
+            snapshot = root / "nta.geojson"
+            snapshot.write_bytes(snapshot_payload)
+            snapshot_sha256 = hashlib.sha256(snapshot_payload).hexdigest()
+            nta_manifest = root / "nta-manifest.json"
+            nta_manifest.write_text(
+                json.dumps(
+                    {
+                        "contentLength": len(snapshot_payload),
+                        "datasetId": "fixture",
+                        "datasetVersion": "fixture-v1",
+                        "downloadUrl": "https://example.invalid/fixture.geojson",
+                        "featureCount": 1,
+                        "revisionDate": "2026-01-01",
+                        "sha256": snapshot_sha256,
+                        "sourcePageUrl": "https://example.invalid/source",
+                        "verifiedAt": "2026-01-02T00:00:00Z",
+                    }
+                )
+            )
+            output = root / "p7.sql"
+            report = P7_IMPORT.build_import(
+                dataset,
+                snapshot,
+                output,
+                nta_manifest_path=nta_manifest,
+            )
+            sql = output.read_text()
+
+            self.assertEqual(
+                {"POINT_IN_POLYGON": 1, "UNASSIGNED": 1},
+                report["assignmentMethods"],
+            )
+            self.assertEqual(
+                {"assigned": 1, "unassigned": 0},
+                report["coverageBySource"]["NYC_OPEN_DATA"],
+            )
+            self.assertIn("HMDP_P7_NEIGHBORHOOD_IMPORT_V1", sql)
+            self.assertIn(
+                "SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;",
+                sql,
+            )
+            self.assertIn(
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;",
+                sql,
+            )
+            self.assertIn("ST_GeomFromGeoJSON", sql)
+            self.assertIn("axis-order=long-lat", sql)
+            self.assertIn("CREATE TEMPORARY TABLE `hmdp_p7_expected_shop`", sql)
+            self.assertIn("CHECK (`ok` = 1)", sql)
+            self.assertIn("`dataset_sha256`='" + "d" * 64 + "'", sql)
+            self.assertIn("ABS(actual.`x` - expected.`longitude`)", sql)
+            self.assertLess(
+                sql.index("CREATE TEMPORARY TABLE `hmdp_p7_dataset_guard`"),
+                sql.index("START TRANSACTION;"),
+            )
+            self.assertLess(
+                sql.index("START TRANSACTION;"),
+                sql.index("INSERT INTO `tb_neighborhood`"),
+            )
+            self.assertIn("SET s.`neighborhood_code`=ml.`neighborhood_code`", sql)
+            self.assertNotIn("s.`area`=", sql)
+            self.assertIn("'Midtown'", sql)
+            self.assertIn(snapshot_sha256, sql)
+
+    def test_p7_assignment_exposes_unassigned_public_source_shop(self):
+        shops = [
+            {
+                "id": 1,
+                "dataVersion": "test-v1",
+                "x": -74.5,
+                "y": 41.5,
+                "borough": "Manhattan",
+                "area": "Midtown",
+                "sourceType": "NYC_OPEN_DATA",
+            }
+        ]
+        assignments = P7_IMPORT.assign_shops(
+            shops,
+            [
+                {
+                    "code": "MN0001",
+                    "name": "Fixture NTA",
+                    "borough": "Manhattan",
+                    "ntaType": "0",
+                    "minX": -74.1,
+                    "minY": 40.6,
+                    "maxX": -73.8,
+                    "maxY": 40.9,
+                    "geometry": {
+                        "type": "MultiPolygon",
+                        "coordinates": [[[
+                            [-74.1, 40.6],
+                            [-73.8, 40.6],
+                            [-73.8, 40.9],
+                            [-74.1, 40.9],
+                            [-74.1, 40.6],
+                        ]]],
+                    },
+                }
+            ],
+        )
+        self.assertEqual("UNASSIGNED", assignments[0]["assignmentMethod"])
+        self.assertEqual("NYC_OPEN_DATA", assignments[0]["sourceType"])
 
 
 if __name__ == "__main__":

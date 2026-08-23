@@ -69,6 +69,7 @@ mysql -u root -p hmdp_new < src/main/resources/db/p5_agent_actions.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p7_p5_mcp_ui.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p8_p6_data_provenance.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p9_p7_map_geospatial.sql
 redis-cli DEL cache:shopType:list
 ```
 
@@ -120,6 +121,8 @@ P4 将秒杀 MQ 从 Redis Stream 迁移到 RabbitMQ，并增加 Publisher Confir
 P5 在 Agent Service 的 `/mcp` 提供 Streamable HTTP MCP Server，复用 Spring Tool API、Qdrant RAG、路线估算与 Verifier，并且只暴露六个只读工具。收藏、保存、领券和秒杀不会通过 MCP 执行。接入本地 coding agent harness 与协议验证见 [P5 MCP Runbook](docs/p5-mcp-runbook.md)。
 
 P6 增加 2,000 家商户的可复现 `medium` Profile，并将一份覆盖纽约五区的 NYC Open Data 餐厅身份快照与合成业务数据组合为 `nyc-hybrid-v1`。来源、外部 ID、抓取时间与合成字段清单贯穿 MySQL、Spring、Agent、Qdrant、MCP 和双语 UI；所有生成评论均明确标注，不能被误认为真实评价。生成、迁移和验收见 [P6 Hybrid Data Runbook](docs/p6-hybrid-data-runbook.md)。
+
+P7 将地图升级为面向大数据量的 viewport 查询：Spring `/shop/map` 根据缩放级别返回 Borough 总数、Neighborhood 聚合或轻量商户 Marker，支持多类别筛选、高密度降级和空间索引；React 地图随拖动/缩放防抖请求，处理并发乱序，并在桌面端与移动端逐级展开聚合。数据层固定 NYC 2020 NTA `26b` 官方 polygon 与 SHA-256，为 2,000 家商户生成 point-in-polygon 归属和导入审计。原有 `area` 保留给 Agent friendly-area 约束；未匹配 Mock 点明确显示为 Other locations，不会被伪造成最近社区。见 [P7 Map Geospatial Runbook](docs/p7-map-geospatial-runbook.md)。
 
 ## 启动前端开发环境
 

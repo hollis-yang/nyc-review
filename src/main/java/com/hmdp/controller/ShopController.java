@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.IShopService;
+import com.hmdp.service.ShopMapService;
 import com.hmdp.utils.SystemConstants;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +19,8 @@ public class ShopController {
 
     @Resource
     public IShopService shopService;
+    @Resource
+    private ShopMapService shopMapService;
 
     /**
      * 根据id查询商铺信息
@@ -60,6 +63,22 @@ public class ShopController {
     public Result queryAllShops() {
         List<Shop> shops = shopService.list();
         return Result.ok(shops);
+    }
+
+    /**
+     * Return a viewport-scoped, zoom-aware map payload. Low zoom levels use
+     * database aggregates; detailed markers are capped to protect the client.
+     */
+    @GetMapping("/map")
+    public Result queryMap(
+            @RequestParam("west") String west,
+            @RequestParam("south") String south,
+            @RequestParam("east") String east,
+            @RequestParam("north") String north,
+            @RequestParam("zoom") String zoom,
+            @RequestParam(value = "typeIds", required = false) String typeIds
+    ) {
+        return Result.ok(shopMapService.query(west, south, east, north, zoom, typeIds));
     }
 
     /**

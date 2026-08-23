@@ -25,6 +25,7 @@ class LoginInterceptorTest {
     @CsvSource({
             "GET, /shop/1",
             "GET, /shop/list",
+            "GET, /shop/map",
             "GET, /shop/of/type",
             "GET, /shop/of/name",
             "GET, /shop-review/1",

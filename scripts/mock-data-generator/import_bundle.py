@@ -43,6 +43,11 @@ LEGACY_COLUMN_MAP = {
         "avg_price", "sold", "comments", "score", "open_hours", "create_time", "update_time",
     ),
 }
+P7_DERIVED_TABLES = (
+    "tb_neighborhood_shop_count",
+    "tb_borough_shop_count",
+    "tb_shop_map_location",
+)
 
 
 def _write_text_atomic(path: Path, content: str) -> None:
@@ -116,6 +121,23 @@ def _first_open_hours(shop_id: int, hours: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def _delete_optional_table(table: str) -> list[str]:
+    """Clear a derived P7 table when its additive migration has been applied."""
+    statement_name = "HMDP_OPTIONAL_DELETE"
+    sql_variable = "@HMDP_OPTIONAL_DELETE_SQL"
+    return [
+        f"SET {sql_variable} = IF(",
+        "  EXISTS(SELECT 1 FROM information_schema.TABLES "
+        f"WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{table}'),",
+        f"  'DELETE FROM `{table}`',",
+        "  'SET @HMDP_OPTIONAL_DELETE_NOOP = 0'",
+        ");",
+        f"PREPARE {statement_name} FROM {sql_variable};",
+        f"EXECUTE {statement_name};",
+        f"DEALLOCATE PREPARE {statement_name};",
+    ]
+
+
 def build_mysql_sql(
     datasets: dict[str, list[dict[str, Any]]],
     profile: str,
@@ -176,6 +198,22 @@ def build_mysql_sql(
             "SET @OLD_FOREIGN_KEY_CHECKS = @@FOREIGN_KEY_CHECKS;",
             "SET FOREIGN_KEY_CHECKS = 0;",
             "START TRANSACTION;",
+        ]
+    )
+    for table in P7_DERIVED_TABLES:
+        lines.extend(_delete_optional_table(table))
+    lines.extend(
+        [
+            "SET @HMDP_OPTIONAL_DELETE_SQL = IF(",
+            "  EXISTS(SELECT 1 FROM information_schema.TABLES "
+            "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tb_map_data_import'),",
+            "  'UPDATE `tb_map_data_import` SET `active`=0',",
+            "  'SET @HMDP_OPTIONAL_DELETE_NOOP = 0'",
+            ");",
+            "PREPARE HMDP_OPTIONAL_DELETE FROM @HMDP_OPTIONAL_DELETE_SQL;",
+            "EXECUTE HMDP_OPTIONAL_DELETE;",
+            "DEALLOCATE PREPARE HMDP_OPTIONAL_DELETE;",
+            "",
         ]
     )
     for table in (

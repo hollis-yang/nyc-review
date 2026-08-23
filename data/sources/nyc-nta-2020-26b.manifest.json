@@ -1,0 +1,15 @@
+{
+  "contentLength": 4589305,
+  "datasetId": "9nt8-h7nd",
+  "datasetName": "2020 Neighborhood Tabulation Areas (NTAs)",
+  "datasetVersion": "26b",
+  "downloadUrl": "https://data.cityofnewyork.us/resource/9nt8-h7nd.geojson?$limit=500&$order=nta2020",
+  "featureCount": 262,
+  "geometryCrs": "EPSG:4326",
+  "licenseName": "NYC Open Data Terms of Use",
+  "licenseUrl": "https://opendata.cityofnewyork.us/overview/#termsofuse",
+  "revisionDate": "2026-05-28",
+  "sha256": "4a036c53ce665a73954f260ef4f3a8c49f33d75fb2fc859fe0baf92f4b7f8af8",
+  "sourcePageUrl": "https://data.cityofnewyork.us/City-Government/2020-Neighborhood-Tabulation-Areas-NTAs-/9nt8-h7nd",
+  "verifiedAt": "2026-08-23T15:34:23Z"
+}

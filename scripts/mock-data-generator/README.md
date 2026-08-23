@@ -52,3 +52,19 @@ redis-cli --pipe < data/generated/nyc-small/redis_seed.resp
 完整的首次初始化、验证查询和故障排查见 [P1 NYC 数据 Runbook](../../docs/p1-nyc-data-runbook.md)。
 
 不使用 `--real-shops` 时，数据中的商户身份与业务内容均为虚构。使用该参数时，只有上述公开身份字段真实，所有用户和业务内容仍为合成内容。评论中会有少量带 `security_test` 标记的 Prompt Injection 样本，用于验证 RAG 不会把用户内容当作系统指令。完整流程见 [P6 Runbook](../../docs/p6-hybrid-data-runbook.md)。
+
+## P7 官方 NTA 地理派生数据
+
+P7 使用固定版本与 SHA-256 的 NYC 2020 NTA GeoJSON，为现有生成数据建立官方 neighborhood code、空间点位和类别聚合。原始 polygon 按需下载，hash 不一致时失败关闭：
+
+```bash
+python3 scripts/mock-data-generator/nyc_nta.py fetch \
+  --output data/sources/nyc-nta-2020-26b.geojson
+
+python3 scripts/mock-data-generator/build_neighborhood_import.py \
+  --dataset data/generated/nyc-medium-hybrid \
+  --nta-snapshot data/sources/nyc-nta-2020-26b.geojson \
+  --output data/generated/nyc-medium-hybrid/p7_neighborhood_import.sql
+```
+
+导入包只包含可重建的地图派生数据。它不覆盖 `tb_shop.area`，因此 Agent 的 `Midtown` 等 friendly-area 约束保持不变；地图通过 `tb_shop.neighborhood_code` 和 `tb_shop_map_location` 使用官方 NTA。未落入 polygon 的 Mock 点标记为 `UNASSIGNED`，不会静默分配到最近社区。完整来源、表契约、Docker 和验收步骤见 [P7 Map Runbook](../../docs/p7-map-geospatial-runbook.md)。
