@@ -10,6 +10,7 @@ import { getMeOptional } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
 import ImageSwiper from '../../components/ImageSwiper';
 import { normalizeBlogContent } from '../../utils/blogContent';
+import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './BlogDetail.module.css';
 
 interface BlogInfo {
@@ -25,6 +26,7 @@ interface BlogInfo {
   liked: number;
   shopId: number;
   comments: number;
+  sourceType?: string;
 }
 
 interface ShopInfo {
@@ -46,6 +48,7 @@ interface CommentInfo {
   parentId: number;
   answerId: number;
   replyToName?: string;
+  sourceType?: string;
   children: CommentInfo[];
 }
 
@@ -311,11 +314,13 @@ export default function BlogDetail() {
           <img src={c.icon || '/imgs/icons/default-icon.png'} alt="" />
         </div>
         <div className={styles.commentInfo}>
-          <div className={styles.commentUser}>{c.name}</div>
+          <div className={styles.commentHeading}>
+            <div className={styles.commentUser}>{c.name}</div>
+          </div>
           {c.replyToName && (
             <span className={styles.replyToTag}>{t('blogDetail.replyTo')} @{c.replyToName}</span>
           )}
-          <div className={styles.commentContent}>{c.content}</div>
+          <div className={styles.commentContent}>{cleanDisplayContent(c.content)}</div>
           {commentTL[c.id] && (
             <div style={{ background: '#f0f7ff', padding: '6px 8px', borderRadius: 6, margin: '4px 0', fontSize: 12, color: '#555' }}>
               {commentTL[c.id]}

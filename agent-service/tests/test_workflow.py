@@ -86,6 +86,136 @@ async def test_verifier_rejects_candidates_that_exceed_total_budget():
     assert any(issue.code == "BUDGET_EXCEEDED" for issue in state["verification"].issues)
 
 
+async def test_verifier_accepts_explicitly_relaxed_unknown_price_without_treating_it_as_zero():
+    class UnknownPriceShopService:
+        async def search(self, constraints: UserConstraints) -> CandidateSet:
+            return CandidateSet(
+                candidates=[
+                    ShopCandidate(
+                        shop_id=998,
+                        name="Unknown Price Fixture",
+                        category="Food & Dining",
+                        neighborhood="Midtown",
+                        latitude=40.7614,
+                        longitude=-73.9776,
+                        avg_price_cents=None,
+                        score=4.5,
+                    )
+                ],
+                relaxed_constraints=["budget"],
+            )
+
+    workflow = build_multi_agent_graph(
+        WorkflowServices(
+            shops=UnknownPriceShopService(),
+            rag=InMemoryRagService(),
+            itinerary=HaversineItineraryService(),
+        )
+    )
+    state = await workflow.ainvoke(
+        {
+            "request": AgentRunRequest(
+                constraints=UserConstraints(query="Dinner under $100", budget_cents=10_000)
+            ),
+            "events": [],
+        }
+    )
+
+    assert state["itinerary"].stops[0].estimated_cost_cents is None
+    assert state["itinerary"].total_estimated_cost_cents is None
+    assert state["verification"].valid is True
+    assert not any(issue.code == "COST_UNAVAILABLE" for issue in state["verification"].issues)
+
+
+async def test_verifier_does_not_repeat_tag_failures_after_discovery_relaxes_tags():
+    class RelaxedTagShopService:
+        async def search(self, constraints: UserConstraints) -> CandidateSet:
+            return CandidateSet(
+                candidates=[
+                    ShopCandidate(
+                        shop_id=996,
+                        name="Closest Match Fixture",
+                        category="Food & Dining",
+                        neighborhood="Midtown",
+                        latitude=40.7614,
+                        longitude=-73.9776,
+                        avg_price_cents=3_500,
+                        score=4.3,
+                        tags=["good_for_groups"],
+                    )
+                ],
+                relaxed_constraints=["desired_tags"],
+            )
+
+    workflow = build_multi_agent_graph(
+        WorkflowServices(
+            shops=RelaxedTagShopService(),
+            rag=InMemoryRagService(),
+            itinerary=HaversineItineraryService(),
+        )
+    )
+    state = await workflow.ainvoke(
+        {
+            "request": AgentRunRequest(
+                constraints=UserConstraints(
+                    query="Quiet budget dinner in Midtown",
+                    desired_tags=["quiet", "budget_friendly"],
+                )
+            ),
+            "events": [],
+        }
+    )
+
+    assert state["verification"].valid is True
+    assert not any(
+        issue.code == "MISSING_DESIRED_TAGS" for issue in state["verification"].issues
+    )
+
+
+async def test_verifier_accepts_friendly_neighborhood_inside_official_nta_label():
+    class CompoundNeighborhoodShopService:
+        async def search(self, constraints: UserConstraints) -> CandidateSet:
+            return CandidateSet(
+                candidates=[
+                    ShopCandidate(
+                        shop_id=997,
+                        name="Official NTA Fixture",
+                        category="Food & Dining",
+                        neighborhood="Midtown-Times Square",
+                        latitude=40.7614,
+                        longitude=-73.9776,
+                        avg_price_cents=None,
+                        score=4.2,
+                    )
+                ]
+            )
+
+    workflow = build_multi_agent_graph(
+        WorkflowServices(
+            shops=CompoundNeighborhoodShopService(),
+            rag=InMemoryRagService(),
+            itinerary=HaversineItineraryService(),
+        )
+    )
+    state = await workflow.ainvoke(
+        {
+            "request": AgentRunRequest(
+                constraints=UserConstraints(
+                    query="Dinner in Midtown",
+                    neighborhood="Midtown",
+                    category="Food & Dining",
+                )
+            ),
+            "events": [],
+        }
+    )
+
+    assert state["verification"].valid is True
+    assert not any(
+        issue.code == "NEIGHBORHOOD_MISMATCH" for issue in state["verification"].issues
+    )
+
+
 async def test_verifier_rejects_evidence_entries_without_citations():
     class SingleShopService:
         async def search(self, constraints: UserConstraints) -> CandidateSet:

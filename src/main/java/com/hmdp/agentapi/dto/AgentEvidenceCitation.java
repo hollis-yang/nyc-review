@@ -9,6 +9,11 @@ public record AgentEvidenceCitation(
         String sourceId,
         String excerpt,
         LocalDateTime createdAt,
-        boolean untrustedContent
+        boolean untrustedContent,
+        String sourceType,
+        boolean synthetic,
+        Long rootId,
+        int maxDepth,
+        int replyCount
 ) {
 }

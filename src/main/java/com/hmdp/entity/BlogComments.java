@@ -60,6 +60,16 @@ public class BlogComments implements Serializable {
     private Boolean status;
 
     /**
+     * Server-controlled content provenance.
+     */
+    private String sourceType;
+
+    /**
+     * Generated dataset identity. Null for content submitted through the API.
+     */
+    private String dataVersion;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

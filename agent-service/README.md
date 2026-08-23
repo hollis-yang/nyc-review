@@ -80,30 +80,52 @@ uv run uvicorn app.main:app --port 8090
 
 也可使用 `HMDP_AGENT_MODEL_API_KEY`、`HMDP_AGENT_MODEL_NAME` 与 `HMDP_AGENT_MODEL_BASE_URL` 独立配置。模型失败时默认回退离线解析器，并在结果 `metadata.modelFallbackUsed` 中标记；设置 `HMDP_AGENT_MODEL_FALLBACK_TO_HEURISTIC=false` 可改为直接失败。
 
-## 使用真实 Qdrant RAG 路径
+## P8 Real-only 数据与增量 Qdrant RAG
 
-先在仓库根目录生成纽约小型数据集：
+当前集成 Profile 是 `real-medium`。它从固定的 OpenStreetMap 快照选取 5,000 个真实商户身份，并生成 100,000 条根评论及 52,500 条一、二级回复。仓库根目录可用固定快照复现数据集：
 
 ```bash
 python3 scripts/mock-data-generator/generate.py \
-  --profile small \
-  --output data/generated/nyc-small
+  --profile real-medium \
+  --real-places data/sources/osm-nyc-places-2026-08-23.json \
+  --illustrative-images data/sources/wikimedia-illustrative-images-v1.json \
+  --output data/generated/nyc-real-medium
+
+python3 scripts/mock-data-generator/validate_dataset.py \
+  data/generated/nyc-real-medium
 ```
 
-然后在 `agent-service` 目录启动。下面使用 Qdrant 本地持久化模式；若已有 Qdrant Server，可把 `HMDP_AGENT_QDRANT_LOCATION` 改成服务 URL。
+推荐使用 Qdrant Server 承载该规模的索引。先启动 Spring Boot 与 Qdrant，再从 `agent-service` 目录运行：
 
 ```bash
+HMDP_AGENT_ADAPTER=http \
+HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+HMDP_AGENT_BACKEND_AUTH_TOKEN=<current-user-token> \
 HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
-uv run uvicorn app.main:app --reload --port 8090
+HMDP_AGENT_QDRANT_LOCATION=http://127.0.0.1:6333 \
+HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-medium \
+HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+uv run uvicorn app.main:app --port 8090
 ```
 
-启动时会校验 `import_manifest.json` 与 `shops.json` 的 shopId 和 `dataVersion`，随后用商户介绍、商户评论、博客、顶层评论和嵌套评论完整重建目标 Qdrant Collection。Spring 候选商户带有相同的 `dataVersion`，检索时还会按该版本过滤，避免旧索引与新数据库串数据。默认 Hash Embedding 只用于离线开发；部署时使用 `.env.example` 中的 OpenAI-compatible Embedding 配置。
+启动时会校验 `manifest.json` 与 `import_manifest.json`：`merchantIdentityMode` 必须为 `REAL_ONLY`、`mockShops` 必须为 `0`、六个分类都必须存在，shopId、`dataVersion` 与数据集 SHA-256 也必须一致。完整数据集 SHA 会进入 Qdrant payload、point ID、同步 scope 和检索 filter。索引按批次流式读取，不再删除并完整重建 Collection；相同内容哈希会跳过，只批量 upsert 新增或变化文档，并在成功后清理当前数据集 scope 的陈旧文档。批大小由 `HMDP_AGENT_RAG_INDEX_BATCH_SIZE` 控制，健康检查和 Run metadata 中的 `ragIndexStats` 可查看 total、upserted、unchanged 和 deleted 数量。
 
-P6 的 `nyc-hybrid-v1` 还会把商户来源类型、外部 ID、来源链接、抓取时间和合成字段清单写入 Candidate 与 Qdrant payload。RAG 中的评论、博客和描述继续标记为 `SYNTHETIC`，即使商户名称和地址来自 NYC Open Data，也不得把合成文本描述为官方或真实顾客证据。
+RAG 将每个根评论及其一、二级回复组合成一份 `shop_review_thread` 文档，并继续索引商户介绍、博客与博客评论。Payload 分开保留商户身份来源和记录自身的内容来源；这些字段用于审计和数据隔离，不会拼进用户可见的 citation excerpt。Loader 会拒绝来源类型或 `dataVersion` 不符合 real-only 契约的数据。营业时间优先采用 OSM `opening_hours`，缺失时使用类别默认值；价格与稀疏发现标签采用稳定估算；评分来自根评论聚合。Verifier 会尊重 Discovery 明确记录的约束放宽，避免把同一缺失标签再按候选逐条报告为失败。
 
-接入 Spring Boot Tool API 时再增加：
+本地磁盘模式 `HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant` 只适合单进程小型验证，同一路径不能被多个 Qdrant Client 同时打开。默认 Hash Embedding 仅用于离线开发；部署时使用 `.env.example` 中的 OpenAI-compatible Embedding 配置。
+
+使用根目录 `docker-compose.p4.yml` 时，也必须在启动前把当前登录 token 传给 Agent 的 HTTP Adapter，否则预览、Run 和直接 MCP 调用 Spring Tool API 都会收到 401：
+
+```bash
+export HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>'
+docker compose -f docker-compose.p4.yml up --build
+```
+
+Compose 的 MySQL init 脚本只适用于全新空 volume；已有 P6/P7 数据库应按 Runbook 手工执行 P10 和数据切换，不得重复执行非幂等的 P8 迁移。该 token 只应存在于本地环境或 Secret 管理系统，不要提交到仓库。
+
+数据生成、现有 P6/P7 环境升级、全新库初始化和验收步骤见 [P8 Real Data Runbook](../docs/p8-real-data-runbook.md)。
+
+如果只做离线工作流测试，可将 `HMDP_AGENT_ADAPTER` 改回 `mock`；接入 Spring Boot Tool API 时必须配置：
 
 ```bash
 HMDP_AGENT_ADAPTER=http \

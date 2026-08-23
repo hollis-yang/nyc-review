@@ -77,8 +77,15 @@ public class AgentShopToolService {
         var query = shopService.query()
                 .like(StrUtil.isNotBlank(safeRequest.query()), "name", safeRequest.query())
                 .eq(safeRequest.typeId() != null, "type_id", safeRequest.typeId())
-                .eq(StrUtil.isNotBlank(safeRequest.neighborhood()), "area", safeRequest.neighborhood())
-                .le(maxAvgPrice != null, "avg_price", maxAvgPrice)
+                // P8 stores the official NTA display name (for example,
+                // "Midtown-Times Square"). Natural-language constraints and
+                // saved preferences may still use the shorter "Midtown" form.
+                .like(StrUtil.isNotBlank(safeRequest.neighborhood()), "area", safeRequest.neighborhood())
+                // A missing public price is unknown, not over budget. Keep it
+                // available for the verifier to disclose instead of silently
+                // excluding a real shop.
+                .and(maxAvgPrice != null,
+                        wrapper -> wrapper.le("avg_price", maxAvgPrice).or().isNull("avg_price"))
                 .orderByDesc("score")
                 .orderByDesc("comments")
                 .last("LIMIT " + fetchLimit);
@@ -176,20 +183,22 @@ public class AgentShopToolService {
     public AgentShopEvidence evidence(Long shopId, Integer requestedLimit) {
         int limit = normalizeEvidenceLimit(requestedLimit);
         List<AgentEvidenceCitation> citations = new ArrayList<>();
-        List<ShopReview> reviews = shopReviewService.query()
-                .eq("shop_id", shopId)
-                .orderByDesc("create_time")
-                .last("LIMIT " + limit)
-                .list();
-        for (ShopReview review : reviews) {
+        List<ShopReview> threads = shopReviewService.queryThreadsForEvidence(shopId, limit);
+        for (ShopReview review : threads) {
+            String sourceType = threadSourceType(review);
             citations.add(new AgentEvidenceCitation(
-                    "shop-review-" + review.getId(),
+                    "shop-review-thread-" + review.getId(),
                     shopId,
-                    "shop_review",
-                    "shop_review:" + review.getId(),
-                    excerpt(review.getContent()),
+                    "shop_review_thread",
+                    "shop_review_thread:" + review.getId(),
+                    excerpt(reviewThreadText(review)),
                     review.getCreateTime(),
-                    true
+                    true,
+                    sourceType,
+                    threadIsSynthetic(review),
+                    review.getRootId() == null ? review.getId() : review.getRootId(),
+                    maxThreadDepth(review),
+                    threadReplyCount(review)
             ));
         }
 
@@ -201,6 +210,7 @@ public class AgentShopToolService {
                     .last("LIMIT " + remaining)
                     .list();
             for (Blog blog : blogs) {
+                String sourceType = StrUtil.blankToDefault(blog.getSourceType(), "LEGACY");
                 String content = StrUtil.isBlank(blog.getTitle())
                         ? blog.getContent()
                         : blog.getTitle() + "\n" + blog.getContent();
@@ -211,7 +221,12 @@ public class AgentShopToolService {
                         "blog:" + blog.getId(),
                         excerpt(content),
                         blog.getCreateTime(),
-                        true
+                        true,
+                        sourceType,
+                        "SYNTHETIC".equalsIgnoreCase(sourceType),
+                        null,
+                        0,
+                        0
                 ));
             }
         }
@@ -298,8 +313,80 @@ public class AgentShopToolService {
         if (content == null) {
             return "";
         }
-        String normalized = content.strip();
+        String normalized = cleanDisplayContent(content);
         return normalized.length() <= 500 ? normalized : normalized.substring(0, 500);
+    }
+
+    static String cleanDisplayContent(String content) {
+        if (content == null) {
+            return "";
+        }
+        return content
+                .replaceAll("(?i)\\[(?:synthetic\\s+(?:demo\\s+)?(?:review|reply|follow-up|post)|synthetic\\s+security-test\\s+review)]\\s*", "")
+                .replaceAll("(?im)^\\s*\\[(?:level\\s+\\d+[^]]*|root|reply\\s+depth=\\d+)]\\s*", "")
+                .replaceAll("(?i)\\bThis generated scenario describes\\s+", "")
+                .replaceAll("(?i)\\s*(?:Merchant identity is source-backed; this post, media and promotions are synthetic\\.|It is not a real user visit; prices and hours are synthetic\\.)", "")
+                .strip();
+    }
+
+    static String reviewThreadText(ShopReview root) {
+        StringBuilder content = new StringBuilder();
+        appendReviewThread(content, root, 0);
+        return content.toString().strip();
+    }
+
+    private static void appendReviewThread(StringBuilder content, ShopReview review, int fallbackDepth) {
+        int depth = review.getDepth() == null ? fallbackDepth : review.getDepth();
+        if (!content.isEmpty()) {
+            content.append('\n');
+        }
+        content.append(cleanDisplayContent(review.getContent()));
+        if (review.getChildren() == null) {
+            return;
+        }
+        for (ShopReview child : review.getChildren()) {
+            appendReviewThread(content, child, depth + 1);
+        }
+    }
+
+    static int maxThreadDepth(ShopReview root) {
+        int current = root.getDepth() == null ? 0 : root.getDepth();
+        if (root.getChildren() == null || root.getChildren().isEmpty()) {
+            return current;
+        }
+        return Math.max(current, root.getChildren().stream()
+                .mapToInt(AgentShopToolService::maxThreadDepth)
+                .max()
+                .orElse(current));
+    }
+
+    static int threadReplyCount(ShopReview root) {
+        if (root.getChildren() == null || root.getChildren().isEmpty()) {
+            return 0;
+        }
+        return root.getChildren().stream()
+                .mapToInt(child -> 1 + threadReplyCount(child))
+                .sum();
+    }
+
+    static String threadSourceType(ShopReview root) {
+        java.util.Set<String> sources = new java.util.LinkedHashSet<>();
+        collectThreadSources(root, sources);
+        return sources.size() == 1 ? sources.iterator().next() : "MIXED";
+    }
+
+    static boolean threadIsSynthetic(ShopReview root) {
+        return "SYNTHETIC".equalsIgnoreCase(threadSourceType(root));
+    }
+
+    private static void collectThreadSources(ShopReview review, java.util.Set<String> sources) {
+        sources.add(StrUtil.blankToDefault(review.getSourceType(), "LEGACY").toUpperCase());
+        if (review.getChildren() == null) {
+            return;
+        }
+        for (ShopReview child : review.getChildren()) {
+            collectThreadSources(child, sources);
+        }
     }
 
     static int haversineMeters(double latitude1, double longitude1, double latitude2, double longitude2) {

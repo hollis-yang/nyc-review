@@ -38,6 +38,7 @@ async def preview_run(payload: AgentRunRequest, request: Request):
             "dataVersion": runtime.data_version,
             "datasetSha256": runtime.dataset_sha256,
             "sourceCounts": runtime.source_counts,
+            "ragIndexStats": runtime.rag_index_stats,
         },
     )
 

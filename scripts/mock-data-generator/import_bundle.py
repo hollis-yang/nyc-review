@@ -42,11 +42,45 @@ LEGACY_COLUMN_MAP = {
         "id", "name", "type_id", "images", "area", "address", "x", "y",
         "avg_price", "sold", "comments", "score", "open_hours", "create_time", "update_time",
     ),
+    # P10 adds threading/provenance columns to the live review table. The
+    # one-time Hangzhou archive was created from the original nine-column
+    # schema, so SELECT * would fail at statement validation even after the
+    # archive guard has already been written.
+    "tb_shop_review": (
+        "id", "shop_id", "user_id", "rating", "content", "images", "liked",
+        "create_time", "update_time",
+    ),
+    # P10 also adds provenance fields to generated posts, comments and
+    # vouchers. Select only the original columns so an archive created by an
+    # earlier P6 import remains usable after the additive migration.
+    "tb_blog": (
+        "id", "shop_id", "user_id", "title", "images", "content", "liked",
+        "comments", "create_time", "update_time",
+    ),
+    "tb_blog_comments": (
+        "id", "user_id", "blog_id", "parent_id", "answer_id", "content", "liked",
+        "status", "create_time", "update_time",
+    ),
+    "tb_voucher": (
+        "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value",
+        "type", "status", "create_time", "update_time",
+    ),
 }
 P7_DERIVED_TABLES = (
     "tb_neighborhood_shop_count",
     "tb_borough_shop_count",
     "tb_shop_map_location",
+)
+# These optional P5/P6 tables contain user-, shop-, voucher-, or run-scoped
+# state. IDs are intentionally reused by each generated bundle, so retaining
+# them would attach the previous dataset's assets and memories to unrelated
+# identities. Clear children before replacing their parent entities below.
+DATASET_SCOPED_OPTIONAL_TABLES = (
+    "tb_agent_action_audit",
+    "tb_seckill_reminder",
+    "tb_saved_itinerary",
+    "tb_shop_favorite",
+    "tb_agent_user_memory",
 )
 
 
@@ -147,6 +181,7 @@ def build_mysql_sql(
     shop_types = datasets["shop_types.json"]
     subcategories = datasets["shop_subcategories.json"]
     shops = datasets["shops.json"]
+    shop_images = datasets.get("shop_images.json", [])
     hours = datasets["shop_business_hours.json"]
     users = datasets["users.json"]
     reviews = datasets["shop_reviews.json"]
@@ -155,11 +190,23 @@ def build_mysql_sql(
     follows = datasets["follows.json"]
     vouchers = datasets["vouchers.json"]
     seckill = datasets["seckill_vouchers.json"]
+    data_version = shops[0]["dataVersion"] if shops else "nyc-mock-v2"
+    real_only = data_version.startswith("nyc-real-")
 
     lines = [
         f"-- {SQL_MARKER}",
-        "-- HMDP content is synthetic; some establishment identity fields may come from NYC Open Data.",
-        "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql.",
+        (
+            "-- Merchant identities are source-backed OpenStreetMap records; reviews, platform activity "
+            "and illustrative media are synthetic and explicitly attributed."
+            if real_only
+            else "-- HMDP content is synthetic; some establishment identity fields may come from NYC Open Data."
+        ),
+        (
+            "-- Run only after p3, p4, p8 provenance, and p10_p8_real_content.sql. "
+            "Run p9 plus the matching neighborhood import afterward to rebuild map projections."
+            if real_only
+            else "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql."
+        ),
         "-- Stop the application before importing. The initial active dataset is archived exactly once.",
         "SET NAMES utf8mb4;",
         "SET @HMDP_OLD_TIME_ZONE = @@SESSION.time_zone;",
@@ -201,6 +248,9 @@ def build_mysql_sql(
         ]
     )
     for table in P7_DERIVED_TABLES:
+        lines.extend(_delete_optional_table(table))
+    lines.extend(_delete_optional_table("tb_shop_image"))
+    for table in DATASET_SCOPED_OPTIONAL_TABLES:
         lines.extend(_delete_optional_table(table))
     lines.extend(
         [
@@ -270,7 +320,8 @@ def build_mysql_sql(
             (
                 item["id"], item["name"], item["typeId"], item["subcategoryId"], item["images"],
                 item["area"], item["borough"], item["address"], item["description"], item["x"], item["y"],
-                item["avgPriceCents"] // 100, item["priceLevel"], item["sold"], item["comments"], item["score"],
+                item["avgPriceCents"] // 100 if item.get("avgPriceCents") is not None else None,
+                item.get("priceLevel"), item["sold"], item["comments"], item["score"],
                 _first_open_hours(item["id"], hours), item["timezone"], item["sourceType"],
                 item.get("externalId"), item.get("sourceName"), item.get("sourceUrl"),
                 _mysql_datetime(item.get("sourceFetchedAt")),
@@ -280,6 +331,24 @@ def build_mysql_sql(
             for item in shops
         ),
     )
+    if shop_images:
+        statements += _insert_statements(
+            "tb_shop_image",
+            (
+                "id", "shop_id", "display_url", "source_page_url", "source_name", "author_name",
+                "license_name", "license_url", "image_type", "sha256", "sort_order", "fetched_at",
+                "data_version",
+            ),
+            (
+                (
+                    item["id"], item["shopId"], item["url"], item["sourceUrl"], item["sourceName"],
+                    item["attribution"], item["licenseName"], item.get("licenseUrl"), item["imageType"],
+                    item.get("sha256"), item["sortOrder"], _mysql_datetime(item.get("fetchedAt")),
+                    item["dataVersion"],
+                )
+                for item in shop_images
+            ),
+        )
     statements += _insert_statements(
         "tb_shop_tag",
         ("shop_id", "tag", "create_time"),
@@ -306,51 +375,118 @@ def build_mysql_sql(
         ("user_id", "city", "introduce", "fans", "followee", "gender", "birthday", "credits", "level", "create_time", "update_time"),
         ((item["id"], item["city"], item["introduce"], 0, 0, 0, None, 0, 0, FIXED_TIME, FIXED_TIME) for item in users),
     )
-    statements += _insert_statements(
-        "tb_shop_review",
-        ("id", "shop_id", "user_id", "rating", "content", "images", "liked", "create_time", "update_time"),
-        (
+    if any("rootId" in item for item in reviews):
+        statements += _insert_statements(
+            "tb_shop_review",
             (
-                item["id"], item["shopId"], item["userId"], item["rating"], item["content"], item["images"],
-                item["liked"], _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
-            )
-            for item in reviews
-        ),
-    )
-    statements += _insert_statements(
-        "tb_blog",
-        ("id", "shop_id", "user_id", "title", "images", "content", "liked", "comments", "create_time", "update_time"),
-        (
+                "id", "shop_id", "user_id", "root_id", "parent_id", "reply_to_user_id", "depth",
+                "author_role", "source_type", "language", "sentiment", "topic_tags", "security_test",
+                "rating", "content", "images", "liked", "create_time", "update_time",
+            ),
             (
-                item["id"], item["shopId"], item["userId"], item["title"], item["images"], item["content"],
-                item["liked"], item["comments"], _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
-            )
-            for item in blogs
-        ),
-    )
-    statements += _insert_statements(
-        "tb_blog_comments",
-        ("id", "user_id", "blog_id", "parent_id", "answer_id", "content", "liked", "status", "create_time", "update_time"),
-        (
+                (
+                    item["id"], item["shopId"], item["userId"], item["rootId"], item.get("parentId"),
+                    item.get("replyToUserId"), item["depth"], item.get("authorRole", "USER"),
+                    item["sourceType"], item["language"], item["sentiment"],
+                    json.dumps(item.get("topicTags") or [], separators=(",", ":")),
+                    item.get("securityTest", False), item.get("rating"), item["content"], item["images"],
+                    item["liked"], _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
+                )
+                for item in reviews
+            ),
+        )
+    else:
+        statements += _insert_statements(
+            "tb_shop_review",
+            ("id", "shop_id", "user_id", "rating", "content", "images", "liked", "create_time", "update_time"),
             (
-                item["id"], item["userId"], item["blogId"], item["parentId"], item["answerId"], item["content"],
-                item["liked"], 0, _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
-            )
-            for item in comments
-        ),
-    )
+                (
+                    item["id"], item["shopId"], item["userId"], item["rating"], item["content"], item["images"],
+                    item["liked"], _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
+                )
+                for item in reviews
+            ),
+        )
+    if real_only:
+        statements += _insert_statements(
+            "tb_blog",
+            (
+                "id", "shop_id", "user_id", "title", "images", "content", "liked", "comments",
+                "source_type", "data_version", "create_time", "update_time",
+            ),
+            (
+                (
+                    item["id"], item["shopId"], item["userId"], item["title"], item["images"],
+                    item["content"], item["liked"], item["comments"], item["sourceType"],
+                    item["dataVersion"], _mysql_datetime(item["createTime"]),
+                    _mysql_datetime(item["createTime"]),
+                )
+                for item in blogs
+            ),
+        )
+        statements += _insert_statements(
+            "tb_blog_comments",
+            (
+                "id", "user_id", "blog_id", "parent_id", "answer_id", "content", "liked", "status",
+                "source_type", "data_version", "create_time", "update_time",
+            ),
+            (
+                (
+                    item["id"], item["userId"], item["blogId"], item["parentId"], item["answerId"],
+                    item["content"], item["liked"], 0, item["sourceType"], item["dataVersion"],
+                    _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
+                )
+                for item in comments
+            ),
+        )
+    else:
+        statements += _insert_statements(
+            "tb_blog",
+            ("id", "shop_id", "user_id", "title", "images", "content", "liked", "comments", "create_time", "update_time"),
+            (
+                (
+                    item["id"], item["shopId"], item["userId"], item["title"], item["images"], item["content"],
+                    item["liked"], item["comments"], _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
+                )
+                for item in blogs
+            ),
+        )
+        statements += _insert_statements(
+            "tb_blog_comments",
+            ("id", "user_id", "blog_id", "parent_id", "answer_id", "content", "liked", "status", "create_time", "update_time"),
+            (
+                (
+                    item["id"], item["userId"], item["blogId"], item["parentId"], item["answerId"], item["content"],
+                    item["liked"], 0, _mysql_datetime(item["createTime"]), _mysql_datetime(item["createTime"]),
+                )
+                for item in comments
+            ),
+        )
     statements += _insert_statements(
         "tb_follow",
         ("id", "user_id", "follow_user_id", "create_time"),
         ((item["id"], item["userId"], item["followUserId"], FIXED_TIME) for item in follows),
     )
+    voucher_columns = (
+        (
+            "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status",
+            "source_type", "data_version", "create_time", "update_time",
+        )
+        if real_only
+        else (
+            "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status",
+            "create_time", "update_time",
+        )
+    )
     statements += _insert_statements(
         "tb_voucher",
-        ("id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status", "create_time", "update_time"),
+        voucher_columns,
         (
             (
                 item["id"], item["shopId"], item["title"], item["subTitle"], item["rules"],
-                item["payValueCents"], item["actualValueCents"], item["type"], item["status"], FIXED_TIME, FIXED_TIME,
+                item["payValueCents"], item["actualValueCents"], item["type"], item["status"],
+                *((item["sourceType"], item["dataVersion"]) if real_only else ()),
+                FIXED_TIME, FIXED_TIME,
             )
             for item in vouchers
         ),
@@ -366,7 +502,6 @@ def build_mysql_sql(
             for item in seckill
         ),
     )
-    data_version = shops[0]["dataVersion"] if shops else "nyc-mock-v2"
     statements.append(
         "INSERT INTO `tb_data_import` "
         "(`import_id`, `data_version`, `profile`, `seed`, `dataset_sha256`, `shop_count`, `active`) VALUES "
@@ -411,6 +546,13 @@ def build_redis_resp(datasets: dict[str, list[dict[str, Any]]]) -> bytes:
             "shop:geo:*",
             "cache:shop:*",
             "cache:shop-review:*",
+            # Entity IDs are reused when a dataset is replaced. Keep the
+            # SHA-256-based translate:text:* cache, but remove translations
+            # whose identity is only entity type + numeric ID.
+            "translate:shop:*",
+            "translate:review:*",
+            "translate:blog:*",
+            "translate:comment:*",
             "seckill:stock:*",
             "seckill:order:*",
             "seckill:pending:*",
@@ -456,11 +598,27 @@ def build_import_bundle(
     _write_text_atomic(sql_path, build_mysql_sql(datasets, profile, seed, dataset_sha256))
     _write_bytes_atomic(redis_path, build_redis_resp(datasets))
 
-    shop_ids = sorted(shop["id"] for shop in datasets["shops.json"])
+    shops = datasets["shops.json"]
+    shop_ids = sorted(shop["id"] for shop in shops)
     source_counts: dict[str, int] = {}
     for shop in datasets["shops.json"]:
         source_type = str(shop.get("sourceType") or "UNKNOWN")
         source_counts[source_type] = source_counts.get(source_type, 0) + 1
+    data_version = shops[0]["dataVersion"] if shops else "nyc-mock-v2"
+    merchant_identity_mode = (
+        "REAL_ONLY"
+        if data_version.startswith("nyc-real-")
+        else "HYBRID"
+        if data_version.startswith("nyc-hybrid-")
+        else "SYNTHETIC"
+    )
+    reviews = datasets.get("shop_reviews.json", [])
+    images = datasets.get("shop_images.json", [])
+    review_depth_counts: dict[str, int] = {}
+    for review in reviews:
+        depth = str(review.get("depth", 0))
+        review_depth_counts[depth] = review_depth_counts.get(depth, 0) + 1
+    mock_shops = source_counts.get("MOCK", 0)
     dataset_files = {
         filename: {"sha256": _sha256(output / filename)}
         for filename in sorted(datasets)
@@ -471,7 +629,8 @@ def build_import_bundle(
     if computed_dataset_sha256 != dataset_sha256:
         raise ValueError("Dataset files changed while the import bundle was being generated.")
     manifest = {
-        "dataVersion": datasets["shops.json"][0]["dataVersion"] if datasets["shops.json"] else "nyc-mock-v2",
+        "dataVersion": data_version,
+        "merchantIdentityMode": merchant_identity_mode,
         "datasetSha256": dataset_sha256,
         "datasetFiles": dataset_files,
         "profile": profile,
@@ -479,7 +638,17 @@ def build_import_bundle(
         "shopIds": shop_ids,
         "shopIdsSha256": _shop_ids_sha256(shop_ids),
         "provenance": {
+            "merchantIdentityMode": merchant_identity_mode,
             "sourceCounts": dict(sorted(source_counts.items())),
+            "mockShops": mock_shops,
+            "realShops": len(shops) - mock_shops,
+            "syntheticReviews": len(reviews),
+            "syntheticReviewRoots": review_depth_counts.get("0", 0),
+            "syntheticBlogs": len(datasets.get("blogs.json", [])),
+            "syntheticBlogComments": len(datasets.get("blog_comments.json", [])),
+            "syntheticVouchers": len(datasets.get("vouchers.json", [])),
+            "reviewDepthCounts": dict(sorted(review_depth_counts.items())),
+            "illustrativeImages": len(images),
             "syntheticContent": True,
         },
         "mysql": {

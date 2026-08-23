@@ -10,6 +10,7 @@ import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisPatternCleaner;
+import com.hmdp.utils.ContentSourceTypes;
 import com.hmdp.utils.TransactionHooks;
 import com.hmdp.utils.UserHolder;
 import org.springframework.stereotype.Service;
@@ -88,6 +89,8 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         item.put("answerId", comment.getAnswerId());
         item.put("content", comment.getContent());
         item.put("liked", comment.getLiked());
+        item.put("sourceType", comment.getSourceType());
+        item.put("dataVersion", comment.getDataVersion());
         item.put("createTime", comment.getCreateTime().toString());
         item.put("icon", user != null ? user.getIcon() : "");
         item.put("name", user != null ? user.getNickName() : "匿名用户");
@@ -156,6 +159,8 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
         comment.setUserId(userId);
         comment.setLiked(0);
         comment.setStatus(false);
+        // Never trust provenance fields supplied in the request body.
+        markUserSubmitted(comment);
         if (!save(comment)) {
             throw new IllegalStateException("Failed to save the comment");
         }
@@ -167,6 +172,11 @@ public class BlogCommentsServiceImpl extends ServiceImpl<BlogCommentsMapper, Blo
             throw new IllegalStateException("Failed to update the blog comment count");
         }
         return Result.ok(comment.getId());
+    }
+
+    static void markUserSubmitted(BlogComments comment) {
+        comment.setSourceType(ContentSourceTypes.USER_SUBMITTED);
+        comment.setDataVersion(null);
     }
 
     @Override

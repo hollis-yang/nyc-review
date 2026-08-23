@@ -76,8 +76,8 @@ class ShopCandidate(BaseModel):
     neighborhood: str
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
-    avg_price_cents: int = Field(ge=0)
-    score: float = Field(ge=0, le=5)
+    avg_price_cents: int | None = Field(default=None, ge=0)
+    score: float | None = Field(default=None, ge=0, le=5)
     tags: list[str] = Field(default_factory=list)
     source: str = "hmdp"
     source_type: str = "MOCK"
@@ -118,6 +118,11 @@ class EvidenceCitation(BaseModel):
     source_name: str | None = None
     source_url: str | None = None
     synthetic: bool = True
+    data_version: str | None = None
+    dataset_sha256: str | None = None
+    root_id: int | None = None
+    max_depth: int | None = Field(default=None, ge=0, le=2)
+    reply_count: int = Field(default=0, ge=0)
 
 
 class ShopEvidence(BaseModel):
@@ -134,13 +139,13 @@ class EvidencePack(BaseModel):
 class ItineraryStop(BaseModel):
     shop_id: int = Field(gt=0)
     sequence: int = Field(ge=1)
-    estimated_cost_cents: int = Field(ge=0)
+    estimated_cost_cents: int | None = Field(default=None, ge=0)
     distance_meters: int | None = Field(default=None, ge=0)
 
 
 class ItineraryDraft(BaseModel):
     stops: list[ItineraryStop]
-    total_estimated_cost_cents: int = Field(ge=0)
+    total_estimated_cost_cents: int | None = Field(default=None, ge=0)
     warnings: list[str] = Field(default_factory=list)
 
 

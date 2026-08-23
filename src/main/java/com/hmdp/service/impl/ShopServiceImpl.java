@@ -4,6 +4,8 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
+import com.hmdp.entity.ShopImage;
+import com.hmdp.mapper.ShopImageMapper;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -36,6 +38,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private CacheClient cacheClient;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private ShopImageMapper shopImageMapper;
 
     @Override
     public Result queryById(Long id) {
@@ -49,6 +53,15 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if (shop == null) {
             return Result.fail("Shop not found");
         }
+
+        List<ShopImage> imageAssets = shopImageMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ShopImage>()
+                        .eq(ShopImage::getShopId, shop.getId())
+                        .eq(StrUtil.isNotBlank(shop.getDataVersion()), ShopImage::getDataVersion, shop.getDataVersion())
+                        .orderByAsc(ShopImage::getSortOrder)
+                        .orderByAsc(ShopImage::getId)
+        );
+        shop.setImageAssets(imageAssets == null ? List.of() : List.copyOf(imageAssets));
 
         // 逻辑过期解决缓存击穿
 //        Shop shop = cacheClient.queryWithLogicalExpire(CACHE_SHOP_KEY, id,

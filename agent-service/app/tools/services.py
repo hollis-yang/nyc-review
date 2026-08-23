@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -33,6 +34,23 @@ class RagService(Protocol):
 
 class ItineraryService(Protocol):
     async def plan(self, constraints: UserConstraints, candidates: CandidateSet) -> ItineraryDraft: ...
+
+
+def neighborhood_matches(actual: str, requested: str) -> bool:
+    """Match a friendly name against an official compound NTA label."""
+
+    def normalize(value: str) -> str:
+        return " ".join(re.sub(r"[^0-9a-z]+", " ", value.casefold()).split())
+
+    actual_label = normalize(actual)
+    requested_label = normalize(requested)
+    return bool(
+        requested_label
+        and (
+            actual_label == requested_label
+            or f" {requested_label} " in f" {actual_label} "
+        )
+    )
 
 
 class MockShopToolService:
@@ -79,7 +97,11 @@ class MockShopToolService:
         ]
         if constraints.budget_cents is not None:
             per_person = constraints.budget_cents // constraints.party_size
-            fixtures = [shop for shop in fixtures if shop.avg_price_cents <= per_person]
+            fixtures = [
+                shop
+                for shop in fixtures
+                if shop.avg_price_cents is not None and shop.avg_price_cents <= per_person
+            ]
         return CandidateSet(
             candidates=fixtures,
             applied_constraints=["category", "location", "budget", "desired_tags"],
@@ -137,9 +159,16 @@ class GeneratedNycShopToolService:
             category = self.CATEGORY_NAMES[shop["typeId"]]
             if constraints.category and category != constraints.category:
                 continue
-            if constraints.neighborhood and shop["neighborhood"] != constraints.neighborhood:
+            if constraints.neighborhood and not neighborhood_matches(
+                shop["neighborhood"], constraints.neighborhood
+            ):
                 continue
-            if per_person_budget is not None and shop["avgPriceCents"] > per_person_budget:
+            avg_price_cents = shop.get("avgPriceCents")
+            if (
+                per_person_budget is not None
+                and avg_price_cents is not None
+                and avg_price_cents > per_person_budget
+            ):
                 continue
             shop_tags = set(shop.get("tags") or [])
             tag_matches = len(required_tags.intersection(shop_tags))
@@ -169,16 +198,32 @@ class GeneratedNycShopToolService:
             key=lambda item: (
                 -item[3],
                 item[2] if item[2] is not None else 0,
-                -item[0]["score"],
+                -(item[0].get("score") if item[0].get("score") is not None else -1),
             )
         )
         candidates = [
             self._to_candidate(shop, category, distance)
             for shop, category, distance, _, _ in selected_rows[: self._max_candidates]
         ]
+        if per_person_budget is not None and any(
+            candidate.avg_price_cents is None for candidate in candidates
+        ):
+            relaxed_constraints.append("budget")
+            warnings.append(
+                "Some candidates have no price, so their budget fit could not be verified."
+            )
         return CandidateSet(
             candidates=candidates,
-            applied_constraints=["category", "neighborhood", "budget", "desired_tags"],
+            applied_constraints=[
+                name
+                for name, value in (
+                    ("category", constraints.category),
+                    ("neighborhood", constraints.neighborhood),
+                    ("budget", constraints.budget_cents),
+                    ("desired_tags", constraints.desired_tags),
+                )
+                if value
+            ],
             relaxed_constraints=relaxed_constraints,
             warnings=(
                 warnings
@@ -206,8 +251,8 @@ class GeneratedNycShopToolService:
             neighborhood=shop["neighborhood"],
             latitude=shop["y"],
             longitude=shop["x"],
-            avg_price_cents=shop["avgPriceCents"],
-            score=shop["score"] / 10,
+            avg_price_cents=shop.get("avgPriceCents"),
+            score=shop["score"] / 10 if shop.get("score") is not None else None,
             tags=shop.get("tags") or [],
             source="nyc-generated",
             source_type=shop.get("sourceType") or "MOCK",
@@ -290,10 +335,17 @@ class HttpShopToolService:
             relaxed_body = await self._post_search(relaxed_payload, headers)
             candidates = [self._to_candidate(item) for item in relaxed_body.get("data") or []]
             if candidates:
-                relaxed_constraints = ["desired_tags"]
+                relaxed_constraints.append("desired_tags")
                 warnings.append(
                     "No shop matched every requested tag. Showing the closest alternatives for review."
                 )
+        if constraints.budget_cents is not None and any(
+            candidate.avg_price_cents is None for candidate in candidates
+        ):
+            relaxed_constraints.append("budget")
+            warnings.append(
+                "Some candidates have no price, so their budget fit could not be verified."
+            )
         applied = []
         for name, value in (
             ("category", constraints.category),
@@ -352,8 +404,8 @@ class HttpShopToolService:
             neighborhood=item.get("neighborhood") or "Unknown",
             latitude=item["latitude"],
             longitude=item["longitude"],
-            avg_price_cents=item.get("avgPriceCents") or 0,
-            score=item.get("score") or 0,
+            avg_price_cents=item.get("avgPriceCents"),
+            score=item.get("score"),
             tags=item.get("tags") or [],
             source="hmdp-spring",
             source_type=item.get("sourceType") or "MOCK",
@@ -402,7 +454,7 @@ class InMemoryRagService:
                             citation_id=f"mock-review-{candidate.shop_id}",
                             shop_id=candidate.shop_id,
                             content_type="shop_review",
-                            excerpt=f"Mock first-party review evidence mentions {excerpt_tags}.",
+                            excerpt=f"A review mentions {excerpt_tags}.",
                             source_id=f"review:{candidate.shop_id}",
                             created_at="2026-08-01T12:00:00Z",
                             untrusted_content=True,
@@ -427,11 +479,20 @@ class HaversineItineraryService:
                 ItineraryStop(
                     shop_id=candidate.shop_id,
                     sequence=sequence,
-                    estimated_cost_cents=candidate.avg_price_cents * constraints.party_size,
+                    estimated_cost_cents=(
+                        candidate.avg_price_cents * constraints.party_size
+                        if candidate.avg_price_cents is not None
+                        else None
+                    ),
                     distance_meters=distance,
                 )
             )
-        total = min((stop.estimated_cost_cents for stop in stops), default=0)
+        known_costs = [
+            stop.estimated_cost_cents
+            for stop in stops
+            if stop.estimated_cost_cents is not None
+        ]
+        total = min(known_costs) if known_costs else None
         return ItineraryDraft(
             stops=stops,
             total_estimated_cost_cents=total,

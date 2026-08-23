@@ -388,7 +388,6 @@ function MapLayers({
 
 export default function MapPage() {
   const { t: tt } = useTranslation();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialMapState] = useState(() => parseInitialMapState(searchParams));
   const [types, setTypes] = useState<ShopType[]>(FALLBACK_TYPES);
@@ -561,7 +560,6 @@ export default function MapPage() {
     <div className={styles.container}>
       <div className={styles.header}>
         <div className={styles.headerTitle}>{tt('map.title')}</div>
-        <button type="button" className={styles.aiButton} onClick={() => navigate('/ai')}>AI</button>
       </div>
 
       <div className={styles.mapWrap}>

@@ -9,7 +9,7 @@ from app.domain.models import (
     VerificationReport,
 )
 from app.graph.state import AgentState
-from app.tools.services import ItineraryService, RagService, ShopToolService
+from app.tools.services import ItineraryService, RagService, ShopToolService, neighborhood_matches
 
 
 class SupervisorAgent:
@@ -114,9 +114,18 @@ class VerifierAgent:
             )
 
         budget = state["constraints"].budget_cents
-        if budget is not None:
+        budget_relaxed = "budget" in state["candidates"].relaxed_constraints
+        if budget is not None and not budget_relaxed:
             for stop in state["itinerary"].stops:
-                if stop.estimated_cost_cents > budget:
+                if stop.estimated_cost_cents is None:
+                    issues.append(
+                        VerificationIssue(
+                            code="COST_UNAVAILABLE",
+                            message="No price is available for budget verification.",
+                            shop_id=stop.shop_id,
+                        )
+                    )
+                elif stop.estimated_cost_cents > budget:
                     issues.append(
                         VerificationIssue(
                             code="BUDGET_EXCEEDED",
@@ -138,9 +147,10 @@ class VerifierAgent:
                     )
 
         desired_tags = set(state["constraints"].desired_tags)
+        tags_relaxed = "desired_tags" in state["candidates"].relaxed_constraints
         for candidate in state["candidates"].candidates:
             missing_tags = sorted(desired_tags - set(candidate.tags))
-            if missing_tags:
+            if missing_tags and not tags_relaxed:
                 issues.append(
                     VerificationIssue(
                         code="MISSING_DESIRED_TAGS",
@@ -160,7 +170,10 @@ class VerifierAgent:
                 )
 
             expected_neighborhood = state["constraints"].neighborhood
-            if expected_neighborhood and candidate.neighborhood != expected_neighborhood:
+            if expected_neighborhood and not neighborhood_matches(
+                candidate.neighborhood,
+                expected_neighborhood,
+            ):
                 issues.append(
                     VerificationIssue(
                         code="NEIGHBORHOOD_MISMATCH",

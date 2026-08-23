@@ -130,6 +130,31 @@
   border-radius: var(--radius-sm);
 }
 
+.illustrativeNotice {
+  margin: 4px 0 8px;
+  color: #8a6758;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.shopImageAsset {
+  width: 110px;
+  flex: 0 0 110px;
+}
+
+.imageAttribution {
+  margin-top: 3px;
+  color: #8a746a;
+  font-size: 8px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.imageAttribution a {
+  color: inherit;
+  text-decoration: none;
+}
+
 .shopAddress {
   display: flex;
   align-items: center;
@@ -230,8 +255,7 @@
 }
 
 .commentBox {
-  display: flex;
-  gap: 10px;
+  display: block;
   margin-bottom: 14px;
 }
 

@@ -1,21 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
-import { Rate } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
 import { getShopById, getShopReviews } from '../../api/shop';
+import ReviewThread, { type ReviewData } from '../../components/ReviewThread';
 import styles from './ShopReviews.module.css';
 
-interface ReviewData {
-  id: number;
-  userId: number;
-  rating: number;
-  content: string;
-  images?: string;
-  liked: number;
-  nickName: string;
-  icon: string;
-  createTime: string;
+interface ApiEnvelope<T> {
+  data?: T;
+  total?: number;
+}
+
+function unwrapReviews(response: unknown): { records: ReviewData[]; total: number } {
+  const envelope = response as ApiEnvelope<unknown>;
+  const records = Array.isArray(envelope?.data) ? envelope.data as ReviewData[] : [];
+  return {
+    records,
+    total: typeof envelope?.total === 'number' ? envelope.total : records.length,
+  };
 }
 
 export default function ShopReviews() {
@@ -25,17 +27,34 @@ export default function ShopReviews() {
   const { t } = useTranslation();
   const [shopName, setShopName] = useState(searchParams.get('name') || t('shopReviews.allReviews'));
   const [reviews, setReviews] = useState<ReviewData[]>([]);
-  const [current, setCurrent] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [current, setCurrent] = useState(2);
+  const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
-    getShopById(id).then((res) => {
-      const data = res.data ?? res;
-      if (data?.name) setShopName(data.name);
-    }).catch(() => {});
+    let active = true;
+    Promise.all([getShopById(id), getShopReviews(id, 1)])
+      .then(([shopResponse, reviewResponse]) => {
+        if (!active) return;
+        const shopEnvelope = shopResponse as unknown as ApiEnvelope<{ name?: string }>;
+        const shop = shopEnvelope.data ?? shopResponse as unknown as { name?: string };
+        if (shop?.name) setShopName(shop.name);
+        const page = unwrapReviews(reviewResponse);
+        setReviews(page.records);
+        setCurrent(2);
+        setHasMore(page.records.length > 0 && page.records.length < page.total);
+      })
+      .catch(() => {
+        if (active) setHasMore(false);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   const loadReviews = useCallback(async () => {
@@ -43,15 +62,14 @@ export default function ShopReviews() {
     setLoading(true);
     try {
       const res = await getShopReviews(id, current);
-      const list = res.data ?? [];
-      if (!list || list.length === 0) {
+      const page = unwrapReviews(res);
+      if (page.records.length === 0) {
         setHasMore(false);
       } else {
-        setReviews((prev) => [...prev, ...list]);
+        const nextCount = reviews.length + page.records.length;
+        setReviews((prev) => [...prev, ...page.records]);
+        setHasMore(nextCount < page.total);
         setCurrent((prev) => prev + 1);
-      }
-      if ((res as any).total && reviews.length + list.length >= (res as any).total) {
-        setHasMore(false);
       }
     } catch {
       // ignore
@@ -59,12 +77,6 @@ export default function ShopReviews() {
       setLoading(false);
     }
   }, [id, current, loading, hasMore, reviews.length]);
-
-  useEffect(() => {
-    if (reviews.length === 0 && hasMore) {
-      loadReviews();
-    }
-  }, [reviews.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -91,35 +103,11 @@ export default function ShopReviews() {
       </div>
 
       <div className={styles.scroll} onScroll={handleScroll} ref={containerRef}>
-        {reviews.map((review) => {
-          const reviewImages = review.images ? review.images.split(',') : [];
-          return (
-            <div className={styles.reviewBox} key={review.id}>
-              <div className={styles.userIcon}>
-                <img src={review.icon || '/imgs/icons/default-icon.png'} alt="" />
-              </div>
-              <div className={styles.reviewBody}>
-                <div className={styles.userName}>{review.nickName}</div>
-                <div className={styles.ratingRow}>
-                  <Rate
-                    readOnly
-                    value={review.rating}
-                    style={{ '--star-size': '10px', '--active-color': '#F63' }}
-                  />
-                </div>
-                <div className={styles.content}>{review.content}</div>
-                {reviewImages.length > 0 && (
-                  <div className={styles.images}>
-                    {reviewImages.map((img: string, idx: number) => (
-                      <img key={idx} src={img} alt="" />
-                    ))}
-                  </div>
-                )}
-                <div className={styles.footer}>{t('shopDetail.like', { n: review.liked })}</div>
-              </div>
-            </div>
-          );
-        })}
+        {reviews.map((review) => (
+          <div className={styles.reviewBox} key={review.id}>
+            <ReviewThread review={review} />
+          </div>
+        ))}
         {loading && <div className={styles.loading}>{t('shopReviews.loading')}</div>}
         {!hasMore && reviews.length > 0 && (
           <div className={styles.loading}>{t('shopReviews.end', { n: reviews.length })}</div>

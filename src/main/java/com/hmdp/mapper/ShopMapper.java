@@ -260,6 +260,8 @@ public interface ShopMapper extends BaseMapper<Shop> {
                 COALESCE(neighborhood.name, location.source_area) AS neighborhood,
                 NULLIF(SUBSTRING_INDEX(shop.images, ',', 1), '') AS thumbnailUrl,
                 shop.source_type AS sourceType,
+                COALESCE(JSON_CONTAINS(shop.synthetic_fields, '"images"'), 0) AS illustrativeImage,
+                COALESCE(JSON_CONTAINS(shop.synthetic_fields, '"score"'), 0) AS syntheticScore,
                 location.data_version AS dataVersion
             FROM tb_shop_map_location location
             INNER JOIN active_map active ON active.data_version = location.data_version

@@ -15,11 +15,22 @@ class RagDocument(BaseModel):
     neighborhood: str | None = None
     evidence_tags: list[str] = Field(default_factory=list)
     data_version: str | None = None
+    dataset_sha256: str | None = None
     untrusted_content: bool = True
     content_source_type: str = "SYNTHETIC"
+    content_source_name: str | None = None
+    content_source_url: str | None = None
+    synthetic: bool = True
     shop_source_type: str = "MOCK"
     shop_external_id: str | None = None
     shop_source_name: str | None = None
     shop_source_url: str | None = None
     shop_source_fetched_at: str | None = None
     synthetic_fields: list[str] = Field(default_factory=list)
+    root_id: int | None = None
+    max_depth: int | None = Field(default=None, ge=0, le=2)
+    reply_count: int = Field(default=0, ge=0)
+    sentiment: str | None = None
+    topic_tags: list[str] = Field(default_factory=list)
+    security_test: bool = False
+    content_sha256: str | None = None

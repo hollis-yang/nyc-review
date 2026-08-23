@@ -15,6 +15,7 @@ export interface VoucherData {
   stock: number;
   beginTime: string;
   endTime: string;
+  sourceType?: string;
 }
 
 interface VoucherCardProps {

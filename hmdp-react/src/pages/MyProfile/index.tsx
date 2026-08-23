@@ -378,9 +378,9 @@ export default function MyProfile() {
                     onChange={(event) => setMemoryDrafts((previous) => ({
                       ...previous,
                       [memory.id]: event.target.value,
-                    }))} />
+                  }))} />
                   <div className={styles.memoryActions}>
-                    <span>{t('profile.memorySource', { source: memory.source })}</span>
+                    <span />
                     <button onClick={() => removeMemory(memory.id)}>{t('common.delete')}</button>
                     <button className={styles.memorySave} onClick={() => saveMemory(memory.id)}>
                       {t('common.save')}

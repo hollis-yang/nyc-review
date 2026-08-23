@@ -7,6 +7,7 @@ import com.hmdp.mapper.VoucherMapper;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherService;
+import com.hmdp.utils.ContentSourceTypes;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,9 +35,16 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     }
 
     @Override
+    public void addVoucher(Voucher voucher) {
+        markApiSubmitted(voucher);
+        save(voucher);
+    }
+
+    @Override
     @Transactional
     public void addSeckillVoucher(Voucher voucher) {
         // 保存优惠券
+        markApiSubmitted(voucher);
         save(voucher);
         // 保存秒杀信息
         SeckillVoucher seckillVoucher = new SeckillVoucher();
@@ -50,5 +58,12 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         stringRedisTemplate.opsForValue().set(
                 SECKILL_STOCK_KEY + voucher.getId(), 
                 voucher.getStock().toString());
+    }
+
+    static void markApiSubmitted(Voucher voucher) {
+        // Generated promotions are inserted only by the validated import
+        // bundle. Public API callers cannot label a voucher as SYNTHETIC.
+        voucher.setSourceType(ContentSourceTypes.USER_SUBMITTED);
+        voucher.setDataVersion(null);
     }
 }

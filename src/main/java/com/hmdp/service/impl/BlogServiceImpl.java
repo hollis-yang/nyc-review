@@ -20,6 +20,7 @@ import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisPatternCleaner;
+import com.hmdp.utils.ContentSourceTypes;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.TransactionHooks;
 import com.hmdp.utils.UserHolder;
@@ -164,6 +165,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 1.获取登录用户
         UserDTO user = UserHolder.getUser();
         blog.setUserId(user.getId());
+        // Provenance is server-owned. In particular, a client cannot make a
+        // user post look like generated evidence by sending SYNTHETIC.
+        markUserSubmitted(blog);
         // 2.保存探店博文
         boolean isSuccess = save(blog);
         if (!isSuccess) {
@@ -189,6 +193,11 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         });
         // 5.返回id
         return Result.ok(blog.getId());
+    }
+
+    static void markUserSubmitted(Blog blog) {
+        blog.setSourceType(ContentSourceTypes.USER_SUBMITTED);
+        blog.setDataVersion(null);
     }
 
     @Override

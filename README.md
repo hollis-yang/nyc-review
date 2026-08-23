@@ -59,7 +59,7 @@ mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 
 默认 Redis 地址为 `localhost:6379`，统一使用数据库编号 `0`。Spring Data Redis 与 Redisson 共用同一套连接配置。部分 GEO、秒杀库存和 Feed 数据需要按项目初始化流程写入 Redis；不要直接运行整个测试类，因为其中包含清表和测试数据回填操作。
 
-秒杀订单最终幂等唯一键以及 NYC、Agent、P4 Memory 迁移：
+全新数据库在基础 SQL 后按顺序执行秒杀、NYC、Agent、P4 Memory、地图和 P8 内容迁移：
 
 ```bash
 mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
@@ -70,25 +70,53 @@ mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p7_p5_mcp_ui.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p8_p6_data_provenance.sql
 mysql -u root -p hmdp_new < src/main/resources/db/p9_p7_map_geospatial.sql
+mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
 redis-cli DEL cache:shopType:list
 ```
 
-生成稳定、可复现的 NYC Mock 数据：
+`p8_p6_data_provenance.sql` 不是可重复迁移。已经完成 P6/P7 的数据库不得再次执行 P8/P9；升级现有环境时只补 P10，然后切换活动数据和重建 P7 地图投影。
+
+当前集成数据集是 `real-medium`：5,000 个商户身份全部来自固定的 OpenStreetMap NYC 快照，覆盖六个分类，不混入虚构商户。使用当前工作区已固定的 OSM 与 Wikimedia 快照可重复生成；若 OSM 原始快照不存在，先按 P8 Runbook 联网抓取并核对 sidecar SHA-256：
+
+```bash
+python3 scripts/mock-data-generator/generate.py \
+  --profile real-medium \
+  --real-places data/sources/osm-nyc-places-2026-08-23.json \
+  --illustrative-images data/sources/wikimedia-illustrative-images-v1.json \
+  --output data/generated/nyc-real-medium
+
+python3 scripts/mock-data-generator/validate_dataset.py \
+  data/generated/nyc-real-medium
+
+python3 scripts/mock-data-generator/build_neighborhood_import.py \
+  --dataset data/generated/nyc-real-medium \
+  --nta-snapshot data/sources/nyc-nta-2020-26b.geojson \
+  --output data/generated/nyc-real-medium/p7_neighborhood_import.sql
+```
+
+如果本机尚无固定的 NTA 快照，请先按 [P8 Real-only Data Runbook](docs/p8-real-data-runbook.md) 中的命令获取。最后一条地图构建命令不是可选步骤：手动导入和 `docker-compose.p4.yml` 都会读取该 P7 投影文件。
+
+生成结果包含 5,000 家真实身份商户、100,000 条合成根评论及 52,500 条一、二级回复、博客、普通优惠券、必须手动参与的秒杀券，以及 MySQL/Redis 导入包。图片来自 Wikimedia Commons，是按分类复用并带许可和署名的示意图，不是对应商户实景；评论、评分、博客、用户、优惠和平台行为全部是明确标记的合成内容。OSM 未提供的价格与营业时间保持为空，不会伪造。
+
+生成动作不会连接数据库。现有 P6/P7 环境在生成完成后执行下面命令；全新库已经按上文执行过 P10，也可安全重复执行 P10，再使用相同的数据切换步骤：
+
+```bash
+mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
+mysql -u root -p hmdp_new < data/generated/nyc-real-medium/mysql_import.sql
+mysql -u root -p hmdp_new < data/generated/nyc-real-medium/p7_neighborhood_import.sql
+redis-cli --pipe < data/generated/nyc-real-medium/redis_seed.resp
+redis-cli DEL cache:shopType:list
+```
+
+这些导入命令会归档首次导入前的传统数据并替换开发环境中的活动数据。先阻止新的秒杀请求，同时保持 Spring RabbitMQ consumer 运行，直到订单/错误队列和 Redis pending 索引均为空；随后再停止 Spring Boot 与 Agent Service，并确认目标实例可以被替换。小型 Mock 和 P6 混合 Profile 仍保留用于历史回归与单元测试，但不再是当前 Compose 的活动数据。完整生成、迁移、验证与回滚边界见 [P8 Real Data Runbook](docs/p8-real-data-runbook.md)，Profile 细节见 [NYC 数据生成器](scripts/mock-data-generator/README.md)。
+
+只需快速运行 Mock 单元夹具时仍可生成 `small`：
 
 ```bash
 python3 scripts/mock-data-generator/generate.py \
   --profile small \
   --output data/generated/nyc-small
 ```
-
-生成结果包括六个顶级分类、商户、营业时间、评论、博客、嵌套评论、普通优惠券与必须手动参与的秒杀券，以及 MySQL/Redis 导入包。生成动作不会连接数据库；下面两条命令会归档当前杭州数据并替换开发环境中的活动数据，执行前应停止服务并确认目标实例：
-
-```bash
-mysql -u root -p hmdp_new < data/generated/nyc-small/mysql_import.sql
-redis-cli --pipe < data/generated/nyc-small/redis_seed.resp
-```
-
-详细步骤与校验查询见 [P1 NYC 数据 Runbook](docs/p1-nyc-data-runbook.md) 和 [Mock 数据生成器](scripts/mock-data-generator/README.md)。
 
 ## 启动后端
 
@@ -105,14 +133,18 @@ mvn spring-boot:run
 ```bash
 cd agent-service
 uv sync --dev
+HMDP_AGENT_ADAPTER=http \
+HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
 HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+HMDP_AGENT_QDRANT_LOCATION=http://127.0.0.1:6333 \
+HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-medium \
+HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
 HMDP_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --reload --port 8090
 ```
 
-配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会校验导入清单并使用同一组 shopId 重建 Qdrant 索引；需要连接 Spring Boot Tool API 时设置 `HMDP_AGENT_ADAPTER=http`。`HMDP_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
+配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会拒绝混入 Mock 商户或缺少六分类的 P8 清单，并使用同一组 shopId、`dataVersion` 和 SHA-256 增量同步 Qdrant；未变化文档按内容哈希跳过，不再每次完整重建。HTTP Adapter 必须使用当前登录 token，否则 Spring Tool API 返回 401。`HMDP_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
 
 P3 增加人工审批操作、幂等执行、MySQL 审计、收藏偏好、Run 历史与指标；React 默认英语，可在 `Profile → Edit Profile` 切换中文，DeepSeek 翻译入口只在中文模式显示。迁移、接口和 Docker Compose 验证见 [P3 Runbook](docs/p3-agent-actions-runbook.md)。
 
@@ -122,7 +154,18 @@ P5 在 Agent Service 的 `/mcp` 提供 Streamable HTTP MCP Server，复用 Sprin
 
 P6 增加 2,000 家商户的可复现 `medium` Profile，并将一份覆盖纽约五区的 NYC Open Data 餐厅身份快照与合成业务数据组合为 `nyc-hybrid-v1`。来源、外部 ID、抓取时间与合成字段清单贯穿 MySQL、Spring、Agent、Qdrant、MCP 和双语 UI；所有生成评论均明确标注，不能被误认为真实评价。生成、迁移和验收见 [P6 Hybrid Data Runbook](docs/p6-hybrid-data-runbook.md)。
 
-P7 将地图升级为面向大数据量的 viewport 查询：Spring `/shop/map` 根据缩放级别返回 Borough 总数、Neighborhood 聚合或轻量商户 Marker，支持多类别筛选、高密度降级和空间索引；React 地图随拖动/缩放防抖请求，处理并发乱序，并在桌面端与移动端逐级展开聚合。数据层固定 NYC 2020 NTA `26b` 官方 polygon 与 SHA-256，为 2,000 家商户生成 point-in-polygon 归属和导入审计。原有 `area` 保留给 Agent friendly-area 约束；未匹配 Mock 点明确显示为 Other locations，不会被伪造成最近社区。见 [P7 Map Geospatial Runbook](docs/p7-map-geospatial-runbook.md)。
+P7 将地图升级为面向大数据量的 viewport 查询：Spring `/shop/map` 根据缩放级别返回 Borough 总数、Neighborhood 聚合或轻量商户 Marker，支持多类别筛选、高密度降级和空间索引；React 地图随拖动/缩放防抖请求，处理并发乱序，并在桌面端与移动端逐级展开聚合。数据层固定 NYC 2020 NTA `26b` 官方 polygon 与 SHA-256；P7 最初为 2,000 家商户生成归属，P8 已用同一契约重建 5,000 家真实身份商户的 point-in-polygon 位置和导入审计。原有 `area` 保留给 Agent friendly-area 约束；未匹配点不会被伪造成最近社区。见 [P7 Map Geospatial Runbook](docs/p7-map-geospatial-runbook.md)。
+
+P8 将活动数据切换为 `nyc-real-v1`：5,000 个商户身份全部取自固定、可校验的 OpenStreetMap 快照，六分类均有覆盖且 `mockShops=0`。P10 增加图片许可、评论线程，以及博客、博客评论和优惠券的内部内容来源字段；这些审计字段不会作为说明性标签显示在产品界面。`real-medium` 生成 100,000 条根评论和 52,500 条回复，评分只由根评论计算；评论会结合具体商户、社区、价格、主题和检索标签生成不同表述，Agent 优先选择不重复的评论线程作为 RAG 证据，并按内容哈希、批次、数据版本和数据集 SHA 增量同步 Qdrant。营业时间优先解析 OSM `opening_hours`，其余时段按类别稳定补全；人均价格按类别、细分类和 Borough 估算，检索标签也会在显式 OSM 属性之外进行稳定补全。
+
+使用集成 Compose 前先生成 `nyc-real-medium`，并将当前用户登录 token 传给 Agent Service；缺少该变量时 Agent 的 HTTP Adapter 调用 Spring Tool API 会返回 401：
+
+```bash
+export HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>'
+docker compose -f docker-compose.p4.yml up --build
+```
+
+Compose 中的 MySQL init 脚本只会在全新的空 volume 上运行；已有 P6/P7 volume 应先按上面的“现有环境”命令手工升级，不能通过重复执行 P8 迁移来追平。不要将登录 token 写入受版本控制的文件。
 
 ## 启动前端开发环境
 

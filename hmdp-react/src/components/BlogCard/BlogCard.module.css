@@ -33,9 +33,13 @@
 
 .title {
   padding: 4px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .titleText {
+  width: 100%;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;

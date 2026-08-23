@@ -105,8 +105,8 @@ export default function ProfileEdit() {
     { label: t('profileEdit.female'), value: 'false' },
   ];
   const languageColumns = [
-    { label: 'English', value: 'en' },
-    { label: '中文', value: 'zh-CN' },
+    { label: t('profileEdit.english'), value: 'en' },
+    { label: t('profileEdit.chinese'), value: 'zh-CN' },
   ];
 
   const handleLanguageConfirm = async (value: any[]) => {
@@ -195,7 +195,9 @@ export default function ProfileEdit() {
             <div className={styles.infoLabel}>{t('profileEdit.language')}</div>
             <div className={styles.infoBtn}>
               <div className={styles.infoValue}>
-                {i18n.resolvedLanguage === 'zh-CN' ? '中文' : 'English'}
+                {i18n.resolvedLanguage === 'zh-CN'
+                  ? t('profileEdit.chinese')
+                  : t('profileEdit.english')}
               </div>
               <RightOutline fontSize={14} color="#ccc" />
             </div>

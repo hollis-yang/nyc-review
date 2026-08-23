@@ -114,7 +114,9 @@
     "communityUpdated": "Community updated",
     "language": "Language",
     "selectLanguage": "Select Language",
-    "languageUpdated": "Language updated"
+    "languageUpdated": "Language updated",
+    "english": "English",
+    "chinese": "Chinese"
   },
   "blogDetail": {
     "title": "Note Details",
@@ -193,7 +195,9 @@
     "shopCount": "{{count}} shops",
     "unassignedLocations": "Other locations · {{borough}}",
     "unknownCategory": "Other",
-    "person": "person"
+    "person": "person",
+    "illustrativeImage": "Illustrative image",
+    "demoRating": "Demo rating"
   },
   "shopDetail": {
     "loading": "Loading...",
@@ -220,12 +224,20 @@
     "translationFailed": "Translation failed. Please try again.",
     "translationLoginRequired": "Please sign in again to use DeepSeek translation.",
     "nycOpenData": "NYC Open Data",
+    "realSource": "Verified public source",
     "mockData": "Mock data",
     "publicIdentity": "Public establishment identity",
+    "realIdentity": "Real establishment identity",
     "fullySynthetic": "Fully synthetic establishment",
     "hybridDataNotice": "Name, address, borough, coordinates and cuisine come from NYC Open Data. HMDP prices, ratings, tags, hours, images, reviews and promotions are synthetic demo data.",
+    "realDataNotice": "This establishment identity comes from a traceable public source. Platform promotions and generated reviews are disclosed separately.",
+    "sourceFetched": "Source snapshot: {{date}}.",
     "mockDataNotice": "This establishment and all related content are deterministic synthetic demo data.",
-    "syntheticReviewNotice": "Reviews shown below are generated test content, not claims from real customers."
+    "syntheticReviewNotice": "Seeded reviews and replies are generated test content. Reviews posted in this app are labeled separately as user submitted.",
+    "illustrativeImageNotice": "Illustrative images are category-matched examples from open-license sources, not photos of this establishment.",
+    "illustrativeImageAlt": "Illustrative category image",
+    "imageSource": "Image source",
+    "hoursUnavailable": "Hours unavailable"
   },
   "shopList": {
     "searchResult": "\"{{query}}\" Search Results",
@@ -241,7 +253,18 @@
     "allReviews": "All Reviews",
     "title": "{{name}} - Reviews",
     "loading": "Loading...",
-    "end": "— {{n}} reviews shown —"
+    "end": "— {{n}} review threads shown —",
+    "syntheticNotice": "Seeded review threads are synthetic demo content; app-submitted reviews are labeled separately.",
+    "synthetic": "Synthetic",
+    "userSubmitted": "User submitted",
+    "anonymous": "Anonymous",
+    "replyingTo": "Replying to {{name}}"
+  },
+  "contentSource": {
+    "synthetic": "Synthetic demo",
+    "userSubmitted": "User submitted",
+    "mixed": "Mixed synthetic and user content",
+    "legacy": "Legacy content"
   },
   "voucher": {
     "loginRequired": "Please login first",
@@ -257,7 +280,12 @@
   "shopCard": {
     "score": "pts",
     "comments": "reviews",
-    "perPerson": "/person"
+    "perPerson": "/person",
+    "priceUnavailable": "Price unavailable",
+    "ratingUnavailable": "Not rated",
+    "demoRating": "Demo rating",
+    "syntheticReviews": "synthetic reviews",
+    "illustrativeImage": "Illustrative"
   },
   "common": {
     "back": "Back",
@@ -292,6 +320,21 @@
     "酒吧": "Bar",
     "轰趴馆": "Party Venue",
     "美睫·美甲": "Nail Art"
+  },
+  "tags": {
+    "family_friendly": "Family friendly",
+    "quiet": "Quiet",
+    "date_night": "Date night",
+    "good_for_groups": "Good for groups",
+    "late_night": "Late night",
+    "wheelchair_accessible": "Wheelchair accessible",
+    "outdoor_seating": "Outdoor seating",
+    "parking_available": "Parking available",
+    "pet_friendly": "Pet friendly",
+    "reservation_required": "Reservation required",
+    "vegan_options": "Vegan options",
+    "halal": "Halal",
+    "budget_friendly": "Budget friendly"
   },
   "voucherCard": {
     "off": "% off",
@@ -336,11 +379,15 @@
     "distanceMiles": "{{value}} mi",
     "perPerson": "/person",
     "estimated": "${{value}} estimated",
+    "costUnavailable": "Cost unavailable",
     "viewShop": "View shop and manual offers",
     "nycOpenData": "NYC Open Data",
+    "realData": "Real public data",
     "mockData": "Mock data",
     "syntheticEvidence": "Synthetic evidence",
-    "publicSourceCount": "{{count}} establishment identities backed by NYC Open Data; recommendations and evidence remain synthetic demo content.",
+    "realSourceEvidence": "Public source evidence",
+    "demoRating": "Demo rating",
+    "publicSourceCount": "{{count}} real establishment identities from traceable public sources; generated review evidence remains clearly labeled.",
     "approvalTitle": "Optional actions",
     "approvalSubtitle": "Nothing is written until you explicitly approve it.",
     "approve": "Approve",

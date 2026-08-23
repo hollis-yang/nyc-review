@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     qdrant_location: str = "http://127.0.0.1:6333"
     qdrant_collection: str = "hmdp_content_v1"
     rag_data_directory: Path | None = None
+    rag_index_batch_size: int = Field(default=128, ge=1, le=2_048)
     embedding_provider: Literal["hash", "openai"] = "hash"
     embedding_base_url: str = "https://api.openai.com/v1"
     embedding_api_key: str = ""

@@ -1,0 +1,54 @@
+{
+  "bbox": [
+    40.477399,
+    -74.25909,
+    40.917577,
+    -73.700272
+  ],
+  "categoryCounts": {
+    "1": 8898,
+    "2": 2673,
+    "3": 1397,
+    "4": 797,
+    "5": 693,
+    "6": 2159
+  },
+  "categoryFilters": {
+    "1": [
+      "[\"amenity\"~\"^(restaurant|fast_food|food_court)$\"]"
+    ],
+    "2": [
+      "[\"amenity\"~\"^(cafe|ice_cream)$\"]",
+      "[\"shop\"~\"^(bakery|pastry|coffee|tea|confectionery)$\"]"
+    ],
+    "3": [
+      "[\"amenity\"~\"^(bar|pub|nightclub|music_venue)$\"]"
+    ],
+    "4": [
+      "[\"amenity\"~\"^(theatre|cinema|arts_centre)$\"]",
+      "[\"tourism\"~\"^(museum|gallery|attraction)$\"]",
+      "[\"leisure\"~\"^(amusement_arcade|escape_game|bowling_alley)$\"]"
+    ],
+    "5": [
+      "[\"leisure\"~\"^(fitness_centre|sports_centre|dance|yoga|spa)$\"]",
+      "[\"sport\"~\"^(fitness|yoga|pilates)$\"]",
+      "[\"amenity\"=\"spa\"]",
+      "[\"shop\"=\"massage\"]"
+    ],
+    "6": [
+      "[\"shop\"~\"^(hairdresser|beauty|cosmetics|nail_salon)$\"]"
+    ]
+  },
+  "datasetId": "openstreetmap-overpass-nyc-places",
+  "datasetName": "OpenStreetMap NYC named places",
+  "datasetVersion": "2026-08-23",
+  "fetchedAt": "2026-08-23T17:11:06Z",
+  "licenseName": "ODbL-1.0",
+  "notes": "Only OSM establishment identity, tags and location are source-backed. HMDP reviews, ratings, promotions and illustrative images are synthetic demo content.",
+  "overpassUrl": "https://overpass-api.de/api/interpreter",
+  "recordCount": 16617,
+  "snapshotFile": "osm-nyc-places-2026-08-23.json",
+  "snapshotSha256": "6c1c63801fa69be593488c8b2e359900856d07e0f0ea4feff0eca7e988eed228",
+  "sourceName": "OpenStreetMap contributors",
+  "sourceUrl": "https://www.openstreetmap.org/copyright"
+}

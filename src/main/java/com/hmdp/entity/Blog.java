@@ -75,6 +75,17 @@ public class Blog implements Serializable {
     private Integer comments = 0;
 
     /**
+     * Server-controlled content provenance, for example SYNTHETIC or
+     * USER_SUBMITTED. Clients cannot choose this value when publishing.
+     */
+    private String sourceType;
+
+    /**
+     * Generated dataset identity. Null for content submitted through the API.
+     */
+    private String dataVersion;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

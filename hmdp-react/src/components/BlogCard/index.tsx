@@ -12,6 +12,7 @@ export interface BlogData {
   isLike: boolean;
   comments?: number;
   img?: string;
+  sourceType?: string;
 }
 
 interface BlogCardProps {

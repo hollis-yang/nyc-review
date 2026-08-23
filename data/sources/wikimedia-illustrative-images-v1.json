@@ -1,0 +1,85 @@
+{
+  "images": [
+    {
+      "attribution": "Sharon Hahn Darlin",
+      "fetchedAt": "2026-08-23T12:00:00Z",
+      "licenseName": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "sha256": null,
+      "sourceName": "Wikimedia Commons",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Restaurant_interior_(50924573666).jpg",
+      "title": "Restaurant interior (50924573666).jpg",
+      "typeId": 1,
+      "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Restaurant%20interior%20%2850924573666%29.jpg?width=900"
+    },
+    {
+      "attribution": "Kavig624",
+      "fetchedAt": "2026-08-23T12:00:00Z",
+      "licenseName": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sha256": null,
+      "sourceName": "Wikimedia Commons",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Cafe_Interior_with_Coffee.jpg",
+      "title": "Cafe Interior with Coffee.jpg",
+      "typeId": 2,
+      "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Cafe%20Interior%20with%20Coffee.jpg?width=900"
+    },
+    {
+      "attribution": "Nenad Stojković",
+      "fetchedAt": "2026-08-23T12:00:00Z",
+      "licenseName": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "sha256": null,
+      "sourceName": "Wikimedia Commons",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Modern_bar_interior_featuring_a_wide_selection_of_spirits.jpg",
+      "title": "Modern bar interior featuring a wide selection of spirits.jpg",
+      "typeId": 3,
+      "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Modern%20bar%20interior%20featuring%20a%20wide%20selection%20of%20spirits.jpg?width=900"
+    },
+    {
+      "attribution": "publiclaboratory",
+      "fetchedAt": "2026-08-23T12:00:00Z",
+      "licenseName": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "sha256": null,
+      "sourceName": "Wikimedia Commons",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Whitney_Museum_interior.jpg",
+      "title": "Whitney Museum interior.jpg",
+      "typeId": 4,
+      "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Whitney%20Museum%20interior.jpg?width=900"
+    },
+    {
+      "attribution": "Mauro Cateb",
+      "fetchedAt": "2026-08-23T12:00:00Z",
+      "licenseName": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sha256": null,
+      "sourceName": "Wikimedia Commons",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Interior_of_a_gymnasium.jpg",
+      "title": "Interior of a gymnasium.jpg",
+      "typeId": 5,
+      "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Interior%20of%20a%20gymnasium.jpg?width=900"
+    },
+    {
+      "attribution": "Gary Berkovich",
+      "fetchedAt": "2026-08-23T12:00:00Z",
+      "licenseName": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "sha256": null,
+      "sourceName": "Wikimedia Commons",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Beauty_salon_interior_by_Gary_Berkovich_(Winnetka,_Illinois).jpg",
+      "title": "Beauty salon interior by Gary Berkovich (Winnetka, Illinois).jpg",
+      "typeId": 6,
+      "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Beauty%20salon%20interior%20by%20Gary%20Berkovich%20%28Winnetka%2C%20Illinois%29.jpg?width=900"
+    }
+  ],
+  "metadata": {
+    "datasetId": "wikimedia-commons-illustrative-images",
+    "datasetVersion": "v1",
+    "fetchedAt": "2026-08-23T12:00:00Z",
+    "imagesPerType": 1,
+    "notes": "Verified category-level illustrative images only. These are not photographs of the linked merchants.",
+    "sourceName": "Wikimedia Commons",
+    "sourceUrl": "https://commons.wikimedia.org/"
+  }
+}

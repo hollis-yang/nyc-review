@@ -8,12 +8,14 @@ export interface ShopData {
   id: number;
   name: string;
   images: string;
-  score: number;
+  score?: number | null;
   comments: number;
   area: string;
   distance?: number;
-  avgPrice: number;
+  avgPrice?: number | null;
   address: string;
+  sourceType?: string;
+  syntheticFields?: string[];
 }
 
 interface ShopCardProps {
@@ -38,14 +40,20 @@ export default function ShopCard({ shop }: ShopCardProps) {
       <div className={styles.info}>
         <div className={styles.title}>{shop.name}</div>
         <div className={styles.rate}>
-          <Rate
-            readOnly
-            value={shop.score / 10}
-            style={{ '--star-size': '12px', '--active-color': '#F63' }}
-          />
-          <span style={{ color: '#F63', fontSize: 11, marginLeft: 4 }}>
-            {shop.score / 10}{t('shopCard.score')}
-          </span>
+          {shop.score != null ? (
+            <>
+              <Rate
+                readOnly
+                value={shop.score / 10}
+                style={{ '--star-size': '12px', '--active-color': '#F63' }}
+              />
+              <span style={{ color: '#F63', fontSize: 11, marginLeft: 4 }}>
+                {shop.score / 10}{t('shopCard.score')}
+              </span>
+            </>
+          ) : (
+            <span style={{ color: '#999', fontSize: 11 }}>{t('shopCard.ratingUnavailable')}</span>
+          )}
           <span style={{ color: '#999', fontSize: 10, marginLeft: 4 }}>
             {shop.comments}{t('shopCard.comments')}
           </span>
@@ -56,7 +64,11 @@ export default function ShopCard({ shop }: ShopCardProps) {
             <span style={{ marginLeft: 8 }}>{formatDistance(shop.distance)}</span>
           )}
         </div>
-        <div className={styles.avgPrice}>${shop.avgPrice}/person</div>
+        <div className={styles.avgPrice}>
+          {shop.avgPrice != null
+            ? `$${shop.avgPrice}${t('shopCard.perPerson')}`
+            : t('shopCard.priceUnavailable')}
+        </div>
         <div className={styles.address}>
           <EnvironmentOutline fontSize={12} />
           <span style={{ marginLeft: 2 }}>{shop.address}</span>

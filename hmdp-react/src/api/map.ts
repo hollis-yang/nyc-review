@@ -51,6 +51,8 @@ export interface MapShopItem {
   thumbnailUrl?: string;
   images?: string;
   sourceType?: string;
+  illustrativeImage?: boolean;
+  syntheticScore?: boolean;
 }
 
 export type MapViewportItem = MapClusterItem | MapShopItem;

@@ -22,7 +22,7 @@ public class VoucherController {
      */
     @PostMapping
     public Result addVoucher(@RequestBody Voucher voucher) {
-        voucherService.save(voucher);
+        voucherService.addVoucher(voucher);
         return Result.ok(voucher.getId());
     }
 

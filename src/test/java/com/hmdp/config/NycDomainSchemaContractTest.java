@@ -1,6 +1,11 @@
 package com.hmdp.config;
 
 import com.hmdp.agentapi.dto.AgentShopCandidate;
+import com.hmdp.entity.Shop;
+import com.hmdp.entity.ShopImage;
+import com.hmdp.entity.Blog;
+import com.hmdp.entity.BlogComments;
+import com.hmdp.entity.Voucher;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -94,6 +99,54 @@ class NycDomainSchemaContractTest {
             assertEquals(6, migration.split(tableCollation, -1).length - 1);
             assertEquals(6, migration.split(repairCollation, -1).length - 1);
             assertTrue(migration.contains("COLLATION_NAME <> 'utf8mb4_general_ci'"));
+        }
+    }
+
+    @Test
+    void p10MigrationDefinesIllustrativeImagesAndThreeLevelReviewThreads() throws Exception {
+        try (InputStream input = getClass().getResourceAsStream("/db/p10_p8_real_content.sql")) {
+            assertNotNull(input);
+            String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(migration.contains("CREATE TABLE IF NOT EXISTS `tb_shop_image`"));
+            assertTrue(migration.contains("MODIFY COLUMN `score` INT UNSIGNED NULL"));
+            assertTrue(migration.contains("DEFAULT 'ILLUSTRATIVE'"));
+            assertTrue(migration.contains("`source_page_url`"));
+            assertTrue(migration.contains("`license_name`"));
+            assertTrue(migration.contains("`root_id`"));
+            assertTrue(migration.contains("`parent_id`"));
+            assertTrue(migration.contains("`reply_to_user_id`"));
+            assertTrue(migration.contains("`depth` BETWEEN 0 AND 2"));
+            assertTrue(migration.contains("DEFAULT ''LEGACY''"));
+            assertTrue(migration.contains("TABLE_NAME='tb_blog' AND COLUMN_NAME='source_type'"));
+            assertTrue(migration.contains("TABLE_NAME='tb_blog' AND COLUMN_NAME='data_version'"));
+            assertTrue(migration.contains("TABLE_NAME='tb_blog_comments' AND COLUMN_NAME='source_type'"));
+            assertTrue(migration.contains("TABLE_NAME='tb_blog_comments' AND COLUMN_NAME='data_version'"));
+            assertTrue(migration.contains("TABLE_NAME='tb_voucher' AND COLUMN_NAME='source_type'"));
+            assertTrue(migration.contains("TABLE_NAME='tb_voucher' AND COLUMN_NAME='data_version'"));
+            assertTrue(migration.contains("idx_shop_review_thread"));
+            assertTrue(migration.contains("DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"));
+        }
+
+        assertNotNull(Shop.class.getDeclaredField("imageAssets"));
+        assertNotNull(ShopImage.class.getDeclaredField("imageType"));
+        assertNotNull(ShopImage.class.getDeclaredField("sourcePageUrl"));
+        assertNotNull(Blog.class.getDeclaredField("sourceType"));
+        assertNotNull(Blog.class.getDeclaredField("dataVersion"));
+        assertNotNull(BlogComments.class.getDeclaredField("sourceType"));
+        assertNotNull(BlogComments.class.getDeclaredField("dataVersion"));
+        assertNotNull(Voucher.class.getDeclaredField("sourceType"));
+        assertNotNull(Voucher.class.getDeclaredField("dataVersion"));
+    }
+
+    @Test
+    void voucherListApiSelectsSeedProvenance() throws IOException {
+        try (InputStream input = getClass().getResourceAsStream("/mapper/VoucherMapper.xml")) {
+            assertNotNull(input);
+            String mapper = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(mapper.contains("v.`source_type`"));
+            assertTrue(mapper.contains("v.`data_version`"));
         }
     }
 }

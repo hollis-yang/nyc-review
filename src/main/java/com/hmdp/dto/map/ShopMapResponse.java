@@ -61,7 +61,9 @@ public record ShopMapResponse(
             Long avgPrice,
             String neighborhood,
             String thumbnailUrl,
-            String sourceType
+            String sourceType,
+            boolean illustrativeImage,
+            boolean syntheticScore
     ) implements Item {
     }
 }

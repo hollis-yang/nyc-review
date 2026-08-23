@@ -21,5 +21,7 @@ public class ShopMapShopRow {
     private String neighborhood;
     private String thumbnailUrl;
     private String sourceType;
+    private Boolean illustrativeImage;
+    private Boolean syntheticScore;
     private String dataVersion;
 }

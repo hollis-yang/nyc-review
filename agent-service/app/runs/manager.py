@@ -147,6 +147,17 @@ class AgentRunManager:
         snapshot = await self.get_owned(run_id, authorization)
         if snapshot is None:
             return None
+        run_metadata = snapshot.result.metadata if snapshot.result is not None else {}
+        run_data_version = run_metadata.get("dataVersion")
+        run_dataset_sha256 = run_metadata.get("datasetSha256")
+        if (
+            run_data_version != self._runtime.data_version
+            or run_dataset_sha256 != self._runtime.dataset_sha256
+        ):
+            raise ValueError(
+                "This Agent run belongs to a different dataset version. "
+                "Create a new recommendation before approving actions."
+            )
         action = await self._store.get_action(run_id, action_id)
         if action is None:
             raise KeyError(action_id)
@@ -606,6 +617,7 @@ class AgentRunManager:
                 "dataVersion": self._runtime.data_version,
                 "datasetSha256": self._runtime.dataset_sha256,
                 "sourceCounts": self._runtime.source_counts,
+                "ragIndexStats": self._runtime.rag_index_stats,
                 "modelProvider": extraction.provider,
                 "model": extraction.model,
                 "promptVersion": extraction.prompt_version,

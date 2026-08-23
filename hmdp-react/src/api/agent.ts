@@ -40,6 +40,10 @@ export interface AgentCitation {
   source_name?: string;
   source_url?: string;
   synthetic?: boolean;
+  data_version?: string;
+  root_id?: number;
+  max_depth?: number;
+  reply_count?: number;
 }
 
 export interface AgentRunEvent {
@@ -65,8 +69,8 @@ export interface AgentRunResponse {
       borough?: string;
       address?: string;
       description?: string;
-      avg_price_cents: number;
-      score: number;
+      avg_price_cents?: number | null;
+      score?: number | null;
       tags: string[];
       distance_meters?: number;
       source_type?: string;
@@ -92,10 +96,10 @@ export interface AgentRunResponse {
     stops: Array<{
       shop_id: number;
       sequence: number;
-      estimated_cost_cents: number;
+      estimated_cost_cents: number | null;
       distance_meters?: number;
     }>;
-    total_estimated_cost_cents: number;
+    total_estimated_cost_cents: number | null;
   };
   verification: {
     valid: boolean;
@@ -109,6 +113,12 @@ export interface AgentRunResponse {
     dataVersion?: string;
     datasetSha256?: string;
     sourceCounts?: Record<string, number>;
+    ragIndexStats?: {
+      total: number;
+      upserted: number;
+      unchanged: number;
+      deleted: number;
+    };
     modelProvider?: string;
     model?: string;
     modelFallbackUsed?: boolean;

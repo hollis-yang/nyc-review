@@ -17,7 +17,7 @@ from app.rag.embeddings import (
     DeterministicHashEmbeddingService,
     OpenAICompatibleEmbeddingService,
 )
-from app.rag.nyc_loader import load_generated_documents
+from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import QdrantRagService
 from app.runs.manager import AgentRunManager
 from app.runs.store import SQLiteRunStore
@@ -41,6 +41,7 @@ class AgentRuntime:
     data_version: str | None = None
     dataset_sha256: str | None = None
     source_counts: dict[str, int] = field(default_factory=dict)
+    rag_index_stats: dict[str, int] = field(default_factory=dict)
     qdrant_client: AsyncQdrantClient | None = None
     run_manager: AgentRunManager | None = None
     model_provider: str = "heuristic"
@@ -60,6 +61,7 @@ class AgentRuntime:
         data_version: str | None = None
         dataset_sha256: str | None = None
         source_counts: dict[str, int] = {}
+        rag_index_stats: dict[str, int] = {}
         if settings.rag_data_directory is not None:
             data_version, dataset_sha256, source_counts = _validate_data_directory(
                 settings.rag_data_directory.resolve()
@@ -71,13 +73,17 @@ class AgentRuntime:
                 client=qdrant_client,
                 embeddings=_build_embedding_service(settings),
                 collection_name=settings.qdrant_collection,
+                index_batch_size=settings.rag_index_batch_size,
+                dataset_sha256=dataset_sha256,
             )
             if settings.rag_data_directory is not None:
                 data_directory = settings.rag_data_directory.resolve()
-                indexed_documents = await rag.index(
-                    load_generated_documents(data_directory),
-                    replace=True,
+                index_stats = await rag.sync(
+                    iter_generated_documents(data_directory),
+                    data_version=data_version,
                 )
+                indexed_documents = index_stats.total_documents
+                rag_index_stats = index_stats.as_metadata()
         else:
             rag = InMemoryRagService()
 
@@ -100,6 +106,7 @@ class AgentRuntime:
             data_version=data_version,
             dataset_sha256=dataset_sha256,
             source_counts=source_counts,
+            rag_index_stats=rag_index_stats,
             qdrant_client=qdrant_client,
             model_provider=settings.model_provider,
             action_service=AgentActionService(
@@ -216,7 +223,7 @@ def _validate_data_directory(
         path = data_directory / filename
         if not path.is_file():
             raise FileNotFoundError(f"Dataset file declared in import_manifest.json is missing: {filename}")
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = _sha256_file(path)
         if not isinstance(expected, dict) or expected.get("sha256") != digest:
             raise ValueError(f"Dataset file checksum does not match import_manifest.json: {filename}")
         actual_dataset_files[filename] = {"sha256": digest}
@@ -236,4 +243,81 @@ def _validate_data_directory(
     manifest_source_counts = (manifest.get("provenance") or {}).get("sourceCounts")
     if manifest_source_counts is not None and manifest_source_counts != source_counts:
         raise ValueError("import_manifest.json provenance does not match shops.json source counts.")
+    top_level_identity_mode = manifest.get("merchantIdentityMode")
+    provenance_identity_mode = (manifest.get("provenance") or {}).get("merchantIdentityMode")
+    if (
+        top_level_identity_mode
+        and provenance_identity_mode
+        and top_level_identity_mode != provenance_identity_mode
+    ):
+        raise ValueError("import_manifest.json has conflicting merchant identity modes.")
+    identity_mode = top_level_identity_mode or provenance_identity_mode
+    if str(data_version or "").startswith("nyc-real-") and identity_mode != "REAL_ONLY":
+        raise ValueError("nyc-real datasets must declare merchantIdentityMode as REAL_ONLY.")
+    if identity_mode == "REAL_ONLY":
+        _validate_real_only_shops(shops, manifest, data_version)
     return data_version, dataset_sha256, dict(sorted(source_counts.items()))
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_real_only_shops(
+    shops: list[dict],
+    manifest: dict,
+    data_version: str | None,
+) -> None:
+    if not shops:
+        raise ValueError("REAL_ONLY dataset must contain at least one merchant.")
+    allowed_sources = {"OPENSTREETMAP"}
+    invalid_sources = [
+        shop.get("id")
+        for shop in shops
+        if str(shop.get("sourceType") or "").upper() not in allowed_sources
+    ]
+    if invalid_sources:
+        raise ValueError(
+            "REAL_ONLY dataset contains non-real merchant sources for shop IDs: "
+            + ", ".join(map(str, invalid_sources[:10]))
+        )
+    required_provenance = ("externalId", "sourceName", "sourceUrl", "sourceFetchedAt")
+    missing_provenance = [
+        shop.get("id")
+        for shop in shops
+        if any(not shop.get(field_name) for field_name in required_provenance)
+    ]
+    if missing_provenance:
+        raise ValueError(
+            "REAL_ONLY dataset is missing traceable merchant provenance for shop IDs: "
+            + ", ".join(map(str, missing_provenance[:10]))
+        )
+    if not data_version or not data_version.startswith("nyc-real-"):
+        raise ValueError("REAL_ONLY dataset must use a nyc-real-* data version.")
+    if any(shop.get("dataVersion") != data_version for shop in shops):
+        raise ValueError("Every REAL_ONLY merchant must declare the active data version.")
+    source_keys = [(shop.get("sourceType"), shop.get("externalId")) for shop in shops]
+    if len(source_keys) != len(set(source_keys)):
+        raise ValueError("REAL_ONLY dataset contains duplicate source merchant identities.")
+    missing_disclosures = [
+        shop.get("id")
+        for shop in shops
+        if not {"images", "reviews"}.issubset(set(shop.get("syntheticFields") or []))
+    ]
+    if missing_disclosures:
+        raise ValueError(
+            "REAL_ONLY merchants must disclose illustrative images and synthetic reviews for shop IDs: "
+            + ", ".join(map(str, missing_disclosures[:10]))
+        )
+    category_ids = {shop.get("typeId") for shop in shops}
+    if category_ids != set(range(1, 7)):
+        raise ValueError("REAL_ONLY dataset must cover all six NYC merchant categories.")
+    provenance = manifest.get("provenance") or {}
+    if provenance.get("mockShops") != 0:
+        raise ValueError("REAL_ONLY manifest must declare mockShops as 0.")
+    if provenance.get("realShops") != len(shops):
+        raise ValueError("REAL_ONLY manifest realShops does not match shops.json.")

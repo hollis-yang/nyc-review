@@ -170,7 +170,9 @@ public class ShopMapService {
                 row.getAvgPrice(),
                 row.getNeighborhood(),
                 row.getThumbnailUrl(),
-                row.getSourceType()
+                row.getSourceType(),
+                Boolean.TRUE.equals(row.getIllustrativeImage()),
+                Boolean.TRUE.equals(row.getSyntheticScore())
         );
     }
 

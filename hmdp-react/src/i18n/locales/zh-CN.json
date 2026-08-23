@@ -114,7 +114,9 @@
     "communityUpdated": "社区已更新",
     "language": "语言",
     "selectLanguage": "选择语言",
-    "languageUpdated": "语言已切换"
+    "languageUpdated": "语言已切换",
+    "english": "英语",
+    "chinese": "中文"
   },
   "blogDetail": {
     "title": "笔记详情",
@@ -193,7 +195,9 @@
     "shopCount": "{{count}} 家商户",
     "unassignedLocations": "其他位置 · {{borough}}",
     "unknownCategory": "其他类别",
-    "person": "人"
+    "person": "人",
+    "illustrativeImage": "类别示意图",
+    "demoRating": "模拟评分"
   },
   "shopDetail": {
     "loading": "加载中...",
@@ -220,12 +224,20 @@
     "translationFailed": "翻译失败，请稍后重试。",
     "translationLoginRequired": "登录状态已失效，请重新登录后使用 DeepSeek 翻译。",
     "nycOpenData": "纽约市开放数据",
+    "realSource": "可追溯公开来源",
     "mockData": "模拟数据",
     "publicIdentity": "真实公开商户身份",
+    "realIdentity": "真实商户身份",
     "fullySynthetic": "完全合成商户",
     "hybridDataNotice": "名称、地址、行政区、坐标和菜系来自纽约市开放数据；平台中的价格、评分、标签、营业时间、图片、评论及优惠均为合成演示数据。",
+    "realDataNotice": "该商户身份来自可追溯的公开来源；平台优惠及生成评论会分别明确标注。",
+    "sourceFetched": "来源快照：{{date}}。",
     "mockDataNotice": "该商户及其关联内容均为可复现的合成演示数据。",
-    "syntheticReviewNotice": "下方评论是生成的测试内容，不代表真实顾客评价。"
+    "syntheticReviewNotice": "预置评论及回复是生成的测试内容；在本应用中发布的评价会单独标记为用户提交。",
+    "illustrativeImageNotice": "示意图片来自开放许可图库并按类别匹配，不是该商户的实拍照片。",
+    "illustrativeImageAlt": "类别示意图片",
+    "imageSource": "图片来源",
+    "hoursUnavailable": "暂无营业时间"
   },
   "shopList": {
     "searchResult": "\"{{query}}\" 搜索结果",
@@ -241,7 +253,18 @@
     "allReviews": "全部评价",
     "title": "{{name}} - 评价",
     "loading": "加载中...",
-    "end": "— 已显示全部{{n}}条评价 —"
+    "end": "— 已显示{{n}}个评价主题 —",
+    "syntheticNotice": "预置评价主题是合成演示内容；用户在应用内发布的评价会单独标记。",
+    "synthetic": "合成内容",
+    "userSubmitted": "用户提交",
+    "anonymous": "匿名用户",
+    "replyingTo": "回复 {{name}}"
+  },
+  "contentSource": {
+    "synthetic": "合成演示内容",
+    "userSubmitted": "用户提交",
+    "mixed": "合成与用户内容混合",
+    "legacy": "历史内容"
   },
   "voucher": {
     "loginRequired": "请先登录",
@@ -257,7 +280,12 @@
   "shopCard": {
     "score": "分",
     "comments": "条",
-    "perPerson": "/人"
+    "perPerson": "/人",
+    "priceUnavailable": "暂无价格",
+    "ratingUnavailable": "暂无评分",
+    "demoRating": "模拟评分",
+    "syntheticReviews": "合成评价",
+    "illustrativeImage": "示意图"
   },
   "common": {
     "back": "返回",
@@ -292,6 +320,21 @@
     "酒吧": "酒吧",
     "轰趴馆": "轰趴馆",
     "美睫·美甲": "美睫·美甲"
+  },
+  "tags": {
+    "family_friendly": "适合家庭",
+    "quiet": "安静",
+    "date_night": "适合约会",
+    "good_for_groups": "适合聚会",
+    "late_night": "营业至深夜",
+    "wheelchair_accessible": "无障碍通行",
+    "outdoor_seating": "户外座位",
+    "parking_available": "可停车",
+    "pet_friendly": "宠物友好",
+    "reservation_required": "需要预约",
+    "vegan_options": "提供纯素选择",
+    "halal": "清真选择",
+    "budget_friendly": "价格亲民"
   },
   "voucherCard": {
     "off": "折",
@@ -336,11 +379,15 @@
     "distanceMiles": "{{value}} 英里",
     "perPerson": "/人",
     "estimated": "预计 ${{value}}",
+    "costUnavailable": "暂无价格，无法估算",
     "viewShop": "查看商户和手动优惠",
     "nycOpenData": "纽约市开放数据",
+    "realData": "真实公开数据",
     "mockData": "模拟数据",
     "syntheticEvidence": "合成证据",
-    "publicSourceCount": "{{count}} 个商户身份来自纽约市开放数据；推荐逻辑和证据仍为合成演示内容。",
+    "realSourceEvidence": "公开来源证据",
+    "demoRating": "模拟评分",
+    "publicSourceCount": "{{count}} 个真实商户身份来自可追溯公开来源；生成的评论证据仍会明确标注。",
     "approvalTitle": "可选操作",
     "approvalSubtitle": "只有你明确同意后，系统才会执行写操作。",
     "approve": "确认执行",

@@ -126,6 +126,13 @@ public class Shop implements Serializable {
     private String dataVersion;
 
     /**
+     * Ordered image attribution returned on the detail endpoint. The legacy
+     * images string remains available for list, map, and older clients.
+     */
+    @TableField(exist = false)
+    private List<ShopImage> imageAssets;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

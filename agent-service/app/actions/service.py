@@ -143,11 +143,12 @@ class AgentActionService:
             self._proposal(
                 run_id,
                 AgentActionType.FAVORITE_SHOP,
-                str(first.shop_id),
-                title=f"Favorite {first.name}",
+                str(candidate.shop_id),
+                title=f"Favorite {candidate.name}",
                 description="Add this shop to your saved places after confirmation.",
-                payload={"shopId": first.shop_id, "shopName": first.name},
+                payload={"shopId": candidate.shop_id, "shopName": candidate.name},
             )
+            for candidate in candidates
         ]
         if result.itinerary.stops:
             proposals.append(

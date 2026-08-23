@@ -48,6 +48,10 @@
   margin-bottom: 10px;
 }
 
+.sourceBadge:not(:empty) {
+  margin: -4px 0 8px;
+}
+
 .meta {
   display: flex;
   align-items: center;

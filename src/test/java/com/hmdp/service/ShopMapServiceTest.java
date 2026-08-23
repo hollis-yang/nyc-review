@@ -144,6 +144,8 @@ class ShopMapServiceTest {
         assertEquals("SHOP", first.kind());
         assertEquals("/shop-10.jpg", first.thumbnailUrl());
         assertEquals("NYC_OPEN_DATA", first.sourceType());
+        assertTrue(first.illustrativeImage());
+        assertTrue(first.syntheticScore());
         assertEquals(List.of(-74.0, 40.7, -73.9, 40.8, typeIds, ShopMapService.MAX_POINTS),
                 stubMapper.singleCall("selectMapShops"));
     }
@@ -250,6 +252,8 @@ class ShopMapServiceTest {
                 "Midtown",
                 "/shop-" + id + ".jpg",
                 "NYC_OPEN_DATA",
+                true,
+                true,
                 "nyc-hybrid-v1"
         );
     }

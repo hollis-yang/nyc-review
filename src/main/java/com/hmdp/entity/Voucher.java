@@ -64,6 +64,17 @@ public class Voucher implements Serializable {
      * 优惠券类型
      */
     private Integer status;
+
+    /**
+     * Voucher provenance, such as SYNTHETIC for seeded demo promotions.
+     */
+    private String sourceType;
+
+    /**
+     * Generated dataset identity. Null for vouchers created through the API.
+     */
+    private String dataVersion;
+
     /**
      * 库存
      */

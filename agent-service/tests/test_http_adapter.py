@@ -13,7 +13,7 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
             "subcategoryId": 7,
             "subcategory": "Coffee Shop",
             "borough": "Manhattan",
-            "neighborhood": "Midtown",
+            "neighborhood": "Midtown-Times Square",
             "address": "17 Broadway, Manhattan, NY 10018",
             "description": "A fictional coffee shop.",
             "latitude": 40.7549,
@@ -55,6 +55,26 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
     assert candidate.tags == ["quiet", "wheelchair_accessible"]
 
 
+def test_http_adapter_preserves_unknown_price_and_score_as_null():
+    candidate = HttpShopToolService._to_candidate(
+        {
+            "shopId": 18,
+            "name": "Real Unknown-Price Fixture",
+            "category": "Beauty & Personal Care",
+            "neighborhood": "Astoria",
+            "latitude": 40.7644,
+            "longitude": -73.9235,
+            "avgPriceCents": None,
+            "score": None,
+            "sourceType": "OVERTURE",
+            "dataVersion": "nyc-real-v1",
+        }
+    )
+
+    assert candidate.avg_price_cents is None
+    assert candidate.score is None
+
+
 async def test_generated_adapter_marks_tag_relaxation_instead_of_returning_empty(tmp_path):
     shops = [
         {
@@ -62,7 +82,7 @@ async def test_generated_adapter_marks_tag_relaxation_instead_of_returning_empty
             "name": "Vegan Fixture",
             "typeId": 1,
             "subcategoryId": 1,
-            "neighborhood": "Midtown",
+            "neighborhood": "Midtown-Times Square",
             "borough": "Manhattan",
             "address": "1 Broadway",
             "description": "Fixture",

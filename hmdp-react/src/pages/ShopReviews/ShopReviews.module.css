@@ -40,12 +40,21 @@
 
 .reviewBox {
   background: #fff;
-  padding: 14px;
+  padding: 8px 14px;
   margin-bottom: 8px;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
-  display: flex;
-  gap: 10px;
+}
+
+.syntheticNotice {
+  margin-bottom: 8px;
+  border-left: 3px solid #ffb596;
+  border-radius: 0 7px 7px 0;
+  padding: 8px 10px;
+  color: #795d52;
+  background: #fff8f5;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .userIcon {

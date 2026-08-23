@@ -60,6 +60,8 @@ class ShopMapperMapContractTest {
         assertTrue(markers.contains("LEFT JOIN tb_neighborhood neighborhood"));
         assertTrue(markers.contains("ST_Latitude(location.location) AS lat"));
         assertTrue(markers.contains("ST_Longitude(location.location) AS lng"));
+        assertTrue(markers.contains("JSON_CONTAINS(shop.synthetic_fields, '\"images\"')"));
+        assertTrue(markers.contains("JSON_CONTAINS(shop.synthetic_fields, '\"score\"')"));
         assertTrue(markers.contains("LIMIT #{limit}"));
         assertFalse(markers.contains("ST_X(location.location)"));
         assertFalse(markers.contains("ST_Y(location.location)"));

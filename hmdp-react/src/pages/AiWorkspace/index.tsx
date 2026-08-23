@@ -18,6 +18,7 @@ import {
 } from '../../api/agent';
 import { translateText } from '../../api/translate';
 import FootBar from '../../components/FootBar';
+import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './AiWorkspace.module.css';
 
 const MULTI_AGENTS = ['Supervisor', 'Discovery', 'Evidence', 'Itinerary', 'Verifier'] as const;
@@ -78,6 +79,22 @@ export default function AiWorkspace() {
   const itineraryByShop = useMemo(
     () => new Map(result?.itinerary.stops.map((item) => [item.shop_id, item]) || []),
     [result],
+  );
+  const visibleIssues = useMemo(() => {
+    const relaxed = new Set(result?.candidates.relaxed_constraints ?? []);
+    const seen = new Set<string>();
+    return (result?.verification.issues ?? []).filter((issue) => {
+      if (issue.code === 'MISSING_DESIRED_TAGS' && relaxed.has('desired_tags')) return false;
+      if (issue.code === 'COST_UNAVAILABLE' && relaxed.has('budget')) return false;
+      const key = `${issue.code}:${issue.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [result]);
+  const displayVerified = useMemo(
+    () => Boolean(result && (result.verification.valid || visibleIssues.length === 0)),
+    [result, visibleIssues],
   );
 
   const agentStatus = (agent: string) => {
@@ -224,7 +241,7 @@ export default function AiWorkspace() {
       <header className={styles.header}>
         <div className={styles.headerSide} />
         <div className={styles.headerTitle}>{t('aiGuide.title')}</div>
-        <div className={styles.multiBadge}>5</div>
+        <div className={styles.headerSide} />
       </header>
 
       <main className={styles.scroll}>
@@ -352,25 +369,14 @@ export default function AiWorkspace() {
         {result && (
           <section className={styles.results}>
             <div className={styles.resultSummary}>
-              <div className={result.verification.valid ? styles.verified : styles.reviewNeeded}>
-                {result.verification.valid ? <CheckCircleFill /> : <CloseCircleFill />}
-                {result.verification.valid ? t('aiGuide.verified') : t('aiGuide.reviewNeeded')}
+              <div className={displayVerified ? styles.verified : styles.reviewNeeded}>
+                {displayVerified ? <CheckCircleFill /> : <CloseCircleFill />}
+                {displayVerified ? t('aiGuide.verified') : t('aiGuide.reviewNeeded')}
               </div>
               <h2>{t('aiGuide.resultSummary', {
                 candidates: result.candidates.candidates.length,
-                issues: result.verification.issues.length,
+                issues: visibleIssues.length,
               })}</h2>
-              <p>
-                {result.metadata.modelProvider || 'heuristic'} · {result.metadata.rag || 'memory'} RAG ·{' '}
-                {t('aiGuide.indexedDocuments', { count: result.metadata.indexedDocuments ?? 0 })}
-              </p>
-              {(result.metadata.sourceCounts?.NYC_OPEN_DATA ?? 0) > 0 && (
-                <div className={styles.personalizedNote}>
-                  {t('aiGuide.publicSourceCount', {
-                    count: result.metadata.sourceCounts?.NYC_OPEN_DATA ?? 0,
-                  })}
-                </div>
-              )}
               {(result.metadata.personalization?.favoriteCount ?? 0) > 0 && (
                 <div className={styles.personalizedNote}>
                   {t('aiGuide.personalized', {
@@ -393,25 +399,33 @@ export default function AiWorkspace() {
                 <article className={styles.shopCard} key={shop.shop_id}>
                   <div className={styles.shopTop}>
                     <div>
-                      <span className={styles.shopCategory}>{shop.category}</span>
-                      <span className={shop.source_type === 'NYC_OPEN_DATA' ? styles.publicSource : styles.syntheticSource}>
-                        {shop.source_type === 'NYC_OPEN_DATA' ? t('aiGuide.nycOpenData') : t('aiGuide.mockData')}
-                      </span>
+                      <span className={styles.shopCategory}>{t(`shopTypes.${shop.category}`, shop.category)}</span>
                       <h3>{shop.name}</h3>
                       <p>{shop.neighborhood}{shop.borough ? `, ${shop.borough}` : ''}</p>
                     </div>
-                    <div className={styles.price}>${(shop.avg_price_cents / 100).toFixed(0)}<small>{t('aiGuide.perPerson')}</small></div>
+                    {shop.avg_price_cents != null && (
+                      <div className={styles.price}>${(shop.avg_price_cents / 100).toFixed(0)}<small>{t('aiGuide.perPerson')}</small></div>
+                    )}
                   </div>
                   <div className={styles.facts}>
-                    <span>★ {shop.score.toFixed(1)}</span>
+                    {shop.score != null && (
+                      <span>★ {shop.score.toFixed(1)}</span>
+                    )}
                     <span>{formatDistance(stop?.distance_meters ?? shop.distance_meters)}</span>
-                    {stop && <span>{t('aiGuide.estimated', { value: (stop.estimated_cost_cents / 100).toFixed(0) })}</span>}
+                    {stop && (
+                      <span>
+                        {stop.estimated_cost_cents != null
+                          ? t('aiGuide.estimated', { value: (stop.estimated_cost_cents / 100).toFixed(0) })
+                          : t('aiGuide.costUnavailable')}
+                      </span>
+                    )}
                   </div>
-                  <div className={styles.tags}>{shop.tags.slice(0, 5).map((tag) => <span key={tag}>{tag.replaceAll('_', ' ')}</span>)}</div>
+                  <div className={styles.tags}>{shop.tags.slice(0, 5).map((tag) => (
+                    <span key={tag}>{t(`tags.${tag}`, tag.replaceAll('_', ' '))}</span>
+                  ))}</div>
                   {evidence?.citations.slice(0, 2).map((citation) => (
                     <blockquote key={citation.citation_id}>
-                      <p>“{citation.excerpt}”</p>
-                      <cite>{t('aiGuide.syntheticEvidence')} · {citation.content_type.replaceAll('_', ' ')} · {citation.source_id}</cite>
+                      <p>“{cleanDisplayContent(citation.excerpt)}”</p>
                     </blockquote>
                   ))}
                   <button className={styles.openShop} onClick={() => navigate(`/shop-detail/${shop.shop_id}`)}>
@@ -421,8 +435,8 @@ export default function AiWorkspace() {
               );
             })}
 
-            {!result.verification.valid && result.verification.issues.map((issue) => (
-              <div className={styles.issue} key={`${issue.code}-${issue.shop_id || 0}`}>
+            {!displayVerified && visibleIssues.map((issue) => (
+              <div className={styles.issue} key={`${issue.code}-${issue.message}`}>
                 <strong>{issue.code.replaceAll('_', ' ')}</strong>
                 <span>{issue.message}</span>
               </div>

@@ -111,6 +111,14 @@
   line-height: 1.4;
 }
 
+.sourceMeta,
+.commentHeading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .followArea {
   flex-shrink: 0;
 }
@@ -340,6 +348,9 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-dark);
+}
+
+.commentHeading {
   margin-bottom: 3px;
 }
 

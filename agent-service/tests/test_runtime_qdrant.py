@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import sys
@@ -20,6 +21,63 @@ SPEC.loader.exec_module(GENERATOR)
 
 def _write_json(path, value) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def _write_real_only_bundle(path: Path, *, first_source_type: str = "OPENSTREETMAP") -> None:
+    shops = []
+    for type_id in range(1, 7):
+        shops.append(
+            {
+                "id": type_id,
+                "typeId": type_id,
+                "name": f"Real merchant {type_id}",
+                "sourceType": first_source_type if type_id == 1 else "OPENSTREETMAP",
+                "externalId": f"node:{type_id}",
+                "sourceName": "OpenStreetMap contributors",
+                "sourceUrl": f"https://www.openstreetmap.org/node/{type_id}",
+                "sourceFetchedAt": "2026-08-23T12:00:00Z",
+                "syntheticFields": ["images", "reviews"],
+                "dataVersion": "nyc-real-v1",
+            }
+        )
+    values = {
+        "shops.json": shops,
+        "shop_reviews.json": [],
+        "blogs.json": [],
+        "blog_comments.json": [],
+    }
+    dataset_files = {}
+    for filename, value in values.items():
+        _write_json(path / filename, value)
+        dataset_files[filename] = {
+            "sha256": hashlib.sha256((path / filename).read_bytes()).hexdigest()
+        }
+    dataset_sha256 = hashlib.sha256(
+        json.dumps(dataset_files, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    source_counts = {"OPENSTREETMAP": 6}
+    if first_source_type != "OPENSTREETMAP":
+        source_counts = {first_source_type: 1, "OPENSTREETMAP": 5}
+    shop_ids = list(range(1, 7))
+    _write_json(
+        path / "import_manifest.json",
+        {
+            "dataVersion": "nyc-real-v1",
+            "merchantIdentityMode": "REAL_ONLY",
+            "datasetFiles": dataset_files,
+            "datasetSha256": dataset_sha256,
+            "shopIds": shop_ids,
+            "shopIdsSha256": hashlib.sha256(
+                json.dumps(shop_ids, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+            "provenance": {
+                "merchantIdentityMode": "REAL_ONLY",
+                "mockShops": 0 if first_source_type != "MOCK" else 1,
+                "realShops": 6 if first_source_type != "MOCK" else 5,
+                "sourceCounts": source_counts,
+            },
+        },
+    )
 
 
 async def test_multi_agent_runtime_uses_qdrant_citations(tmp_path):
@@ -116,4 +174,28 @@ def test_dataset_identity_rejects_tampered_generated_file(tmp_path):
     _write_json(reviews_path, reviews)
 
     with pytest.raises(ValueError, match="checksum"):
+        _validate_data_directory(tmp_path)
+
+
+def test_real_only_dataset_requires_traceable_non_mock_merchants_in_all_six_categories(tmp_path):
+    _write_real_only_bundle(tmp_path)
+
+    data_version, dataset_sha256, source_counts = _validate_data_directory(tmp_path)
+
+    assert data_version == "nyc-real-v1"
+    assert dataset_sha256
+    assert source_counts == {"OPENSTREETMAP": 6}
+
+
+def test_real_only_dataset_rejects_a_mock_merchant_even_when_manifest_matches(tmp_path):
+    _write_real_only_bundle(tmp_path, first_source_type="MOCK")
+
+    with pytest.raises(ValueError, match="non-real merchant sources"):
+        _validate_data_directory(tmp_path)
+
+
+def test_real_only_dataset_rejects_an_unapproved_source_label(tmp_path):
+    _write_real_only_bundle(tmp_path, first_source_type="FAKE_REAL")
+
+    with pytest.raises(ValueError, match="non-real merchant sources"):
         _validate_data_directory(tmp_path)
