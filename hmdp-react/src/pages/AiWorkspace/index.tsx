@@ -364,6 +364,13 @@ export default function AiWorkspace() {
                 {result.metadata.modelProvider || 'heuristic'} · {result.metadata.rag || 'memory'} RAG ·{' '}
                 {t('aiGuide.indexedDocuments', { count: result.metadata.indexedDocuments ?? 0 })}
               </p>
+              {(result.metadata.sourceCounts?.NYC_OPEN_DATA ?? 0) > 0 && (
+                <div className={styles.personalizedNote}>
+                  {t('aiGuide.publicSourceCount', {
+                    count: result.metadata.sourceCounts?.NYC_OPEN_DATA ?? 0,
+                  })}
+                </div>
+              )}
               {(result.metadata.personalization?.favoriteCount ?? 0) > 0 && (
                 <div className={styles.personalizedNote}>
                   {t('aiGuide.personalized', {
@@ -387,6 +394,9 @@ export default function AiWorkspace() {
                   <div className={styles.shopTop}>
                     <div>
                       <span className={styles.shopCategory}>{shop.category}</span>
+                      <span className={shop.source_type === 'NYC_OPEN_DATA' ? styles.publicSource : styles.syntheticSource}>
+                        {shop.source_type === 'NYC_OPEN_DATA' ? t('aiGuide.nycOpenData') : t('aiGuide.mockData')}
+                      </span>
                       <h3>{shop.name}</h3>
                       <p>{shop.neighborhood}{shop.borough ? `, ${shop.borough}` : ''}</p>
                     </div>
@@ -401,7 +411,7 @@ export default function AiWorkspace() {
                   {evidence?.citations.slice(0, 2).map((citation) => (
                     <blockquote key={citation.citation_id}>
                       <p>“{citation.excerpt}”</p>
-                      <cite>{citation.content_type.replaceAll('_', ' ')} · {citation.source_id}</cite>
+                      <cite>{t('aiGuide.syntheticEvidence')} · {citation.content_type.replaceAll('_', ' ')} · {citation.source_id}</cite>
                     </blockquote>
                   ))}
                   <button className={styles.openShop} onClick={() => navigate(`/shop-detail/${shop.shop_id}`)}>

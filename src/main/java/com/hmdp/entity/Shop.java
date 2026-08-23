@@ -10,11 +10,14 @@ import lombok.experimental.Accessors;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
+
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@TableName("tb_shop")
+@TableName(value = "tb_shop", autoResultMap = true)
 public class Shop implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -108,6 +111,17 @@ public class Shop implements Serializable {
     private String timezone;
 
     private String sourceType;
+
+    private String externalId;
+
+    private String sourceName;
+
+    private String sourceUrl;
+
+    private LocalDateTime sourceFetchedAt;
+
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<String> syntheticFields;
 
     private String dataVersion;
 

@@ -33,3 +33,11 @@
 - 已实现普通优惠券领取、收藏、行程保存和秒杀提醒的人工审批。
 - 已实现 Trace、重放、自动 Eval Gate、Prompt Guard 和模型版本记录；Dashboard 作为后续可视化增强。
 - 已对六个只读领域能力增加 Streamable HTTP MCP Server；收藏、领券、保存、提醒和秒杀操作均不进入 MCP。
+
+## M6：规模化数据与真实来源
+
+- 新增 2,000 家商户的 `medium` Profile，保留固定随机种子、导入清单和全文件 SHA-256。
+- 接入 NYC Open Data 的 DOHMH 餐厅公开数据快照，按 CAMIS 去重并覆盖纽约五区。
+- 真实数据仅用于商户名称、地址、行政区、坐标和菜系；评论、博客、价格、评分、标签、营业时间、图片与优惠继续使用合成数据并明确披露。
+- 来源元数据贯穿 MySQL、Spring Tool API、Agent Candidate、Qdrant payload、MCP 和中英文页面。
+- 增加数据质量门禁，校验五区覆盖、引用完整性、外部 ID 唯一性与来源计数。

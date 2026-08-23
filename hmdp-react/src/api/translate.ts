@@ -33,6 +33,20 @@ export async function translateComment(commentId: number | string, targetLang: s
   return res;
 }
 
+export async function translateReview(reviewId: number | string, targetLang: string = 'en') {
+  const key = makeKey('review', reviewId, targetLang);
+  const cached = getCached(key);
+  if (cached) return { data: cached };
+  const res = await client.post(
+    '/translate/review',
+    null,
+    optionalTranslationConfig({ reviewId, targetLang })
+  );
+  const val = res.data ?? res;
+  if (val) setCached(key, String(val));
+  return res;
+}
+
 export async function translateShop(shopId: number | string, targetLang: string = 'en') {
   const key = makeKey('shop', shopId, targetLang);
   const cached = getCached(key);

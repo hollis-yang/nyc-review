@@ -85,7 +85,10 @@ Agent 之间只交换结构化对象：`UserConstraints`、`CandidateSet`、`Evi
 
 - `nyc-small`：稳定的小型测试数据。
 - `nyc-demo`：默认演示数据。
+- `nyc-medium`：2,000 家商户与 16,000 条评论，用于更接近真实规模的演示与 Eval。
 - `nyc-load`：压测时按需生成，不提交大文件。
 - 杭州数据保留为 legacy 数据集，迁移过程不覆盖或删除。
 
-Mock 数据使用固定随机种子生成。Eval 使用隐藏于 Agent 上下文之外的 Ground Truth，从而准确测量约束满足率、合法商户 ID 比例、引用正确率和动作安全性。
+Mock 数据使用固定随机种子生成。`nyc-hybrid-v1` 先固定 NYC Open Data 快照，再将公开商户身份与合成业务内容合并，因此相同快照与种子可得到相同 SHA-256。每个 Shop 和 Qdrant 文档都携带来源类型、外部 ID、来源链接、抓取时间和合成字段清单；真实商户身份不能让合成评论看起来像真实顾客评价。
+
+Eval 使用隐藏于 Agent 上下文之外的 Ground Truth，从而准确测量约束满足率、合法商户 ID 比例、引用正确率和动作安全性。

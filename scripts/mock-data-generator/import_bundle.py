@@ -35,6 +35,14 @@ CATEGORY_ICONS = {
     5: "/types/nyc-wellness.svg",
     6: "/types/nyc-beauty.svg",
 }
+LEGACY_COLUMN_MAP = {
+    # Keep the archive import compatible with a legacy_hangzhou_tb_shop table
+    # created before later NYC/provenance columns were added to tb_shop.
+    "tb_shop": (
+        "id", "name", "type_id", "images", "area", "address", "x", "y",
+        "avg_price", "sold", "comments", "score", "open_hours", "create_time", "update_time",
+    ),
+}
 
 
 def _write_text_atomic(path: Path, content: str) -> None:
@@ -128,9 +136,12 @@ def build_mysql_sql(
 
     lines = [
         f"-- {SQL_MARKER}",
-        "-- Generated data is fictional. Run only after p3_nyc_compatibility.sql and p4_nyc_domain.sql.",
+        "-- HMDP content is synthetic; some establishment identity fields may come from NYC Open Data.",
+        "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql.",
         "-- Stop the application before importing. The initial active dataset is archived exactly once.",
         "SET NAMES utf8mb4;",
+        "SET @HMDP_OLD_TIME_ZONE = @@SESSION.time_zone;",
+        "SET SESSION time_zone = '+00:00';",
         "",
         "CREATE TABLE IF NOT EXISTS `tb_legacy_archive_state` (",
         "  `archive_key` VARCHAR(64) NOT NULL,",
@@ -144,10 +155,18 @@ def build_mysql_sql(
         lines.append(f"CREATE TABLE IF NOT EXISTS `legacy_hangzhou_{table}` LIKE `{table}`;")
     lines.extend(["", "START TRANSACTION;"])
     for table in LEGACY_TABLES:
-        lines.append(
-            f"INSERT INTO `legacy_hangzhou_{table}` SELECT * FROM `{table}` "
-            f"WHERE NOT EXISTS (SELECT 1 FROM `tb_legacy_archive_state` WHERE `archive_key` = '{LEGACY_ARCHIVE_KEY}');"
-        )
+        columns = LEGACY_COLUMN_MAP.get(table)
+        if columns:
+            quoted = ", ".join(f"`{column}`" for column in columns)
+            lines.append(
+                f"INSERT INTO `legacy_hangzhou_{table}` ({quoted}) SELECT {quoted} FROM `{table}` "
+                f"WHERE NOT EXISTS (SELECT 1 FROM `tb_legacy_archive_state` WHERE `archive_key` = '{LEGACY_ARCHIVE_KEY}');"
+            )
+        else:
+            lines.append(
+                f"INSERT INTO `legacy_hangzhou_{table}` SELECT * FROM `{table}` "
+                f"WHERE NOT EXISTS (SELECT 1 FROM `tb_legacy_archive_state` WHERE `archive_key` = '{LEGACY_ARCHIVE_KEY}');"
+            )
     lines.extend(
         [
             "INSERT IGNORE INTO `tb_legacy_archive_state` (`archive_key`, `source_note`) ",
@@ -206,14 +225,18 @@ def build_mysql_sql(
         (
             "id", "name", "type_id", "subcategory_id", "images", "area", "borough", "address",
             "description", "x", "y", "avg_price", "price_level", "sold", "comments", "score",
-            "open_hours", "timezone", "source_type", "data_version", "create_time", "update_time",
+            "open_hours", "timezone", "source_type", "external_id", "source_name", "source_url",
+            "source_fetched_at", "synthetic_fields", "data_version", "create_time", "update_time",
         ),
         (
             (
                 item["id"], item["name"], item["typeId"], item["subcategoryId"], item["images"],
                 item["area"], item["borough"], item["address"], item["description"], item["x"], item["y"],
                 item["avgPriceCents"] // 100, item["priceLevel"], item["sold"], item["comments"], item["score"],
-                _first_open_hours(item["id"], hours), item["timezone"], item["sourceType"], item["dataVersion"],
+                _first_open_hours(item["id"], hours), item["timezone"], item["sourceType"],
+                item.get("externalId"), item.get("sourceName"), item.get("sourceUrl"),
+                _mysql_datetime(item.get("sourceFetchedAt")),
+                json.dumps(item.get("syntheticFields") or [], separators=(",", ":")), item["dataVersion"],
                 FIXED_TIME, FIXED_TIME,
             )
             for item in shops
@@ -305,7 +328,7 @@ def build_mysql_sql(
             for item in seckill
         ),
     )
-    data_version = shops[0]["dataVersion"] if shops else "nyc-mock-v1"
+    data_version = shops[0]["dataVersion"] if shops else "nyc-mock-v2"
     statements.append(
         "INSERT INTO `tb_data_import` "
         "(`import_id`, `data_version`, `profile`, `seed`, `dataset_sha256`, `shop_count`, `active`) VALUES "
@@ -320,6 +343,7 @@ def build_mysql_sql(
         [
             "COMMIT;",
             "SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;",
+            "SET SESSION time_zone = @HMDP_OLD_TIME_ZONE;",
             "",
             f"-- Dataset SHA-256: {dataset_sha256}",
             "",
@@ -395,6 +419,10 @@ def build_import_bundle(
     _write_bytes_atomic(redis_path, build_redis_resp(datasets))
 
     shop_ids = sorted(shop["id"] for shop in datasets["shops.json"])
+    source_counts: dict[str, int] = {}
+    for shop in datasets["shops.json"]:
+        source_type = str(shop.get("sourceType") or "UNKNOWN")
+        source_counts[source_type] = source_counts.get(source_type, 0) + 1
     dataset_files = {
         filename: {"sha256": _sha256(output / filename)}
         for filename in sorted(datasets)
@@ -405,13 +433,17 @@ def build_import_bundle(
     if computed_dataset_sha256 != dataset_sha256:
         raise ValueError("Dataset files changed while the import bundle was being generated.")
     manifest = {
-        "dataVersion": datasets["shops.json"][0]["dataVersion"] if datasets["shops.json"] else "nyc-mock-v1",
+        "dataVersion": datasets["shops.json"][0]["dataVersion"] if datasets["shops.json"] else "nyc-mock-v2",
         "datasetSha256": dataset_sha256,
         "datasetFiles": dataset_files,
         "profile": profile,
         "seed": seed,
         "shopIds": shop_ids,
         "shopIdsSha256": _shop_ids_sha256(shop_ids),
+        "provenance": {
+            "sourceCounts": dict(sorted(source_counts.items())),
+            "syntheticContent": True,
+        },
         "mysql": {
             "file": sql_path.name,
             "sha256": _sha256(sql_path),

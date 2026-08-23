@@ -249,6 +249,12 @@ public class AgentShopToolService {
                 shop.getComments(),
                 distance,
                 shop.getTimezone(),
+                shop.getSourceType(),
+                shop.getExternalId(),
+                shop.getSourceName(),
+                shop.getSourceUrl(),
+                shop.getSourceFetchedAt(),
+                shop.getSyntheticFields() == null ? List.of() : shop.getSyntheticFields(),
                 shop.getDataVersion(),
                 enrichment.tagsByShop().getOrDefault(shop.getId(), List.of()),
                 enrichment.hoursByShop().getOrDefault(shop.getId(), List.of())

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { LeftOutline, EnvironmentOutline } from 'antd-mobile-icons';
 import { Rate, Toast } from 'antd-mobile';
 import { getShopById, getShopReviews, createShopReview } from '../../api/shop';
-import { translateComment } from '../../api/translate';
+import { translateReview } from '../../api/translate';
 import { getVoucherList, seckillVoucher } from '../../api/voucher';
 import VoucherCard, { type VoucherData } from '../../components/VoucherCard';
 import styles from './ShopDetail.module.css';
@@ -18,6 +18,11 @@ interface ShopInfo {
   address: string;
   openHours: string;
   avgPrice?: number;
+  sourceType?: 'MOCK' | 'NYC_OPEN_DATA' | 'LEGACY';
+  sourceName?: string;
+  sourceUrl?: string;
+  sourceFetchedAt?: string;
+  syntheticFields?: string[];
 }
 
 interface ReviewData {
@@ -45,6 +50,7 @@ export default function ShopDetail() {
   const [reviewContent, setReviewContent] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewTL, setReviewTL] = useState<Record<number, string>>({});
+  const [reviewTLLoading, setReviewTLLoading] = useState<Record<number, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -113,6 +119,37 @@ export default function ShopDetail() {
     }
   };
 
+  const handleTranslateReview = async (reviewId: number) => {
+    if (reviewTLLoading[reviewId]) return;
+    if (reviewTL[reviewId]) {
+      setReviewTL((previous) => {
+        const next = { ...previous };
+        delete next[reviewId];
+        return next;
+      });
+      return;
+    }
+
+    setReviewTLLoading((previous) => ({ ...previous, [reviewId]: true }));
+    try {
+      const response = await translateReview(reviewId, 'zh-CN');
+      setReviewTL((previous) => ({
+        ...previous,
+        [reviewId]: String(response.data ?? response),
+      }));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      Toast.show({
+        icon: 'fail',
+        content: message === 'Please sign in first'
+          ? t('shopDetail.translationLoginRequired')
+          : t('shopDetail.translationFailed'),
+      });
+    } finally {
+      setReviewTLLoading((previous) => ({ ...previous, [reviewId]: false }));
+    }
+  };
+
   if (error) {
     return (
       <div className={styles.container}>
@@ -131,6 +168,8 @@ export default function ShopDetail() {
     return <div className={styles.loadingFull}>{t('shopDetail.loading')}</div>;
   }
 
+  const publicSourceBacked = shop.sourceType === 'NYC_OPEN_DATA';
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -143,6 +182,19 @@ export default function ShopDetail() {
       <div className={styles.scroll}>
         <div className={styles.infoBox}>
           <div className={styles.shopTitle}>{shop.name}</div>
+          <div className={styles.provenanceRow}>
+            {publicSourceBacked && shop.sourceUrl ? (
+              <a href={shop.sourceUrl} target="_blank" rel="noreferrer" className={styles.publicSourceBadge}>
+                {t('shopDetail.nycOpenData')}
+              </a>
+            ) : (
+              <span className={styles.mockSourceBadge}>{t('shopDetail.mockData')}</span>
+            )}
+            <span>{publicSourceBacked ? t('shopDetail.publicIdentity') : t('shopDetail.fullySynthetic')}</span>
+          </div>
+          <div className={styles.provenanceNote}>
+            {publicSourceBacked ? t('shopDetail.hybridDataNotice') : t('shopDetail.mockDataNotice')}
+          </div>
           <div className={styles.shopRate}>
             <Rate
               readOnly
@@ -206,6 +258,7 @@ export default function ShopDetail() {
               <div style={{ cursor: 'pointer' }} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</div>
             )}
           </div>
+          <div className={styles.syntheticReviewNotice}>{t('shopDetail.syntheticReviewNotice')}</div>
           <div className={styles.commentList}>
             {reviews.slice(0, 3).map((review) => {
               const reviewImages = review.images ? review.images.split(',') : [];
@@ -229,21 +282,20 @@ export default function ShopDetail() {
                         {reviewTL[review.id]}
                       </div>
                     )}
-                    {isChinese && <span style={{ fontSize: 11, color: '#ff6633', cursor: 'pointer', display: 'inline' }}
-                      onClick={async () => {
-                        if (reviewTL[review.id]) {
-                          const next = { ...reviewTL };
-                          delete next[review.id];
-                          setReviewTL(next);
-                          return;
-                        }
-                        try {
-                          const res = await translateComment(review.id, 'zh-CN');
-                          setReviewTL(prev => ({ ...prev, [review.id]: String(res.data ?? res) }));
-                        } catch {}
-                      }}>
-                      ✦ {t('shopDetail.deepSeekTranslate')}
-                    </span>}
+                    {isChinese && (
+                      <button
+                        type="button"
+                        className={styles.translationButton}
+                        disabled={reviewTLLoading[review.id]}
+                        onClick={() => handleTranslateReview(review.id)}
+                      >
+                        {reviewTLLoading[review.id]
+                          ? t('shopDetail.translatingDeepSeek')
+                          : reviewTL[review.id]
+                            ? t('shopDetail.hideTranslation')
+                            : `✦ ${t('shopDetail.deepSeekTranslate')}`}
+                      </button>
+                    )}
                     {reviewImages.length > 0 && (
                       <div className={styles.commentImages}>
                         {reviewImages.map((img: string, idx: number) => (

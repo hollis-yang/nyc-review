@@ -60,6 +60,38 @@
   color: var(--color-text-dark);
 }
 
+.provenanceRow {
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #888;
+  font-size: 10px;
+}
+
+.publicSourceBadge,
+.mockSourceBadge {
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.publicSourceBadge { color: #176748; background: #e9f7f0; }
+.mockSourceBadge { color: #8a5a35; background: #fff2e9; }
+
+.provenanceNote {
+  margin-bottom: 9px;
+  border-left: 3px solid #ffb596;
+  border-radius: 0 6px 6px 0;
+  padding: 6px 8px;
+  color: #795d52;
+  background: #fff8f5;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .shopRate {
   display: flex;
   align-items: center;
@@ -163,6 +195,13 @@
   font-weight: normal;
 }
 
+.syntheticReviewNotice {
+  margin: -3px 0 10px;
+  color: #9a7668;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .commentTags {
   display: flex;
   flex-wrap: wrap;
@@ -247,6 +286,22 @@
   font-size: 13px;
   color: #333;
   cursor: pointer;
+}
+
+.translationButton {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ff6633;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.translationButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .copyright {

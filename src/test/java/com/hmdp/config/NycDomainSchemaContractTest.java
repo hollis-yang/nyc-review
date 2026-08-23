@@ -56,7 +56,28 @@ class NycDomainSchemaContractTest {
                 "borough",
                 "tags",
                 "businessHours",
+                "sourceType",
+                "externalId",
+                "sourceName",
+                "sourceUrl",
+                "sourceFetchedAt",
+                "syntheticFields",
                 "dataVersion"
         )));
+    }
+
+    @Test
+    void p8MigrationDefinesShopProvenanceContract() throws IOException {
+        try (InputStream input = getClass().getResourceAsStream("/db/p8_p6_data_provenance.sql")) {
+            assertNotNull(input);
+            String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(migration.contains("external_id"));
+            assertTrue(migration.contains("source_name"));
+            assertTrue(migration.contains("source_url"));
+            assertTrue(migration.contains("source_fetched_at"));
+            assertTrue(migration.contains("synthetic_fields JSON"));
+            assertTrue(migration.contains("uk_shop_source_external"));
+        }
     }
 }

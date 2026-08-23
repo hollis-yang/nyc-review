@@ -483,6 +483,18 @@
   text-transform: uppercase;
 }
 
+.publicSource,
+.syntheticSource {
+  margin-left: 5px;
+  border-radius: 999px;
+  padding: 2px 5px;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.publicSource { color: #176748; background: #e9f7f0; }
+.syntheticSource { color: #8a5a35; background: #fff2e9; }
+
 .shopCard h3 {
   margin: 3px 0;
   font-size: 17px;

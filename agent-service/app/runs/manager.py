@@ -605,6 +605,7 @@ class AgentRunManager:
                 "indexedDocuments": self._runtime.indexed_documents,
                 "dataVersion": self._runtime.data_version,
                 "datasetSha256": self._runtime.dataset_sha256,
+                "sourceCounts": self._runtime.source_counts,
                 "modelProvider": extraction.provider,
                 "model": extraction.model,
                 "promptVersion": extraction.prompt_version,

@@ -6,8 +6,10 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogComments;
 import com.hmdp.entity.Shop;
+import com.hmdp.entity.ShopReview;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IBlogService;
+import com.hmdp.service.IShopReviewService;
 import com.hmdp.service.IShopService;
 import com.hmdp.service.IShopTypeService;
 import com.hmdp.service.TranslateService;
@@ -35,6 +37,9 @@ public class TranslateServiceImpl implements TranslateService {
 
     @Resource
     private IShopService shopService;
+
+    @Resource
+    private IShopReviewService shopReviewService;
 
     @Resource
     private IShopTypeService shopTypeService;
@@ -82,6 +87,21 @@ public class TranslateServiceImpl implements TranslateService {
         String translated = callDeepSeek(comment.getContent(), langName, null);
         if (translated == null) return Result.fail("Translation failed");
         setCached("comment", commentId, targetLang, translated);
+        return Result.ok(translated);
+    }
+
+    @Override
+    public Result translateReview(Long reviewId, String targetLang) {
+        String langName = languageName(targetLang);
+        if (langName == null) return Result.fail("Unsupported target language");
+        String cached = getCached("review", reviewId, targetLang);
+        if (cached != null) return Result.ok(cached);
+        ShopReview review = shopReviewService.getById(reviewId);
+        if (review == null) return Result.fail("Review not found");
+
+        String translated = callDeepSeek(review.getContent(), langName, null);
+        if (translated == null) return Result.fail("Translation failed");
+        setCached("review", reviewId, targetLang, translated);
         return Result.ok(translated);
     }
 

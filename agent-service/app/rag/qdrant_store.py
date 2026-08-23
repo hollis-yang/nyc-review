@@ -130,6 +130,10 @@ class QdrantRagService:
                     source_id=str(payload.get("source_id") or point.id),
                     created_at=payload.get("created_at"),
                     untrusted_content=bool(payload.get("untrusted_content", True)),
+                    source_type=str(payload.get("content_source_type") or "SYNTHETIC"),
+                    source_name="HMDP deterministic NYC generator",
+                    source_url=None,
+                    synthetic=True,
                 )
             )
         return ShopEvidence(

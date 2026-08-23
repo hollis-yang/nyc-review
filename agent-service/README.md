@@ -101,6 +101,8 @@ uv run uvicorn app.main:app --reload --port 8090
 
 启动时会校验 `import_manifest.json` 与 `shops.json` 的 shopId 和 `dataVersion`，随后用商户介绍、商户评论、博客、顶层评论和嵌套评论完整重建目标 Qdrant Collection。Spring 候选商户带有相同的 `dataVersion`，检索时还会按该版本过滤，避免旧索引与新数据库串数据。默认 Hash Embedding 只用于离线开发；部署时使用 `.env.example` 中的 OpenAI-compatible Embedding 配置。
 
+P6 的 `nyc-hybrid-v1` 还会把商户来源类型、外部 ID、来源链接、抓取时间和合成字段清单写入 Candidate 与 Qdrant payload。RAG 中的评论、博客和描述继续标记为 `SYNTHETIC`，即使商户名称和地址来自 NYC Open Data，也不得把合成文本描述为官方或真实顾客证据。
+
 接入 Spring Boot Tool API 时再增加：
 
 ```bash

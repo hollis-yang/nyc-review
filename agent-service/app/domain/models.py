@@ -80,6 +80,12 @@ class ShopCandidate(BaseModel):
     score: float = Field(ge=0, le=5)
     tags: list[str] = Field(default_factory=list)
     source: str = "hmdp"
+    source_type: str = "MOCK"
+    external_id: str | None = None
+    source_name: str | None = None
+    source_url: str | None = None
+    source_fetched_at: str | None = None
+    synthetic_fields: list[str] = Field(default_factory=list)
     subcategory_id: int | None = None
     subcategory: str | None = None
     borough: str | None = None
@@ -108,6 +114,10 @@ class EvidenceCitation(BaseModel):
     source_id: str
     created_at: str | None = None
     untrusted_content: bool = True
+    source_type: str = "SYNTHETIC"
+    source_name: str | None = None
+    source_url: str | None = None
+    synthetic: bool = True
 
 
 class ShopEvidence(BaseModel):

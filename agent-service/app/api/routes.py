@@ -37,6 +37,7 @@ async def preview_run(payload: AgentRunRequest, request: Request):
             "indexedDocuments": runtime.indexed_documents,
             "dataVersion": runtime.data_version,
             "datasetSha256": runtime.dataset_sha256,
+            "sourceCounts": runtime.source_counts,
         },
     )
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ class AgentRuntime:
     indexed_documents: int = 0
     data_version: str | None = None
     dataset_sha256: str | None = None
+    source_counts: dict[str, int] = field(default_factory=dict)
     qdrant_client: AsyncQdrantClient | None = None
     run_manager: AgentRunManager | None = None
     model_provider: str = "heuristic"
@@ -58,8 +59,9 @@ class AgentRuntime:
         indexed_documents = 0
         data_version: str | None = None
         dataset_sha256: str | None = None
+        source_counts: dict[str, int] = {}
         if settings.rag_data_directory is not None:
-            data_version, dataset_sha256 = _validate_data_directory(
+            data_version, dataset_sha256, source_counts = _validate_data_directory(
                 settings.rag_data_directory.resolve()
             )
 
@@ -97,6 +99,7 @@ class AgentRuntime:
             indexed_documents=indexed_documents,
             data_version=data_version,
             dataset_sha256=dataset_sha256,
+            source_counts=source_counts,
             qdrant_client=qdrant_client,
             model_provider=settings.model_provider,
             action_service=AgentActionService(
@@ -181,7 +184,9 @@ def _build_model_gateway(settings: Settings):
     )
 
 
-def _validate_data_directory(data_directory: Path) -> tuple[str | None, str | None]:
+def _validate_data_directory(
+    data_directory: Path,
+) -> tuple[str | None, str | None, dict[str, int]]:
     required = ["shops.json", "shop_reviews.json", "blogs.json", "blog_comments.json"]
     missing = [name for name in required if not (data_directory / name).is_file()]
     if missing:
@@ -194,9 +199,13 @@ def _validate_data_directory(data_directory: Path) -> tuple[str | None, str | No
     if len(data_versions) > 1:
         raise ValueError("Generated shops.json mixes multiple data versions.")
     data_version = next(iter(data_versions), None)
+    source_counts: dict[str, int] = {}
+    for shop in shops:
+        source_type = str(shop.get("sourceType") or "UNKNOWN")
+        source_counts[source_type] = source_counts.get(source_type, 0) + 1
     import_manifest_path = data_directory / "import_manifest.json"
     if not import_manifest_path.is_file():
-        return data_version, None
+        return data_version, None, source_counts
     with import_manifest_path.open(encoding="utf-8") as handle:
         manifest = json.load(handle)
     dataset_files = manifest.get("datasetFiles")
@@ -224,4 +233,7 @@ def _validate_data_directory(data_directory: Path) -> tuple[str | None, str | No
         raise ValueError("import_manifest.json does not match shops.json shop IDs.")
     if data_version and manifest.get("dataVersion") != data_version:
         raise ValueError("import_manifest.json does not match shops.json dataVersion.")
-    return data_version, dataset_sha256
+    manifest_source_counts = (manifest.get("provenance") or {}).get("sourceCounts")
+    if manifest_source_counts is not None and manifest_source_counts != source_counts:
+        raise ValueError("import_manifest.json provenance does not match shops.json source counts.")
+    return data_version, dataset_sha256, dict(sorted(source_counts.items()))

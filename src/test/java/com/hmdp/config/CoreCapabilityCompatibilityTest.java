@@ -34,6 +34,10 @@ class CoreCapabilityCompatibilityTest {
                 "/comment"
         );
         assertPostMapping(
+                TranslateController.class.getDeclaredMethod("translateReview", Long.class, String.class),
+                "/review"
+        );
+        assertPostMapping(
                 TranslateController.class.getDeclaredMethod("translateShop", Long.class, String.class),
                 "/shop"
         );

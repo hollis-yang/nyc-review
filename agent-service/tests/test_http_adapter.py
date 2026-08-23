@@ -24,6 +24,12 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
             "comments": 12,
             "distanceMeters": 850,
             "timezone": "America/New_York",
+            "sourceType": "NYC_OPEN_DATA",
+            "externalId": "43nn-pn8j:123",
+            "sourceName": "DOHMH New York City Restaurant Inspection Results",
+            "sourceUrl": "https://data.cityofnewyork.us/d/43nn-pn8j",
+            "sourceFetchedAt": "2026-08-23T14:25:30Z",
+            "syntheticFields": ["reviews", "prices"],
             "dataVersion": "nyc-mock-v1",
             "tags": ["quiet", "wheelchair_accessible"],
             "businessHours": [
@@ -42,6 +48,9 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
     assert candidate.subcategory == "Coffee Shop"
     assert candidate.borough == "Manhattan"
     assert candidate.data_version == "nyc-mock-v1"
+    assert candidate.source_type == "NYC_OPEN_DATA"
+    assert candidate.external_id == "43nn-pn8j:123"
+    assert candidate.synthetic_fields == ["reviews", "prices"]
     assert candidate.business_hours[0].day_of_week == 1
     assert candidate.tags == ["quiet", "wheelchair_accessible"]
 

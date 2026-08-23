@@ -21,6 +21,12 @@ public record AgentShopCandidate(
         Integer comments,
         Integer distanceMeters,
         String timezone,
+        String sourceType,
+        String externalId,
+        String sourceName,
+        String sourceUrl,
+        java.time.LocalDateTime sourceFetchedAt,
+        List<String> syntheticFields,
         String dataVersion,
         List<String> tags,
         List<AgentBusinessHours> businessHours

@@ -28,6 +28,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 evidence_tags=shop.get("tags") or [],
                 data_version=shop.get("dataVersion"),
                 untrusted_content=False,
+                **_shop_provenance(shop),
             )
         )
     for review in reviews:
@@ -45,6 +46,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 evidence_tags=review.get("evidenceTags") or [],
                 data_version=shop.get("dataVersion"),
                 untrusted_content=True,
+                **_shop_provenance(shop),
             )
         )
     for blog in blogs:
@@ -62,6 +64,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 evidence_tags=shop.get("tags") or [],
                 data_version=shop.get("dataVersion"),
                 untrusted_content=True,
+                **_shop_provenance(shop),
             )
         )
     for comment in blog_comments:
@@ -80,6 +83,7 @@ def load_generated_documents(data_directory: Path) -> list[RagDocument]:
                 neighborhood=shop["neighborhood"],
                 data_version=shop.get("dataVersion"),
                 untrusted_content=True,
+                **_shop_provenance(shop),
             )
         )
     return documents
@@ -103,3 +107,15 @@ def _category_name(type_id: int) -> str:
         6: "Beauty & Personal Care",
     }
     return names[type_id]
+
+
+def _shop_provenance(shop: dict) -> dict:
+    return {
+        "content_source_type": "SYNTHETIC",
+        "shop_source_type": shop.get("sourceType") or "MOCK",
+        "shop_external_id": shop.get("externalId"),
+        "shop_source_name": shop.get("sourceName"),
+        "shop_source_url": shop.get("sourceUrl"),
+        "shop_source_fetched_at": shop.get("sourceFetchedAt"),
+        "synthetic_fields": shop.get("syntheticFields") or [],
+    }

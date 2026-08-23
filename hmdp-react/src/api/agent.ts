@@ -36,6 +36,10 @@ export interface AgentCitation {
   excerpt: string;
   source_id: string;
   untrusted_content: boolean;
+  source_type?: string;
+  source_name?: string;
+  source_url?: string;
+  synthetic?: boolean;
 }
 
 export interface AgentRunEvent {
@@ -65,6 +69,12 @@ export interface AgentRunResponse {
       score: number;
       tags: string[];
       distance_meters?: number;
+      source_type?: string;
+      external_id?: string;
+      source_name?: string;
+      source_url?: string;
+      source_fetched_at?: string;
+      synthetic_fields?: string[];
     }>;
     applied_constraints: string[];
     relaxed_constraints: string[];
@@ -98,6 +108,7 @@ export interface AgentRunResponse {
     indexedDocuments?: number;
     dataVersion?: string;
     datasetSha256?: string;
+    sourceCounts?: Record<string, number>;
     modelProvider?: string;
     model?: string;
     modelFallbackUsed?: boolean;

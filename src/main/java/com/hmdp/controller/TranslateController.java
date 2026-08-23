@@ -23,6 +23,11 @@ public class TranslateController {
         return translateService.translateComment(commentId, targetLang);
     }
 
+    @PostMapping("/review")
+    public Result translateReview(@RequestParam Long reviewId, @RequestParam(defaultValue = "en") String targetLang) {
+        return translateService.translateReview(reviewId, targetLang);
+    }
+
     @PostMapping("/shop")
     public Result translateShop(@RequestParam Long shopId, @RequestParam(defaultValue = "en") String targetLang) {
         return translateService.translateShop(shopId, targetLang);

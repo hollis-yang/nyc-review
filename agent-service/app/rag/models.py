@@ -16,3 +16,10 @@ class RagDocument(BaseModel):
     evidence_tags: list[str] = Field(default_factory=list)
     data_version: str | None = None
     untrusted_content: bool = True
+    content_source_type: str = "SYNTHETIC"
+    shop_source_type: str = "MOCK"
+    shop_external_id: str | None = None
+    shop_source_name: str | None = None
+    shop_source_url: str | None = None
+    shop_source_fetched_at: str | None = None
+    synthetic_fields: list[str] = Field(default_factory=list)
