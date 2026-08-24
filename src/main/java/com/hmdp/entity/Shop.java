@@ -161,4 +161,12 @@ public class Shop implements Serializable {
 
     @TableField(exist = false)
     private Double distance;
+
+    /**
+     * Runtime-only platform engagement score used by the popularity ranking.
+     * It is calculated from reviews, blog likes, favorites and valid voucher
+     * orders; it is not persisted as a merchant-supplied fact.
+     */
+    @TableField(exist = false)
+    private Double popularityScore;
 }

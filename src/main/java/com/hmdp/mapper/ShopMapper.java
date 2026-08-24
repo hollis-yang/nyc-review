@@ -11,6 +11,63 @@ import java.util.List;
 
 public interface ShopMapper extends BaseMapper<Shop> {
 
+    /**
+     * Rank the complete operational category before pagination. The score uses
+     * only first-party platform activity and deliberately stays separate from
+     * the merchant rating: review volume, blog likes, favorites and valid
+     * voucher orders all contribute with logarithmic damping.
+     */
+    @Select("""
+            <script>
+            SELECT
+                shop.*,
+                (
+                    LN(1 + GREATEST(COALESCE(shop.rating_count, 0), COALESCE(shop.comments, 0))) * 20
+                    + LN(1 + COALESCE(blog_activity.likes, 0)) * 10
+                    + LN(1 + COALESCE(shop.sold, 0)) * 5
+                    + COALESCE(favorite_activity.favorites, 0) * 5
+                    + COALESCE(order_activity.orders, 0) * 3
+                ) AS popularity_score
+            FROM tb_shop shop
+            LEFT JOIN (
+                SELECT shop_id, SUM(COALESCE(liked, 0)) AS likes
+                FROM tb_blog
+                GROUP BY shop_id
+            ) blog_activity ON blog_activity.shop_id = shop.id
+            LEFT JOIN (
+                SELECT shop_id, COUNT(*) AS favorites
+                FROM tb_shop_favorite
+                GROUP BY shop_id
+            ) favorite_activity ON favorite_activity.shop_id = shop.id
+            LEFT JOIN (
+                SELECT voucher.shop_id, COUNT(*) AS orders
+                FROM tb_voucher_order voucher_order
+                INNER JOIN tb_voucher voucher ON voucher.id = voucher_order.voucher_id
+                WHERE voucher_order.status NOT IN (4, 5, 6)
+                GROUP BY voucher.shop_id
+            ) order_activity ON order_activity.shop_id = shop.id
+            WHERE shop.type_id = #{typeId}
+              AND shop.business_status = 'OPERATIONAL'
+            ORDER BY
+            <choose>
+                <when test="ascending">popularity_score ASC</when>
+                <otherwise>popularity_score DESC</otherwise>
+            </choose>,
+            <choose>
+                <when test="ascending">shop.score ASC</when>
+                <otherwise>shop.score DESC</otherwise>
+            </choose>,
+            shop.id ASC
+            LIMIT #{offset}, #{pageSize}
+            </script>
+            """)
+    List<Shop> selectByPlatformPopularity(
+            @Param("typeId") long typeId,
+            @Param("ascending") boolean ascending,
+            @Param("offset") long offset,
+            @Param("pageSize") long pageSize
+    );
+
     @Select("""
             SELECT data_version
             FROM tb_map_data_import

@@ -250,11 +250,14 @@
     "searchResult": "\"{{query}}\" Search Results",
     "allCategories": "All Categories",
     "distance": "Distance",
+    "distanceFromYou": "Near me",
+    "distanceFromTimesSquare": "Times Sq.",
     "popularity": "Popularity",
     "rating": "Rating",
     "noResults": "No shops found",
     "tryDifferent": "Try a different keyword",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "locating": "Finding your location..."
   },
   "shopReviews": {
     "allReviews": "All Reviews",

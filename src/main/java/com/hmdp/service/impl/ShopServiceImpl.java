@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
-import org.springframework.data.geo.Metrics;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.domain.geo.GeoReference;
@@ -97,79 +96,162 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y, String sortBy, String sortOrder) {
-        String sortColumn = resolveSortColumn(sortBy);
-        if (StrUtil.isNotBlank(sortBy) && sortColumn == null) {
+        String sortMode = resolveSortColumn(sortBy);
+        if (StrUtil.isNotBlank(sortBy) && sortMode == null) {
             return Result.fail("Invalid sort field");
         }
         if (!isSortOrderValid(sortOrder)) {
             return Result.fail("Invalid sort direction");
         }
-        boolean sortAscending = "asc".equalsIgnoreCase(sortOrder);
+        if (typeId == null || typeId <= 0 || current == null || current <= 0) {
+            return Result.fail("Invalid pagination parameters");
+        }
+        if (!areCoordinatesValid(x, y)) {
+            return Result.fail("Invalid coordinates");
+        }
 
-        // 1.判断是否需要根据坐标查询
+        String effectiveSortMode = sortMode == null ? "distance" : sortMode;
+        boolean sortAscending = StrUtil.isBlank(sortOrder)
+                ? "distance".equals(effectiveSortMode)
+                : "asc".equalsIgnoreCase(sortOrder);
+
+        if ("popularity".equals(effectiveSortMode)) {
+            return queryByPopularity(typeId, current, x, y, sortAscending);
+        }
+        if ("rating".equals(effectiveSortMode)) {
+            return queryByRating(typeId, current, x, y, sortAscending);
+        }
+
+        // Distance ranking needs an origin. API clients that omit it retain a
+        // stable database fallback, while the React client always sends either
+        // browser coordinates or its explicit Times Square fallback.
         if (x == null || y == null) {
-            // 不需要坐标查询，按数据库分页查询
-            var qw = query().eq("type_id", typeId).eq("business_status", "OPERATIONAL");
-            if (sortColumn != null) {
-                qw.orderBy(true, sortAscending, sortColumn);
-            }
-            Page<Shop> page = qw.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
-            // 返回数据
+            Page<Shop> page = query()
+                    .eq("type_id", typeId)
+                    .eq("business_status", "OPERATIONAL")
+                    .orderByAsc("id")
+                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
             return Result.ok(page.getRecords());
         }
-        // 2.计算分页参数
+
         int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
         int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
-        // 3.查询redis，按照距离排序、分页 -> shopId, distance
         String geoKey = SHOP_GEO_KEY + typeId;
+        RedisGeoCommands.GeoSearchCommandArgs geoArgs = RedisGeoCommands.GeoSearchCommandArgs
+                .newGeoSearchArgs()
+                .includeDistance()
+                .limit(end);
+        if (sortAscending) {
+            geoArgs.sortAscending();
+        } else {
+            geoArgs.sortDescending();
+        }
         GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo()
                 .search(geoKey,
                         GeoReference.fromCoordinate(x, y),
-                        new Distance(200000),
-                        RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs()
-                                .includeDistance()
-                                .limit(end));
-        // 4.解析出shopId
+                        // Covers any browser origin on Earth. Keeping the unit
+                        // in meters preserves the existing Shop.distance API.
+                        new Distance(21_000_000),
+                        geoArgs);
         if (results == null) {
             return Result.ok(Collections.emptyList());
         }
         List<GeoResult<RedisGeoCommands.GeoLocation<String>>> list = results.getContent();
         if (list.size() <= from) {
-            // 没有下一页了，结束
             return Result.ok(Collections.emptyList());
         }
-        // 4.1.截取 from ~ end 的部分
-        List<Long> ids = new ArrayList<>(list.size());
-        Map<String, Distance> distanceMap = new HashMap<>(list.size());
-        list.stream().skip(from).forEach(result -> {
-            String shopIdStr = result.getContent().getName();// shopId
+
+        List<Long> ids = new ArrayList<>(SystemConstants.DEFAULT_PAGE_SIZE);
+        Map<String, Distance> distanceMap = new HashMap<>(SystemConstants.DEFAULT_PAGE_SIZE);
+        list.stream().skip(from).limit(SystemConstants.DEFAULT_PAGE_SIZE).forEach(result -> {
+            String shopIdStr = result.getContent().getName();
             ids.add(Long.valueOf(shopIdStr));
-            Distance distance = result.getDistance();// distance
+            Distance distance = result.getDistance();
             distanceMap.put(shopIdStr, distance);
         });
-        // 5.根据id查店铺
         List<Shop> shops = query().in("id", ids)
                 .eq("business_status", "OPERATIONAL")
                 .last("ORDER BY FIELD(id," + StrUtil.join(",", ids) + ")")
                 .list();
         shops.forEach(shop -> {
-            shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
+            Distance distance = distanceMap.get(shop.getId().toString());
+            if (distance != null) {
+                shop.setDistance(distance.getValue());
+            }
         });
-        // 根据白名单字段排序
-        if (sortColumn != null) {
-            if ("score".equals(sortColumn)) {
-                shops.sort((a, b) -> sortAscending ? a.getScore().compareTo(b.getScore()) : b.getScore().compareTo(a.getScore()));
-            } else if ("comments".equals(sortColumn)) {
-                shops.sort((a, b) -> sortAscending ? Integer.compare(a.getComments(), b.getComments()) : Integer.compare(b.getComments(), a.getComments()));
-            }
-        } else {
-            // 按距离排序（sortBy为空）: GEO默认升序，desc时反转
-            if ("desc".equalsIgnoreCase(sortOrder)) {
-                java.util.Collections.reverse(shops);
-            }
-        }
-        // 6.返回结果
         return Result.ok(shops);
+    }
+
+    private Result queryByPopularity(
+            Integer typeId,
+            Integer current,
+            Double x,
+            Double y,
+            boolean sortAscending
+    ) {
+        long offset = (long) (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        List<Shop> shops = baseMapper.selectByPlatformPopularity(
+                typeId.longValue(),
+                sortAscending,
+                offset,
+                SystemConstants.DEFAULT_PAGE_SIZE
+        );
+        attachDistances(shops, x, y);
+        return Result.ok(shops);
+    }
+
+    private Result queryByRating(
+            Integer typeId,
+            Integer current,
+            Double x,
+            Double y,
+            boolean sortAscending
+    ) {
+        var ranked = query()
+                .eq("type_id", typeId)
+                .eq("business_status", "OPERATIONAL")
+                // Unrated merchants always follow rated merchants.
+                .orderByAsc("score IS NULL")
+                .orderBy(true, sortAscending, "score")
+                .orderBy(true, false, "COALESCE(rating_count, comments, 0)")
+                .orderByAsc("id");
+        Page<Shop> page = ranked.page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+        List<Shop> shops = page.getRecords();
+        attachDistances(shops, x, y);
+        return Result.ok(shops);
+    }
+
+    private void attachDistances(List<Shop> shops, Double originLongitude, Double originLatitude) {
+        if (originLongitude == null || originLatitude == null) {
+            return;
+        }
+        shops.forEach(shop -> {
+            if (shop.getX() != null && shop.getY() != null) {
+                shop.setDistance(distanceInMeters(
+                        originLongitude,
+                        originLatitude,
+                        shop.getX(),
+                        shop.getY()
+                ));
+            }
+        });
+    }
+
+    static double distanceInMeters(
+            double originLongitude,
+            double originLatitude,
+            double destinationLongitude,
+            double destinationLatitude
+    ) {
+        double latitudeDelta = Math.toRadians(destinationLatitude - originLatitude);
+        double longitudeDelta = Math.toRadians(destinationLongitude - originLongitude);
+        double originLatitudeRadians = Math.toRadians(originLatitude);
+        double destinationLatitudeRadians = Math.toRadians(destinationLatitude);
+        double a = Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2)
+                + Math.cos(originLatitudeRadians) * Math.cos(destinationLatitudeRadians)
+                * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
+        double clampedA = Math.max(0, Math.min(1, a));
+        return 6_371_008.8 * 2 * Math.atan2(Math.sqrt(clampedA), Math.sqrt(1 - clampedA));
     }
 
     static String resolveSortColumn(String sortBy) {
@@ -177,10 +259,25 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return null;
         }
         return switch (sortBy) {
-            case "score" -> "score";
-            case "comments" -> "comments";
+            case "distance" -> "distance";
+            case "popularity", "comments" -> "popularity";
+            case "rating", "score" -> "rating";
             default -> null;
         };
+    }
+
+    static boolean areCoordinatesValid(Double longitude, Double latitude) {
+        if (longitude == null && latitude == null) {
+            return true;
+        }
+        return longitude != null
+                && latitude != null
+                && Double.isFinite(longitude)
+                && Double.isFinite(latitude)
+                && longitude >= -180
+                && longitude <= 180
+                && latitude >= -85.05112878
+                && latitude <= 85.05112878;
     }
 
     static boolean isSortOrderValid(String sortOrder) {

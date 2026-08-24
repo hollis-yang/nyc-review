@@ -69,3 +69,14 @@
 - Agent Candidate、Itinerary 与 Verifier 使用解析后的字段和营业状态；本阶段不执行 P4 的 RAG 检索/排序升级。
 - 已生成六分类、五区均衡的 360 家 Pilot；完整 5,000 家增强包由同一 pipeline 生成。最终 MySQL 导入和全量 Qdrant 重建按计划留到收尾阶段。
 - 运行和验收流程见 [P2/P3 Enrichment Runbook](p2-p3-enrichment-runbook.md)。
+
+### P9.1：列表排序语义修正（已完成）
+
+- Distance 优先使用浏览器位置；拒绝或不支持定位时明确回退到 Times Square，不再把固定坐标伪装成用户距离。
+- Distance 在 Redis GEO 中完成全局升/降序分页；Popularity 与 Rating 先对完整分类排序，再进行数据库分页，不再只重排最近的一小批商户。
+- Popularity 改为评价量、内容点赞、销量、收藏和有效优惠券订单组成的可解释平台热度；Rating 保持独立，并用评价量和商户 ID 稳定处理同分。
+- 排序定义、接口与双语验收步骤见 [P9.1 Shop Ranking Runbook](p9-ranking-runbook.md)。
+
+## 后续 P10–P17
+
+P10 从全量图片开始，随后依次完成真实字段、RAG、规模、稳定性、Qdrant Server、最终统一导入和作品集交付。正式范围、量化验收条件和不可回退约束见 [P10–P17 Delivery Roadmap](p10-p17-roadmap.md)。

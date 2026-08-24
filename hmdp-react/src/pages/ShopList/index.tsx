@@ -12,7 +12,17 @@ interface ShopType {
   icon: string;
 }
 
+interface DistanceOrigin {
+  x: number;
+  y: number;
+  source: 'user' | 'times-square';
+}
 
+const TIMES_SQUARE_ORIGIN: DistanceOrigin = {
+  x: -73.9855,
+  y: 40.758,
+  source: 'times-square',
+};
 
 export default function ShopList() {
   const { t } = useTranslation();
@@ -21,16 +31,22 @@ export default function ShopList() {
   const typeId = searchParams.get('type') || '0';
   const typeName = searchParams.get('name') || '';
   const searchQuery = searchParams.get('query') || '';
+  const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin | null>(null);
   const sortOptions = [
-    { label: t('shopList.distance'), field: '' },
-    { label: t('shopList.popularity'), field: 'comments' },
-    { label: t('shopList.rating'), field: 'score' },
+    {
+      label: t(distanceOrigin?.source === 'user'
+        ? 'shopList.distanceFromYou'
+        : 'shopList.distanceFromTimesSquare'),
+      field: 'distance',
+    },
+    { label: t('shopList.popularity'), field: 'popularity' },
+    { label: t('shopList.rating'), field: 'rating' },
   ] as const;
 
   const [types, setTypes] = useState<ShopType[]>([]);
   const [shops, setShops] = useState<ShopData[]>([]);
   const [visible, setVisible] = useState(false);
-  const [sortBy, setSortBy] = useState('');
+  const [sortBy, setSortBy] = useState('distance');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [current, setCurrent] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -43,8 +59,34 @@ export default function ShopList() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const applyFallback = () => {
+      if (active) setDistanceOrigin(TIMES_SQUARE_ORIGIN);
+    };
+
+    if (!('geolocation' in navigator)) {
+      queueMicrotask(applyFallback);
+      return () => { active = false; };
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (!active) return;
+        setDistanceOrigin({
+          x: position.coords.longitude,
+          y: position.coords.latitude,
+          source: 'user',
+        });
+      },
+      applyFallback,
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 },
+    );
+    return () => { active = false; };
+  }, []);
+
   const loadShops = useCallback(async () => {
-    if (loading || !hasMore) return;
+    if (loading || !hasMore || !distanceOrigin) return;
     setLoading(true);
     try {
       const res = searchQuery
@@ -54,8 +96,8 @@ export default function ShopList() {
             current,
             sortBy,
             sortOrder,
-            x: -73.9855,
-            y: 40.758,
+            x: distanceOrigin.x,
+            y: distanceOrigin.y,
           });
       const data = res.data ?? res;
       if (!data || data.length === 0) {
@@ -69,19 +111,23 @@ export default function ShopList() {
     } finally {
       setLoading(false);
     }
-  }, [typeId, current, sortBy, sortOrder, searchQuery, loading, hasMore]);
+  }, [typeId, current, sortBy, sortOrder, searchQuery, loading, hasMore, distanceOrigin]);
 
   useEffect(() => {
+    // Reset pagination when the user changes the query contract.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShops([]);
     setCurrent(1);
     setHasMore(true);
   }, [typeId, sortBy, sortOrder, searchQuery]);
 
   useEffect(() => {
-    if (shops.length === 0 && hasMore) {
+    if (distanceOrigin && shops.length === 0 && hasMore) {
+      // Initial and reset-triggered fetch; loadShops owns the async state updates.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadShops();
     }
-  }, [shops.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [distanceOrigin, shops.length, hasMore, typeId, sortBy, sortOrder, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -174,7 +220,9 @@ export default function ShopList() {
       )}
 
       <div className={styles.list} onScroll={handleScroll} ref={containerRef}>
-        {shops.length === 0 && !loading ? (
+        {!distanceOrigin ? (
+          <div className={styles.loading}>{t('shopList.locating')}</div>
+        ) : shops.length === 0 && !loading ? (
           <div className={styles.emptySearch}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
             <div style={{ fontSize: 15, color: '#999' }}>{t('shopList.noResults')}</div>

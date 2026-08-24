@@ -174,6 +174,7 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
         return shopService.update()
                 .setSql("score = ROUND((COALESCE(score, 0) * COALESCE(comments, 0) + "
                         + ratingScore + ") / (COALESCE(comments, 0) + 1))")
+                .setSql("rating_count = GREATEST(COALESCE(rating_count, 0), COALESCE(comments, 0)) + 1")
                 .setSql("comments = COALESCE(comments, 0) + 1")
                 .eq("id", shopId)
                 .update();
