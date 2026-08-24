@@ -149,6 +149,14 @@ class VerifierAgent:
         desired_tags = set(state["constraints"].desired_tags)
         tags_relaxed = "desired_tags" in state["candidates"].relaxed_constraints
         for candidate in state["candidates"].candidates:
+            if candidate.business_status != "OPERATIONAL":
+                issues.append(
+                    VerificationIssue(
+                        code="BUSINESS_NOT_OPERATIONAL",
+                        message="Candidate is not currently operational.",
+                        shop_id=candidate.shop_id,
+                    )
+                )
             missing_tags = sorted(desired_tags - set(candidate.tags))
             if missing_tags and not tags_relaxed:
                 issues.append(

@@ -67,5 +67,9 @@ data/sources/nyc-nta-2020-26b.geojson
 # Raw OpenStreetMap snapshots are reproducible and can be large. Keep the
 # compact provenance sidecar so a generated bundle remains auditable.
 data/sources/osm-nyc-places-*.json
+data/sources/osm-nyc-enrichment-*.json
+data/sources/official-site-jsonld-*.json
+data/sources/official-site-merchant-images-*.json
+data/sources/wikimedia-merchant-images-*.json
 !data/sources/osm-nyc-places-*.manifest.json
 agent-service/.local/

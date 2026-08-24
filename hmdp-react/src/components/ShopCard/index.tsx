@@ -10,9 +10,12 @@ export interface ShopData {
   images: string;
   score?: number | null;
   comments: number;
+  ratingCount?: number | null;
   area: string;
   distance?: number;
   avgPrice?: number | null;
+  priceRangeText?: string | null;
+  businessStatus?: string;
   address: string;
   sourceType?: string;
   syntheticFields?: string[];
@@ -26,6 +29,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const imgSrc = shop.images ? shop.images.split(',')[0] : '';
+  const displayRatingCount = shop.ratingCount ?? shop.comments;
 
   const formatDistance = (d: number) => {
     if (d < 1000) return d.toFixed(1) + 'm';
@@ -35,7 +39,12 @@ export default function ShopCard({ shop }: ShopCardProps) {
   return (
     <div className={styles.box} onClick={() => navigate(`/shop-detail/${shop.id}`)}>
       <div className={styles.img}>
-        <img src={imgSrc} alt="" />
+        <img
+          src={imgSrc || '/imgs/icons/default-icon.png'}
+          alt={shop.name}
+          loading="lazy"
+          onError={(event) => { event.currentTarget.src = '/imgs/icons/default-icon.png'; }}
+        />
       </div>
       <div className={styles.info}>
         <div className={styles.title}>{shop.name}</div>
@@ -55,7 +64,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
             <span style={{ color: '#999', fontSize: 11 }}>{t('shopCard.ratingUnavailable')}</span>
           )}
           <span style={{ color: '#999', fontSize: 10, marginLeft: 4 }}>
-            {shop.comments}{t('shopCard.comments')}
+            {displayRatingCount}{t('shopCard.comments')}
           </span>
         </div>
         <div className={styles.area}>

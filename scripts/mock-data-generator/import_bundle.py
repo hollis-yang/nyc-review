@@ -182,6 +182,8 @@ def build_mysql_sql(
     subcategories = datasets["shop_subcategories.json"]
     shops = datasets["shops.json"]
     shop_images = datasets.get("shop_images.json", [])
+    shop_source_matches = datasets.get("shop_source_matches.json", [])
+    shop_field_observations = datasets.get("shop_field_observations.json", [])
     hours = datasets["shop_business_hours.json"]
     users = datasets["users.json"]
     reviews = datasets["shop_reviews.json"]
@@ -202,7 +204,7 @@ def build_mysql_sql(
             else "-- HMDP content is synthetic; some establishment identity fields may come from NYC Open Data."
         ),
         (
-            "-- Run only after p3, p4, p8 provenance, and p10_p8_real_content.sql. "
+            "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, and p11_p2_p3_shop_enrichment.sql. "
             "Run p9 plus the matching neighborhood import afterward to rebuild map projections."
             if real_only
             else "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql."
@@ -249,6 +251,8 @@ def build_mysql_sql(
     )
     for table in P7_DERIVED_TABLES:
         lines.extend(_delete_optional_table(table))
+    lines.extend(_delete_optional_table("tb_shop_field_observation"))
+    lines.extend(_delete_optional_table("tb_shop_source_match"))
     lines.extend(_delete_optional_table("tb_shop_image"))
     for table in DATASET_SCOPED_OPTIONAL_TABLES:
         lines.extend(_delete_optional_table(table))
@@ -313,8 +317,10 @@ def build_mysql_sql(
         (
             "id", "name", "type_id", "subcategory_id", "images", "area", "borough", "address",
             "description", "x", "y", "avg_price", "price_level", "sold", "comments", "score",
-            "open_hours", "timezone", "source_type", "external_id", "source_name", "source_url",
-            "source_fetched_at", "synthetic_fields", "data_version", "create_time", "update_time",
+            "open_hours", "phone", "website", "reservation_url", "business_status", "rating_count",
+            "price_range_text", "health_grade", "last_enriched_at", "timezone", "source_type",
+            "external_id", "source_name", "source_url", "source_fetched_at", "synthetic_fields",
+            "data_version", "create_time", "update_time",
         ),
         (
             (
@@ -322,7 +328,10 @@ def build_mysql_sql(
                 item["area"], item["borough"], item["address"], item["description"], item["x"], item["y"],
                 item["avgPriceCents"] // 100 if item.get("avgPriceCents") is not None else None,
                 item.get("priceLevel"), item["sold"], item["comments"], item["score"],
-                _first_open_hours(item["id"], hours), item["timezone"], item["sourceType"],
+                _first_open_hours(item["id"], hours), item.get("phone"), item.get("website"),
+                item.get("reservationUrl"), item.get("businessStatus", "OPERATIONAL"),
+                item.get("ratingCount"), item.get("priceRangeText"), item.get("healthGrade"),
+                _mysql_datetime(item.get("lastEnrichedAt")), item["timezone"], item["sourceType"],
                 item.get("externalId"), item.get("sourceName"), item.get("sourceUrl"),
                 _mysql_datetime(item.get("sourceFetchedAt")),
                 json.dumps(item.get("syntheticFields") or [], separators=(",", ":")), item["dataVersion"],
@@ -336,17 +345,56 @@ def build_mysql_sql(
             "tb_shop_image",
             (
                 "id", "shop_id", "display_url", "source_page_url", "source_name", "author_name",
-                "license_name", "license_url", "image_type", "sha256", "sort_order", "fetched_at",
-                "data_version",
+                "license_name", "license_url", "image_type", "match_type", "is_primary",
+                "display_order", "width", "height", "sha256", "content_sha256", "sort_order",
+                "fetched_at", "last_checked_at", "availability_status", "cached_url", "data_version",
             ),
             (
                 (
                     item["id"], item["shopId"], item["url"], item["sourceUrl"], item["sourceName"],
                     item["attribution"], item["licenseName"], item.get("licenseUrl"), item["imageType"],
-                    item.get("sha256"), item["sortOrder"], _mysql_datetime(item.get("fetchedAt")),
-                    item["dataVersion"],
+                    item.get("matchType", "CATEGORY_FALLBACK"), item.get("isPrimary", False),
+                    item.get("displayOrder", item["sortOrder"]), item.get("width"), item.get("height"),
+                    item.get("sha256"), item.get("contentSha256"), item["sortOrder"],
+                    _mysql_datetime(item.get("fetchedAt")), _mysql_datetime(item.get("lastCheckedAt")),
+                    item.get("availabilityStatus", "AVAILABLE"), item.get("cachedUrl"), item["dataVersion"],
                 )
                 for item in shop_images
+            ),
+        )
+    if shop_source_matches:
+        statements += _insert_statements(
+            "tb_shop_source_match",
+            (
+                "shop_id", "provider", "external_id", "source_url", "matched_fields", "match_score",
+                "match_method", "observed_at", "snapshot_version", "active",
+            ),
+            (
+                (
+                    item["shopId"], item["provider"], item["externalId"], item.get("sourceUrl"),
+                    json.dumps(item.get("matchedFields") or [], separators=(",", ":")),
+                    item["matchScore"], item["matchMethod"], _mysql_datetime(item["observedAt"]),
+                    item["snapshotVersion"], item.get("active", True),
+                )
+                for item in shop_source_matches
+            ),
+        )
+    if shop_field_observations:
+        statements += _insert_statements(
+            "tb_shop_field_observation",
+            (
+                "shop_id", "field_name", "value_json", "provider", "external_id", "observed_at",
+                "expires_at", "match_score", "source_priority", "content_sha256", "snapshot_version",
+            ),
+            (
+                (
+                    item["shopId"], item["fieldName"],
+                    json.dumps(item.get("value"), ensure_ascii=False, separators=(",", ":")),
+                    item["provider"], item.get("externalId"), _mysql_datetime(item["observedAt"]),
+                    _mysql_datetime(item.get("expiresAt")), item["matchScore"], item["sourcePriority"],
+                    item["contentSha256"], item["snapshotVersion"],
+                )
+                for item in shop_field_observations
             ),
         )
     statements += _insert_statements(

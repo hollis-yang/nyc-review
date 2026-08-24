@@ -354,6 +354,7 @@ function MapLayers({
                     alt={shop.name}
                     className={styles.popupImage}
                     loading="lazy"
+                    onError={(event) => { event.currentTarget.src = '/imgs/icons/default-icon.png'; }}
                   />
                   <div className={styles.popupText}>
                     <div className={styles.popupName}>{shop.name}</div>

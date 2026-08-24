@@ -156,6 +156,8 @@ class GeneratedNycShopToolService:
         required_tags = set(constraints.desired_tags)
         rows = []
         for shop in self._shops:
+            if shop.get("businessStatus", "OPERATIONAL") != "OPERATIONAL":
+                continue
             category = self.CATEGORY_NAMES[shop["typeId"]]
             if constraints.category and category != constraints.category:
                 continue
@@ -268,6 +270,13 @@ class GeneratedNycShopToolService:
             description=shop.get("description"),
             price_level=shop.get("priceLevel"),
             comments=shop.get("comments"),
+            rating_count=shop.get("ratingCount"),
+            price_range_text=shop.get("priceRangeText"),
+            phone=shop.get("phone"),
+            website=shop.get("website"),
+            reservation_url=shop.get("reservationUrl"),
+            business_status=shop.get("businessStatus") or "OPERATIONAL",
+            health_grade=shop.get("healthGrade"),
             distance_meters=distance_meters,
             timezone=shop.get("timezone"),
             data_version=shop.get("dataVersion"),
@@ -421,6 +430,13 @@ class HttpShopToolService:
             description=item.get("description"),
             price_level=item.get("priceLevel"),
             comments=item.get("comments"),
+            rating_count=item.get("ratingCount"),
+            price_range_text=item.get("priceRangeText"),
+            phone=item.get("phone"),
+            website=item.get("website"),
+            reservation_url=item.get("reservationUrl"),
+            business_status=item.get("businessStatus") or "OPERATIONAL",
+            health_grade=item.get("healthGrade"),
             distance_meters=item.get("distanceMeters"),
             timezone=item.get("timezone"),
             data_version=item.get("dataVersion"),

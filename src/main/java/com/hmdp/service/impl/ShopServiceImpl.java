@@ -58,6 +58,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ShopImage>()
                         .eq(ShopImage::getShopId, shop.getId())
                         .eq(StrUtil.isNotBlank(shop.getDataVersion()), ShopImage::getDataVersion, shop.getDataVersion())
+                        .eq(ShopImage::getAvailabilityStatus, "AVAILABLE")
+                        .orderByDesc(ShopImage::getIsPrimary)
+                        .orderByAsc(ShopImage::getDisplayOrder)
                         .orderByAsc(ShopImage::getSortOrder)
                         .orderByAsc(ShopImage::getId)
         );
@@ -106,7 +109,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 1.判断是否需要根据坐标查询
         if (x == null || y == null) {
             // 不需要坐标查询，按数据库分页查询
-            var qw = query().eq("type_id", typeId);
+            var qw = query().eq("type_id", typeId).eq("business_status", "OPERATIONAL");
             if (sortColumn != null) {
                 qw.orderBy(true, sortAscending, sortColumn);
             }
@@ -145,7 +148,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             distanceMap.put(shopIdStr, distance);
         });
         // 5.根据id查店铺
-        List<Shop> shops = query().in("id", ids).last("ORDER BY FIELD(id," + StrUtil.join(",", ids) + ")").list();
+        List<Shop> shops = query().in("id", ids)
+                .eq("business_status", "OPERATIONAL")
+                .last("ORDER BY FIELD(id," + StrUtil.join(",", ids) + ")")
+                .list();
         shops.forEach(shop -> {
             shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
         });

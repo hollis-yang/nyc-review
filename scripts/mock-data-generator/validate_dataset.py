@@ -63,6 +63,8 @@ def validate_dataset(directory: Path) -> dict[str, Any]:
     business_hours = _read_list(directory / "shop_business_hours.json")
     image_path = directory / "shop_images.json"
     images = _read_list(image_path) if image_path.is_file() else []
+    observation_path = directory / "shop_field_observations.json"
+    observations = _read_list(observation_path) if observation_path.is_file() else []
     shop_ids = [int(shop["id"]) for shop in shops]
     if len(shop_ids) != len(set(shop_ids)):
         raise ValueError("shops.json contains duplicate shop IDs")
@@ -71,6 +73,7 @@ def validate_dataset(directory: Path) -> dict[str, Any]:
         raise ValueError("shops.json does not cover all five NYC boroughs")
     if any(review.get("shopId") not in shop_id_set for review in reviews):
         raise ValueError("shop_reviews.json contains an unknown shopId")
+    _validate_field_observations(observations, shop_id_set)
 
     source_counts = Counter(str(shop.get("sourceType") or "UNKNOWN") for shop in shops)
     public_shops = [shop for shop in shops if shop.get("sourceType") == PUBLIC_SOURCE]
@@ -88,10 +91,9 @@ def validate_dataset(directory: Path) -> dict[str, Any]:
             raise ValueError(f"public-source-backed shop {shop['id']} is missing source metadata")
 
     manifest_provenance = manifest.get("provenance") or {}
-    if manifest_provenance.get("publicSourceBackedShops") != len(public_shops):
-        # P8 counts all source-backed identities rather than retaining the P6
-        # NYC_OPEN_DATA-specific field.
-        if not str(manifest.get("dataVersion") or "").startswith("nyc-real-v1-"):
+    expected_public_count = len(source_backed_shops) if str(manifest.get("dataVersion") or "").startswith("nyc-real-") else len(public_shops)
+    if manifest_provenance.get("publicSourceBackedShops") != expected_public_count:
+        if not str(manifest.get("dataVersion") or "").startswith("nyc-real-"):
             raise ValueError("manifest provenance count does not match shops.json")
 
     identity_mode = manifest.get("merchantIdentityMode") or manifest_provenance.get("merchantIdentityMode")
@@ -143,11 +145,17 @@ def _validate_real_only(
     if not isinstance(seed, int) or len(snapshot_sha256) != 64:
         raise ValueError("REAL_ONLY manifest must retain its source snapshot SHA-256 and seed")
     profile_name = str(manifest.get("profile") or "")
-    expected_version = _real_data_version(snapshot_sha256, seed, profile_name)
-    if data_version != expected_version:
-        raise ValueError(
-            "REAL_ONLY dataVersion must be bound to sourceSnapshotSha256 and seed"
-        )
+    if data_version.startswith("nyc-real-v2-"):
+        enrichment_sha256 = str(provenance.get("enrichmentVersionSha256") or "")
+        expected_version = f"nyc-real-v2-{enrichment_sha256[:8]}-m20260824"
+        if len(enrichment_sha256) != 64 or data_version != expected_version:
+            raise ValueError("P2/P3 dataVersion must be bound to its enrichment snapshot set")
+    else:
+        expected_version = _real_data_version(snapshot_sha256, seed, profile_name)
+        if data_version != expected_version:
+            raise ValueError(
+                "REAL_ONLY dataVersion must be bound to sourceSnapshotSha256 and seed"
+            )
     if len(data_version) > 32:
         raise ValueError("REAL_ONLY dataVersion exceeds the database column limit")
     if manifest.get("merchantIdentityMode") != "REAL_ONLY":
@@ -284,6 +292,28 @@ def _validate_synthetic_source(kind: str, item: dict[str, Any], data_version: st
     )
 
 
+def _validate_field_observations(
+    observations: list[dict[str, Any]],
+    shop_id_set: set[int],
+) -> None:
+    keys: set[tuple[int, str, str, str]] = set()
+    for observation in observations:
+        shop_id = int(observation.get("shopId") or 0)
+        if shop_id not in shop_id_set:
+            raise ValueError("shop_field_observations.json contains an unknown shopId")
+        key = (
+            shop_id,
+            str(observation.get("fieldName") or ""),
+            str(observation.get("provider") or ""),
+            str(observation.get("contentSha256") or ""),
+        )
+        if not all(key) or key in keys:
+            raise ValueError(
+                "shop_field_observations.json violates uk_shop_field_observation"
+            )
+        keys.add(key)
+
+
 def _validate_images(
     images: list[dict[str, Any]],
     shop_id_set: set[int],
@@ -302,11 +332,12 @@ def _validate_images(
         shop_id = image.get("shopId")
         if shop_id not in shop_id_set:
             raise ValueError("shop_images.json contains an unknown shopId")
-        if image.get("imageType") != "ILLUSTRATIVE":
-            raise ValueError("P8 shop images must be labeled ILLUSTRATIVE")
-        if image.get("sourceName") != "Wikimedia Commons":
-            raise ValueError("P8 illustrative images must retain Wikimedia Commons provenance")
-        for field in ("url", "sourceUrl", "licenseName", "licenseUrl", "attribution", "dataVersion"):
+        if image.get("imageType") not in {"ILLUSTRATIVE", "MERCHANT_SPECIFIC"}:
+            raise ValueError("shop images must be labeled ILLUSTRATIVE or MERCHANT_SPECIFIC")
+        required_fields = ["url", "sourceUrl", "sourceName", "attribution", "dataVersion"]
+        if image.get("matchType") != "OFFICIAL_SITE_IMAGE":
+            required_fields.extend(["licenseName", "licenseUrl"])
+        for field in required_fields:
             if not image.get(field):
                 raise ValueError(f"illustrative image {image.get('id')} is missing {field}")
         if image.get("dataVersion") != data_version:
@@ -316,7 +347,7 @@ def _validate_images(
             image,
             SHOP_IMAGE_FIELD_LIMITS,
         )
-        if not str(image["sourceUrl"]).startswith("https://commons.wikimedia.org/wiki/File:"):
+        if image.get("sourceName") == "Wikimedia Commons" and not str(image["sourceUrl"]).startswith("https://commons.wikimedia.org/wiki/File:"):
             raise ValueError("illustrative sourceUrl must be a Wikimedia Commons file page")
         counts[int(shop_id)] += 1
         urls_by_shop.setdefault(int(shop_id), []).append(str(image["url"]))
@@ -325,8 +356,12 @@ def _validate_images(
     for shop in shops:
         if str(shop.get("images") or "").split(",") != urls_by_shop[shop["id"]]:
             raise ValueError(f"shop {shop['id']} image list does not match shop_images.json")
-    if provenance.get("illustrativeImages") != len(images):
-        raise ValueError("manifest illustrativeImages does not match shop_images.json")
+    illustrative_count = sum(1 for image in images if image.get("imageType") == "ILLUSTRATIVE")
+    merchant_count = sum(1 for image in images if image.get("imageType") == "MERCHANT_SPECIFIC")
+    if provenance.get("illustrativeImages") != illustrative_count:
+        raise ValueError("manifest illustrativeImages does not match fallback images")
+    if provenance.get("merchantSpecificImages", 0) != merchant_count:
+        raise ValueError("manifest merchantSpecificImages does not match shop_images.json")
 
 
 def _real_data_version(snapshot_sha256: str, seed: int, profile_name: str) -> str:

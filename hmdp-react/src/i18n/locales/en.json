@@ -237,7 +237,14 @@
     "illustrativeImageNotice": "Illustrative images are category-matched examples from open-license sources, not photos of this establishment.",
     "illustrativeImageAlt": "Illustrative category image",
     "imageSource": "Image source",
-    "hoursUnavailable": "Hours unavailable"
+    "hoursUnavailable": "Hours unavailable",
+    "operational": "Operating",
+    "notOperational": "Not operating",
+    "call": "Call",
+    "phone": "Phone",
+    "website": "Website",
+    "reserve": "Reserve",
+    "healthGrade": "Health grade {{grade}}"
   },
   "shopList": {
     "searchResult": "\"{{query}}\" Search Results",

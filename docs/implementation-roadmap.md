@@ -59,3 +59,13 @@
 - Qdrant 改为流式批量增量同步：内容哈希未变化时跳过，只 upsert 变化文档，并在成功后删除当前版本陈旧文档；每棵评论线程组成一份证据。
 - OpenStreetMap 未提供的价格与营业时间保持 `null`/unavailable；筛选、预算、Verifier 和 UI 不再用伪造值补齐。
 - 生成、升级、全新库初始化和验收流程见 [P8 Real Data Runbook](p8-real-data-runbook.md)。
+
+## M9：P2/P3 商户字段补全与图片升级（已完成代码与数据包）
+
+- P11 新增来源匹配、字段观测和最终解析字段；电话、官网、预订、营业状态、评分数量、价格区间、卫生等级与更新时间均可独立解析。
+- 增加 OSM、官方站点 JSON-LD、FSQ 本地快照、NYC DOHMH 和开放许可图片 Provider；抓取与确定性生成分离，CI 不访问网络。
+- 图片采用“商户严格匹配开放许可图片 → 分类开放许可回退”，并保留独立 `image_credits.json`；产品 UI 只显示结果，不显示置信度或数据来源标签。
+- Spring 列表、地图和 Agent Tool 排除非营业商户；详情页支持图片滑动、电话、官网、预订、价格区间和卫生等级。
+- Agent Candidate、Itinerary 与 Verifier 使用解析后的字段和营业状态；本阶段不执行 P4 的 RAG 检索/排序升级。
+- 已生成六分类、五区均衡的 360 家 Pilot；完整 5,000 家增强包由同一 pipeline 生成。最终 MySQL 导入和全量 Qdrant 重建按计划留到收尾阶段。
+- 运行和验收流程见 [P2/P3 Enrichment Runbook](p2-p3-enrichment-runbook.md)。

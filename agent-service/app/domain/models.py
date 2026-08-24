@@ -93,6 +93,13 @@ class ShopCandidate(BaseModel):
     description: str | None = None
     price_level: int | None = Field(default=None, ge=1, le=4)
     comments: int | None = Field(default=None, ge=0)
+    rating_count: int | None = Field(default=None, ge=0)
+    price_range_text: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    reservation_url: str | None = None
+    business_status: str = "OPERATIONAL"
+    health_grade: str | None = None
     distance_meters: int | None = Field(default=None, ge=0)
     timezone: str | None = None
     data_version: str | None = None

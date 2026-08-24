@@ -136,6 +136,7 @@ public interface ShopMapper extends BaseMapper<Shop> {
                     ON shop.id = location.shop_id
                    AND shop.data_version = location.data_version
                 WHERE location.neighborhood_code IS NULL
+                  AND shop.business_status = 'OPERATIONAL'
                 <if test="typeIds != null and typeIds.size() > 0">
                   AND shop.type_id IN
                   <foreach collection="typeIds" item="typeId" open="(" separator="," close=")">
@@ -224,6 +225,7 @@ public interface ShopMapper extends BaseMapper<Shop> {
                   )
               AND ST_Longitude(location.location) BETWEEN #{west} AND #{east}
               AND ST_Latitude(location.location) BETWEEN #{south} AND #{north}
+              AND shop.business_status = 'OPERATIONAL'
             <if test="typeIds != null and typeIds.size() > 0">
               AND shop.type_id IN
               <foreach collection="typeIds" item="typeId" open="(" separator="," close=")">
@@ -289,6 +291,7 @@ public interface ShopMapper extends BaseMapper<Shop> {
                   )
               AND ST_Longitude(location.location) BETWEEN #{west} AND #{east}
               AND ST_Latitude(location.location) BETWEEN #{south} AND #{north}
+              AND shop.business_status = 'OPERATIONAL'
             <if test="typeIds != null and typeIds.size() > 0">
               AND shop.type_id IN
               <foreach collection="typeIds" item="typeId" open="(" separator="," close=")">

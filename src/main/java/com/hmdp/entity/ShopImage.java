@@ -10,10 +10,7 @@ import lombok.experimental.Accessors;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * An attributed image assigned to a shop for presentation. P8 images are
- * illustrative and must not be represented as photographs of the shop.
- */
+/** An attributed merchant-specific or fallback image assigned to a shop. */
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
@@ -41,11 +38,29 @@ public class ShopImage implements Serializable {
 
     private String imageType;
 
+    private String matchType;
+
+    private Boolean isPrimary;
+
+    private Integer displayOrder;
+
+    private Integer width;
+
+    private Integer height;
+
     private String sha256;
+
+    private String contentSha256;
 
     private Integer sortOrder;
 
     private LocalDateTime fetchedAt;
+
+    private LocalDateTime lastCheckedAt;
+
+    private String availabilityStatus;
+
+    private String cachedUrl;
 
     private String dataVersion;
 

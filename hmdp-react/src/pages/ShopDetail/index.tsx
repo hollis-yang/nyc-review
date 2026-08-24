@@ -18,6 +18,10 @@ interface ShopImageAsset {
   licenseName?: string;
   licenseUrl?: string;
   imageType?: string;
+  matchType?: string;
+  isPrimary?: boolean;
+  displayOrder?: number;
+  cachedUrl?: string;
   sortOrder?: number;
 }
 
@@ -27,9 +31,17 @@ interface ShopInfo {
   images: string[];
   score?: number | null;
   comments: number;
+  ratingCount?: number | null;
   address: string;
   openHours?: string;
   avgPrice?: number;
+  priceLevel?: number;
+  priceRangeText?: string;
+  phone?: string;
+  website?: string;
+  reservationUrl?: string;
+  businessStatus?: string;
+  healthGrade?: string;
   sourceType?: string;
   sourceName?: string;
   sourceUrl?: string;
@@ -171,8 +183,10 @@ export default function ShopDetail() {
   }
 
   const imageAssets: ShopImageAsset[] = shop.imageAssets?.length
-    ? [...shop.imageAssets].sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0))
+    ? [...shop.imageAssets].sort((first, second) => (first.displayOrder ?? first.sortOrder ?? 0) - (second.displayOrder ?? second.sortOrder ?? 0))
     : shop.images.map((displayUrl, index) => ({ displayUrl, sortOrder: index, imageType: 'LEGACY' }));
+  const displayRatingCount = shop.ratingCount ?? shop.comments;
+  const operational = !shop.businessStatus || shop.businessStatus === 'OPERATIONAL';
 
   return (
     <div className={styles.container}>
@@ -202,7 +216,7 @@ export default function ShopDetail() {
               <span style={{ color: '#999', fontSize: 12 }}>{t('shopCard.ratingUnavailable')}</span>
             )}
             <span style={{ color: '#999', fontSize: 11, marginLeft: 4 }}>
-              {shop.comments}{t('shopCard.comments')}
+              {displayRatingCount}{t('shopCard.comments')}
             </span>
             {shop.avgPrice != null && (
               <span style={{ color: '#666', fontSize: 11, marginLeft: 6 }}>
@@ -213,9 +227,21 @@ export default function ShopDetail() {
           <div className={styles.shopImages}>
             {imageAssets.map((asset, index) => (
               <div key={`${asset.displayUrl}-${index}`} className={styles.shopImageAsset}>
-                <img src={asset.displayUrl} alt={shop.name} loading="lazy" />
+                <img
+                  src={asset.cachedUrl || asset.displayUrl}
+                  alt={`${shop.name} ${index + 1}`}
+                  loading="lazy"
+                  onError={(event) => { event.currentTarget.src = '/imgs/icons/default-icon.png'; }}
+                />
               </div>
             ))}
+          </div>
+          <div className={styles.quickFacts}>
+            <span className={operational ? styles.openBadge : styles.closedBadge}>
+              {operational ? t('shopDetail.operational') : t('shopDetail.notOperational')}
+            </span>
+            {shop.priceRangeText && <span>{shop.priceRangeText}</span>}
+            {shop.healthGrade && <span>{t('shopDetail.healthGrade', { grade: shop.healthGrade })}</span>}
           </div>
           <div className={styles.shopAddress}>
             <EnvironmentOutline fontSize={14} />
@@ -226,6 +252,39 @@ export default function ShopDetail() {
               window.open(`https://maps.apple.com/?q=${addr}`, '_blank');
             }}>{t('shopDetail.navigate')}</span>
           </div>
+          {(shop.phone || shop.website || shop.reservationUrl) && (
+            <div className={styles.contactDetails}>
+              {shop.phone && (
+                <div className={styles.contactRow}>
+                  <span className={styles.contactLabel}>{t('shopDetail.phone')}</span>
+                  <a className={styles.contactValue} href={`tel:${shop.phone}`}>{shop.phone}</a>
+                </div>
+              )}
+              {shop.website && (
+                <div className={styles.contactRow}>
+                  <span className={styles.contactLabel}>{t('shopDetail.website')}</span>
+                  <a
+                    className={styles.contactValue}
+                    href={shop.website}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {shop.website}
+                  </a>
+                </div>
+              )}
+              {shop.reservationUrl && (
+                <a
+                  className={styles.reserveAction}
+                  href={shop.reservationUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('shopDetail.reserve')}
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         <div className={styles.divider} />

@@ -237,7 +237,14 @@
     "illustrativeImageNotice": "示意图片来自开放许可图库并按类别匹配，不是该商户的实拍照片。",
     "illustrativeImageAlt": "类别示意图片",
     "imageSource": "图片来源",
-    "hoursUnavailable": "暂无营业时间"
+    "hoursUnavailable": "暂无营业时间",
+    "operational": "正常营业",
+    "notOperational": "暂停营业",
+    "call": "电话",
+    "phone": "电话",
+    "website": "官网",
+    "reserve": "预订",
+    "healthGrade": "卫生等级 {{grade}}"
   },
   "shopList": {
     "searchResult": "\"{{query}}\" 搜索结果",

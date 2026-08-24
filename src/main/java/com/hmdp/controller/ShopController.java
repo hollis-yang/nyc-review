@@ -61,7 +61,7 @@ public class ShopController {
      */
     @GetMapping("/list")
     public Result queryAllShops() {
-        List<Shop> shops = shopService.list();
+        List<Shop> shops = shopService.query().eq("business_status", "OPERATIONAL").list();
         return Result.ok(shops);
     }
 
@@ -113,6 +113,7 @@ public class ShopController {
         // 根据类型分页查询
         Page<Shop> page = shopService.query()
                 .like(StrUtil.isNotBlank(name), "name", name)
+                .eq("business_status", "OPERATIONAL")
                 .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
         // 返回数据
         return Result.ok(page.getRecords());

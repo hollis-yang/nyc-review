@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Fetch and normalize named NYC places from OpenStreetMap via Overpass.
 
-The normalized snapshot contains establishment identity and location only. It is
-safe to check into a private demo workspace or pin by SHA-256. Reviews, ratings,
-promotions and illustrative media are generated separately and must never be
-presented as OpenStreetMap content.
+The snapshot retains useful source-backed merchant tags (hours, contacts and
+Wikimedia/Wikidata references) for the P2/P3 enrichment stage. Reviews,
+platform ratings, promotions and fallback media are generated separately.
 """
 
 from __future__ import annotations
@@ -487,6 +486,8 @@ def _source_tags(tags: dict[str, Any]) -> dict[str, str]:
     allowed = (
         "amenity", "shop", "tourism", "leisure", "sport", "cuisine", "opening_hours",
         "wheelchair", "outdoor_seating", "diet:vegan", "diet:halal", "reservation", "dog",
+        "phone", "contact:phone", "website", "contact:website", "contact:reservation",
+        "wikidata", "wikimedia_commons", "image", "brand:wikidata", "facebook", "instagram",
     )
     return {key: _clean(tags.get(key)) for key in allowed if _clean(tags.get(key))}
 

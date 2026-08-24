@@ -81,6 +81,7 @@ public class AgentShopToolService {
                 // "Midtown-Times Square"). Natural-language constraints and
                 // saved preferences may still use the shorter "Midtown" form.
                 .like(StrUtil.isNotBlank(safeRequest.neighborhood()), "area", safeRequest.neighborhood())
+                .eq("business_status", "OPERATIONAL")
                 // A missing public price is unknown, not over budget. Keep it
                 // available for the verifier to disclose instead of silently
                 // excluding a real shop.
@@ -262,6 +263,13 @@ public class AgentShopToolService {
                 shop.getPriceLevel(),
                 shop.getScore() == null ? null : shop.getScore() / 10.0,
                 shop.getComments(),
+                shop.getRatingCount(),
+                shop.getPriceRangeText(),
+                shop.getPhone(),
+                shop.getWebsite(),
+                shop.getReservationUrl(),
+                shop.getBusinessStatus(),
+                shop.getHealthGrade(),
                 distance,
                 shop.getTimezone(),
                 shop.getSourceType(),

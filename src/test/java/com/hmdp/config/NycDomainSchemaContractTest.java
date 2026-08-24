@@ -68,8 +68,39 @@ class NycDomainSchemaContractTest {
                 "sourceUrl",
                 "sourceFetchedAt",
                 "syntheticFields",
-                "dataVersion"
+                "dataVersion",
+                "ratingCount",
+                "priceRangeText",
+                "businessStatus",
+                "healthGrade"
         )));
+    }
+
+    @Test
+    void p11MigrationDefinesFieldObservationsAndImageResolution() throws Exception {
+        try (InputStream input = getClass().getResourceAsStream("/db/p11_p2_p3_shop_enrichment.sql")) {
+            assertNotNull(input);
+            String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(migration.contains("CREATE TABLE IF NOT EXISTS `tb_shop_source_match`"));
+            assertTrue(migration.contains("CREATE TABLE IF NOT EXISTS `tb_shop_field_observation`"));
+            assertTrue(migration.contains("ROW_FORMAT=DYNAMIC"));
+            assertTrue(migration.contains("MODIFY COLUMN `images` TEXT"));
+            assertTrue(migration.contains("ADD COLUMN `website` TEXT"));
+            assertTrue(migration.contains("COLUMN_NAME='business_status'"));
+            assertTrue(migration.contains("COLUMN_NAME='rating_count'"));
+            assertTrue(migration.contains("COLUMN_NAME='price_range_text'"));
+            assertTrue(migration.contains("COLUMN_NAME='match_type'"));
+            assertTrue(migration.contains("COLUMN_NAME='availability_status'"));
+        }
+
+        assertNotNull(Shop.class.getDeclaredField("phone"));
+        assertNotNull(Shop.class.getDeclaredField("website"));
+        assertNotNull(Shop.class.getDeclaredField("businessStatus"));
+        assertNotNull(Shop.class.getDeclaredField("ratingCount"));
+        assertNotNull(ShopImage.class.getDeclaredField("matchType"));
+        assertNotNull(ShopImage.class.getDeclaredField("isPrimary"));
+        assertNotNull(ShopImage.class.getDeclaredField("availabilityStatus"));
     }
 
     @Test

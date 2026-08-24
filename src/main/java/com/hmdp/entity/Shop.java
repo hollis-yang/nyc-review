@@ -108,6 +108,22 @@ public class Shop implements Serializable {
      */
     private String openHours;
 
+    private String phone;
+
+    private String website;
+
+    private String reservationUrl;
+
+    private String businessStatus;
+
+    private Integer ratingCount;
+
+    private String priceRangeText;
+
+    private String healthGrade;
+
+    private LocalDateTime lastEnrichedAt;
+
     private String timezone;
 
     private String sourceType;

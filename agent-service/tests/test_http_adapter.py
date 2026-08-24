@@ -22,6 +22,13 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
             "priceLevel": 2,
             "score": 4.7,
             "comments": 12,
+            "ratingCount": 214,
+            "priceRangeText": "$$",
+            "phone": "+1 212 555 0100",
+            "website": "https://fixture.example",
+            "reservationUrl": "https://fixture.example/reserve",
+            "businessStatus": "OPERATIONAL",
+            "healthGrade": "A",
             "distanceMeters": 850,
             "timezone": "America/New_York",
             "sourceType": "NYC_OPEN_DATA",
@@ -51,6 +58,11 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
     assert candidate.source_type == "NYC_OPEN_DATA"
     assert candidate.external_id == "43nn-pn8j:123"
     assert candidate.synthetic_fields == ["reviews", "prices"]
+    assert candidate.rating_count == 214
+    assert candidate.price_range_text == "$$"
+    assert candidate.website == "https://fixture.example"
+    assert candidate.business_status == "OPERATIONAL"
+    assert candidate.health_grade == "A"
     assert candidate.business_hours[0].day_of_week == 1
     assert candidate.tags == ["quiet", "wheelchair_accessible"]
 
