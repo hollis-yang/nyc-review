@@ -108,6 +108,7 @@ def validate_dataset(directory: Path) -> dict[str, Any]:
             blog_comments,
             vouchers,
             business_hours,
+            observations,
             source_counts,
             shop_id_set,
         )
@@ -135,6 +136,7 @@ def _validate_real_only(
     blog_comments: list[dict[str, Any]],
     vouchers: list[dict[str, Any]],
     business_hours: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
     source_counts: Counter[str],
     shop_id_set: set[int],
 ) -> None:
@@ -145,11 +147,12 @@ def _validate_real_only(
     if not isinstance(seed, int) or len(snapshot_sha256) != 64:
         raise ValueError("REAL_ONLY manifest must retain its source snapshot SHA-256 and seed")
     profile_name = str(manifest.get("profile") or "")
-    if data_version.startswith("nyc-real-v2-"):
+    if data_version.startswith(("nyc-real-v2-", "nyc-real-v3-")):
         enrichment_sha256 = str(provenance.get("enrichmentVersionSha256") or "")
-        expected_version = f"nyc-real-v2-{enrichment_sha256[:8]}-m20260824"
+        generation = "v3" if data_version.startswith("nyc-real-v3-") else "v2"
+        expected_version = f"nyc-real-{generation}-{enrichment_sha256[:8]}-m20260824"
         if len(enrichment_sha256) != 64 or data_version != expected_version:
-            raise ValueError("P2/P3 dataVersion must be bound to its enrichment snapshot set")
+            raise ValueError("enriched dataVersion must be bound to its source snapshot set")
     else:
         expected_version = _real_data_version(snapshot_sha256, seed, profile_name)
         if data_version != expected_version:
@@ -210,6 +213,8 @@ def _validate_real_only(
         raise ValueError("every real shop must have seven daily business-hour rows")
 
     _validate_images(images, shop_id_set, provenance, shops, data_version)
+    if profile_name == "p10-p11-full":
+        _validate_p10_p11(images, observations, shop_id_set)
     depth_counts, root_count = _validate_review_threads(reviews, shop_id_set, shops)
     _validate_synthetic_content(
         blogs,
@@ -362,6 +367,43 @@ def _validate_images(
         raise ValueError("manifest illustrativeImages does not match fallback images")
     if provenance.get("merchantSpecificImages", 0) != merchant_count:
         raise ValueError("manifest merchantSpecificImages does not match shop_images.json")
+
+
+def _validate_p10_p11(
+    images: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+    shop_id_set: set[int],
+) -> None:
+    """Enforce the published full-bundle exit criteria for P10 and P11."""
+    counts = Counter(int(image["shopId"]) for image in images)
+    if set(counts) != shop_id_set or any(value < 1 or value > 3 for value in counts.values()):
+        raise ValueError("P10 requires one to three display images for every shop")
+    merchant_shops = {
+        int(image["shopId"])
+        for image in images
+        if image.get("matchType") != "CATEGORY_FALLBACK"
+    }
+    if len(merchant_shops) * 100 < len(shop_id_set) * 30:
+        raise ValueError("P10 merchant-specific image coverage is below 30 percent")
+
+    external_providers = {"OPENSTREETMAP", "OFFICIAL_SITE", "FSQ_OS_PLACES", "NYC_DOHMH"}
+    fields: dict[str, set[int]] = {}
+    for observation in observations:
+        if observation.get("provider") not in external_providers:
+            continue
+        fields.setdefault(str(observation.get("fieldName")), set()).add(int(observation["shopId"]))
+    hours = fields.get("businessHours", set()) | fields.get("openingHours", set())
+    prices = fields.get("priceLevel", set()) | fields.get("priceRangeText", set())
+    checks = {
+        "external rating": len(fields.get("rating", set())) > 0,
+        "external price": len(prices) > 0,
+        "phone above P9 baseline": len(fields.get("phone", set())) > 3238,
+        "hours above P9 baseline": len(hours) > 2759,
+        "reservation URL": len(fields.get("reservationUrl", set())) > 0,
+    }
+    failed = [label for label, passed in checks.items() if not passed]
+    if failed:
+        raise ValueError(f"P11 quality gates failed: {', '.join(failed)}")
 
 
 def _real_data_version(snapshot_sha256: str, seed: int, profile_name: str) -> str:

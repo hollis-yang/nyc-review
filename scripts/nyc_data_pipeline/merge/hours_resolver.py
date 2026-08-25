@@ -7,10 +7,14 @@ DAY_INDEX = {"mo": 1, "tu": 2, "we": 3, "th": 4, "fr": 5, "sa": 6, "su": 7}
 
 
 def normalize_hours(value: Any, shop_id: int) -> list[dict[str, Any]] | None:
+    if isinstance(value, dict):
+        value = [value]
     if isinstance(value, list) and all(isinstance(item, dict) for item in value):
-        if value and all("dayOfWeek" in item for item in value):
+        if value and all("dayOfWeek" in item and "closed" in item for item in value):
             return [{**item, "shopId": shop_id} for item in value]
         return _schema_hours(value, shop_id)
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        value = "; ".join(value)
     if not isinstance(value, str) or not value.strip():
         return None
     result: dict[int, dict[str, Any]] = {}

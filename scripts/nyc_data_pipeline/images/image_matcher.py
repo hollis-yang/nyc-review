@@ -44,14 +44,20 @@ class ImageMatcher:
             candidates: list[tuple[dict[str, Any], str]] = []
             records.sort(key=lambda item: (
                 1 if item.get("matchType") == "OFFICIAL_SITE_IMAGE" else 0,
+                int(item.get("displayRank") or 1),
                 str(item.get("url") or ""),
             ))
             for record in records:
                 if valid_image(record, merchant_specific=True):
                     candidates.append((record, str(record.get("matchType") or "MERCHANT_EXACT")))
-            for fallback in sorted(fallback_by_shop.get(int(shop["id"]), []), key=lambda item: int(item.get("sortOrder") or 0)):
-                if valid_image(fallback, merchant_specific=False):
-                    candidates.append((fallback, "CATEGORY_FALLBACK"))
+            # A category fallback is a last resort, not a fourth image in an
+            # otherwise merchant-specific gallery. P10 therefore publishes
+            # one to three merchant images, or exactly one fallback.
+            if not candidates:
+                for fallback in sorted(fallback_by_shop.get(int(shop["id"]), []), key=lambda item: int(item.get("sortOrder") or 0)):
+                    if valid_image(fallback, merchant_specific=False):
+                        candidates.append((fallback, "CATEGORY_FALLBACK"))
+                        break
             seen_urls: set[str] = set()
             display_order = 0
             for image, match_type in candidates:
@@ -79,6 +85,7 @@ class ImageMatcher:
                     "height": image.get("height"),
                     "sha256": image.get("sha256"),
                     "contentSha256": image.get("contentSha256") or image.get("sha256"),
+                    "contentSampleSha256": image.get("contentSampleSha256"),
                     "fetchedAt": image.get("fetchedAt"),
                     "lastCheckedAt": image.get("lastCheckedAt") or image.get("fetchedAt"),
                     "availabilityStatus": "AVAILABLE",
@@ -92,6 +99,6 @@ class ImageMatcher:
                     "licenseUrl": entry["licenseUrl"], "matchType": match_type,
                 })
                 next_id += 1
-                if display_order >= 5:
+                if display_order >= 3:
                     break
         return output, credits

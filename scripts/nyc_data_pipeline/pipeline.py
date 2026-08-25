@@ -15,7 +15,7 @@ from .schemas import FieldObservation
 from .snapshots import dataset_sha256, load_json, sha256_file, write_json_atomic
 
 GENERATED_PROVIDER = "HMDP_GENERATED"
-PIPELINE_VERSION = "p2-p3-v1"
+PIPELINE_VERSION = "p10-p11-v2"
 REAL_PROVIDERS = {"OPENSTREETMAP", "OFFICIAL_SITE", "FSQ_OS_PLACES", "NYC_DOHMH"}
 BASE_DATASET_FILES = (
     "shop_types.json", "shop_subcategories.json", "shops.json", "shop_images.json",
@@ -75,7 +75,7 @@ def enrich_bundle(
     enrichment_version_sha256 = hashlib.sha256(
         (PIPELINE_VERSION + str(base_manifest.get("datasetSha256")) + "".join(source_hashes)).encode()
     ).hexdigest()
-    data_version = f"nyc-real-v2-{enrichment_version_sha256[:8]}-m20260824"
+    data_version = f"nyc-real-v3-{enrichment_version_sha256[:8]}-m20260824"
 
     resolver = FieldResolver(observations)
     old_hours_by_shop: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -119,7 +119,8 @@ def enrich_bundle(
         write_json_atomic(output / filename, payload)
     dataset_hash, dataset_files = dataset_sha256(output, list(datasets))
 
-    import_bundle = _build_import_bundle(output, datasets, base_manifest, dataset_hash)
+    profile = "p10-p11-pilot" if pilot_per_type else "p10-p11-full"
+    import_bundle = _build_import_bundle(output, datasets, base_manifest, dataset_hash, profile)
     report = _report(resolved_shops, resolved_provider_maps, assigned_images, observations, data_version, dataset_hash)
     write_json_atomic(output / "enrichment_report.json", report)
     source_counts = Counter(str(shop.get("sourceType") or "UNKNOWN") for shop in resolved_shops)
@@ -127,7 +128,7 @@ def enrich_bundle(
     manifest = {
         "dataVersion": data_version,
         "merchantIdentityMode": "REAL_ONLY",
-        "profile": "p2-p3-pilot" if pilot_per_type else "p2-p3-full",
+        "profile": profile,
         "seed": int(base_manifest.get("seed") or 20260817),
         "generatedAt": "deterministic-output",
         "timezone": "America/New_York",
@@ -270,13 +271,19 @@ def _replace_data_version(datasets: dict[str, list[dict[str, Any]]], data_versio
                 row["dataVersion"] = data_version
 
 
-def _build_import_bundle(output: Path, datasets: dict[str, list[dict[str, Any]]], base_manifest: dict[str, Any], dataset_hash: str) -> dict[str, Any]:
+def _build_import_bundle(
+    output: Path,
+    datasets: dict[str, list[dict[str, Any]]],
+    base_manifest: dict[str, Any],
+    dataset_hash: str,
+    profile: str,
+) -> dict[str, Any]:
     module_path = Path(__file__).resolve().parents[1] / "mock-data-generator"
     sys.path.insert(0, str(module_path))
     try:
         from import_bundle import build_import_bundle
         return build_import_bundle(
-            output, datasets, "p2-p3-full", int(base_manifest.get("seed") or 20260817), dataset_hash,
+            output, datasets, profile, int(base_manifest.get("seed") or 20260817), dataset_hash,
         )
     finally:
         sys.path.remove(str(module_path))
@@ -298,7 +305,11 @@ def _report(
     merchant_images = {int(image["shopId"]) for image in images if image["matchType"] != "CATEGORY_FALLBACK"}
     fields = {
         "businessHours": real_fields["businessHours"] | real_fields["openingHours"],
+        "phone": real_fields["phone"],
+        "website": real_fields["website"],
         "phoneOrWebsite": real_fields["phone"] | real_fields["website"],
+        "reservationUrl": real_fields["reservationUrl"],
+        "operatingStatus": real_fields["businessStatus"],
         "rating": real_fields["rating"],
         "price": real_fields["priceLevel"] | real_fields["priceRangeText"],
         "merchantSpecificImage": merchant_images,
@@ -313,15 +324,28 @@ def _report(
                 by_borough[str(shop["borough"])][field] += 1
         by_category[str(shop["typeId"])]["shops"] += 1
         by_borough[str(shop["borough"])]["shops"] += 1
+    coverage = {
+        field: {"count": len(ids), "percentage": round(len(ids) * 100 / total, 2) if total else 0}
+        for field, ids in fields.items()
+    }
+    display_count = len({int(image["shopId"]) for image in images})
+    quality_gates = {
+        "displayImageCoverage100Pct": display_count == total,
+        "merchantSpecificImageCoverageAtLeast30Pct": coverage["merchantSpecificImage"]["percentage"] >= 30,
+        "externalRatingCoverageNonZero": coverage["rating"]["count"] > 0,
+        "externalPriceCoverageNonZero": coverage["price"]["count"] > 0,
+        "phoneCoverageAboveP9Baseline": coverage["phone"]["count"] > 3238,
+        "hoursCoverageAboveP9Baseline": coverage["businessHours"]["count"] > 2759,
+        "reservationUrlCoverageNonZero": coverage["reservationUrl"]["count"] > 0,
+    }
     return {
         "dataVersion": data_version,
         "datasetSha256": dataset_hash,
         "shops": total,
-        "coverage": {
-            field: {"count": len(ids), "percentage": round(len(ids) * 100 / total, 2) if total else 0}
-            for field, ids in fields.items()
-        },
-        "displayFallbackCoverage": {"count": len({int(image["shopId"]) for image in images}), "percentage": 100.0 if total else 0},
+        "coverage": coverage,
+        "displayFallbackCoverage": {"count": display_count, "percentage": round(display_count * 100 / total, 2) if total else 0},
+        "qualityGates": quality_gates,
+        "qualityGateStatus": "passed" if all(quality_gates.values()) else "failed",
         "imageManifest": build_image_manifest(images),
         "byCategory": {key: dict(value) for key, value in sorted(by_category.items())},
         "byBorough": {key: dict(value) for key, value in sorted(by_borough.items())},
@@ -350,7 +374,7 @@ def _source_manifests(*paths: Path | None) -> list[dict[str, Any]]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Enrich a P8 real-only bundle with P2/P3 fields and images")
+    parser = argparse.ArgumentParser(description="Build a P10/P11 real-only bundle with official fields and validated images")
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--osm", type=Path, required=True)

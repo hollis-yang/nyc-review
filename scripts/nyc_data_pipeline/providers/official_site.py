@@ -85,6 +85,90 @@ def extract_local_business_jsonld(html: str) -> list[dict[str, Any]]:
     return result
 
 
+def _first_scalar(value: Any) -> Any:
+    if isinstance(value, list):
+        for item in value:
+            result = _first_scalar(item)
+            if result not in (None, "", []):
+                return result
+        return None
+    if isinstance(value, dict):
+        for key in ("url", "@id", "urlTemplate", "value"):
+            result = _first_scalar(value.get(key))
+            if result not in (None, "", []):
+                return result
+        return None
+    return value
+
+
+def _contact_phone(values: dict[str, Any]) -> Any:
+    direct = _first_scalar(values.get("telephone"))
+    if direct:
+        return direct
+    points = values.get("contactPoint")
+    points = points if isinstance(points, list) else [points]
+    for point in points:
+        if isinstance(point, dict):
+            phone = _first_scalar(point.get("telephone"))
+            if phone:
+                return phone
+    return None
+
+
+def _reservation(values: dict[str, Any]) -> tuple[Any, Any]:
+    accepts = values.get("acceptsReservations")
+    if isinstance(accepts, str) and accepts.lower().startswith(("http://", "https://")):
+        return accepts, "yes"
+    policy = "yes" if accepts is True else "no" if accepts is False else None
+    actions = values.get("potentialAction")
+    actions = actions if isinstance(actions, list) else [actions]
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action_type = str(action.get("@type") or "").lower()
+        if not any(token in action_type for token in ("reserve", "order", "book")):
+            continue
+        target = action.get("target")
+        url = _first_scalar(target) or _first_scalar(action.get("url"))
+        if url:
+            return url, "yes"
+    return None, policy
+
+
+def _price_range(values: dict[str, Any]) -> Any:
+    direct = values.get("priceRange")
+    if direct not in (None, "", []):
+        return _first_scalar(direct)
+    offers = values.get("offers")
+    offers = offers if isinstance(offers, list) else [offers]
+    for offer in offers:
+        if not isinstance(offer, dict):
+            continue
+        currency = str(offer.get("priceCurrency") or "USD").upper()
+        prefix = "$" if currency == "USD" else f"{currency} "
+        low = _first_scalar(offer.get("lowPrice"))
+        high = _first_scalar(offer.get("highPrice"))
+        price = _first_scalar(offer.get("price"))
+        if low not in (None, "") and high not in (None, ""):
+            return f"{prefix}{low}-{prefix}{high}"
+        if price not in (None, ""):
+            return f"{prefix}{price}"
+    return None
+
+
+def _rating(values: dict[str, Any]) -> tuple[float | None, Any]:
+    aggregate = values.get("aggregateRating") if isinstance(values.get("aggregateRating"), dict) else {}
+    try:
+        raw = float(aggregate.get("ratingValue"))
+        best = float(aggregate.get("bestRating") or 5)
+        worst = float(aggregate.get("worstRating") or 0)
+        normalized = (raw - worst) * 5 / (best - worst) if best > worst else raw
+        normalized = max(0.0, min(5.0, normalized))
+    except (TypeError, ValueError):
+        normalized = None
+    return normalized, aggregate.get("ratingCount") or aggregate.get("reviewCount")
+
+
 class OfficialSiteProvider:
     priority = 100
 
@@ -116,15 +200,17 @@ class OfficialSiteProvider:
                 result.matched_fields, result.score, result.method, observed_at, version,
             ))
             values = record.get("jsonLd") if isinstance(record.get("jsonLd"), dict) else record
-            aggregate = values.get("aggregateRating") if isinstance(values.get("aggregateRating"), dict) else {}
+            reservation_url, reservation_policy = _reservation(values)
+            rating, rating_count = _rating(values)
             field_values = {
-                "phone": values.get("telephone"),
-                "website": values.get("url") or record.get("sourceUrl"),
-                "reservationUrl": values.get("acceptsReservations") if isinstance(values.get("acceptsReservations"), str) else None,
+                "phone": _contact_phone(values),
+                "website": _first_scalar(values.get("url")) or record.get("sourceUrl"),
+                "reservationUrl": reservation_url,
+                "reservationPolicy": reservation_policy,
                 "openingHours": values.get("openingHours") or values.get("openingHoursSpecification"),
-                "priceRangeText": values.get("priceRange"),
-                "rating": aggregate.get("ratingValue"),
-                "ratingCount": aggregate.get("ratingCount") or aggregate.get("reviewCount"),
+                "priceRangeText": _price_range(values),
+                "rating": rating,
+                "ratingCount": rating_count,
                 "image": values.get("image"),
             }
             for field, value in field_values.items():

@@ -7,8 +7,10 @@ from .fetch_official_site_images import extract_official_image_urls
 from .matching import EntityMatcher
 from .merge.field_resolver import FieldResolver
 from .merge.hours_resolver import normalize_hours
+from .merge.price_resolver import price_level
+from .merge.rating_resolver import count
 from .pipeline import _deduplicate_observations
-from .providers.official_site import extract_local_business_jsonld, is_safe_public_url
+from .providers.official_site import OfficialSiteProvider, extract_local_business_jsonld, is_safe_public_url
 from .schemas import FieldObservation
 
 
@@ -45,6 +47,16 @@ class OfficialSiteTest(unittest.TestCase):
         self.assertEqual("https://cdn.example.com/social.jpg", result[1])
         self.assertIn("https://example.com/images/hero%2Cw_1200.jpg", result)
 
+    def test_excludes_logo_candidates(self) -> None:
+        html = '''
+          <script type="application/ld+json">{
+            "@type":"Restaurant", "image":"/dining-room.jpg", "logo":"/brand-logo.png"
+          }</script>
+          <img src="/site-logo.png" width="1000" height="400" alt="Restaurant logo">
+        '''
+        result = extract_official_image_urls(html, "https://example.com/")
+        self.assertEqual(["https://example.com/dining-room.jpg"], result)
+
     def test_extracts_local_business_json_ld(self) -> None:
         html = '''<script type="application/ld+json">{
           "@context":"https://schema.org", "@type":"Restaurant", "name":"Example",
@@ -53,6 +65,30 @@ class OfficialSiteTest(unittest.TestCase):
         records = extract_local_business_jsonld(html)
         self.assertEqual("Example", records[0]["name"])
         self.assertEqual("$$", records[0]["priceRange"])
+
+    def test_resolves_nested_official_fields_and_rating_scale(self) -> None:
+        snapshot = {
+            "metadata": {"fetchedAt": "2026-08-24T00:00:00Z", "datasetVersion": "2026-08-24"},
+            "records": [{
+                "externalId": "official-site:1", "name": "Example", "address": "1 Main St",
+                "latitude": 40.75, "longitude": -73.98,
+                "sourceUrl": "https://example.com", "jsonLd": {
+                    "@type": "Restaurant",
+                    "contactPoint": {"telephone": "+1 212 555 0100"},
+                    "potentialAction": {"@type": "ReserveAction", "target": {"urlTemplate": "https://example.com/book"}},
+                    "offers": {"lowPrice": 20, "highPrice": 40, "priceCurrency": "USD"},
+                    "aggregateRating": {"ratingValue": 8, "bestRating": 10, "ratingCount": 42},
+                },
+            }],
+        }
+        result = OfficialSiteProvider().collect(
+            [{"id": 1, "name": "Example", "address": "1 Main St", "y": 40.75, "x": -73.98}], snapshot,
+        )
+        values = {item.field_name: item.value for item in result.observations}
+        self.assertEqual("+1 212 555 0100", values["phone"])
+        self.assertEqual("https://example.com/book", values["reservationUrl"])
+        self.assertEqual("$20-$40", values["priceRangeText"])
+        self.assertEqual(4.0, values["rating"])
 
     def test_ssrf_targets_are_rejected(self) -> None:
         for url in (
@@ -64,6 +100,13 @@ class OfficialSiteTest(unittest.TestCase):
 
 
 class ResolverTest(unittest.TestCase):
+    def test_normalizes_official_price_ranges(self) -> None:
+        self.assertEqual(2, price_level("$20-$40"))
+        self.assertEqual(3, price_level("$$–$$$"))
+
+    def test_normalizes_compact_rating_count(self) -> None:
+        self.assertEqual(2300, count("2.3K"))
+
     def test_deduplicates_database_observation_key(self) -> None:
         first = FieldObservation(
             1, "website", "https://example.com", "OPENSTREETMAP", "osm:1",
@@ -91,6 +134,16 @@ class ResolverTest(unittest.TestCase):
         self.assertFalse(result[0]["closed"])
         self.assertTrue(result[6]["closed"])
 
+    def test_normalizes_single_schema_hours_object(self) -> None:
+        result = normalize_hours({
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": "https://schema.org/Monday",
+            "opens": "09:00:00",
+            "closes": "18:00:00",
+        }, 1)
+        self.assertIsNotNone(result)
+        self.assertFalse(result[0]["closed"])
+
 
 class ImageMatcherTest(unittest.TestCase):
     def test_official_site_remote_reference_precedes_fallback(self) -> None:
@@ -109,7 +162,7 @@ class ImageMatcherTest(unittest.TestCase):
         }]}
         images, _ = ImageMatcher().assign(shops, fallback, merchant, "test-v1")
         self.assertEqual("OFFICIAL_SITE_IMAGE", images[0]["matchType"])
-        self.assertEqual("CATEGORY_FALLBACK", images[1]["matchType"])
+        self.assertEqual(1, len(images))
 
     def test_exact_licensed_image_precedes_fallback(self) -> None:
         shops = [{"id": 1, "externalId": "osm:1", "name": "Cafe", "address": "1 Main St"}]
