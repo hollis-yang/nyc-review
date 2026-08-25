@@ -175,12 +175,20 @@ async def test_multi_agent_runtime_uses_qdrant_citations(tmp_path):
             }
         )
 
-        assert runtime.indexed_documents == 12
+        assert runtime.indexed_documents == 18
         assert state["verification"].valid is True
         assert all(item.citations for item in state["evidence"].evidence)
         assert {
             citation.content_type for item in state["evidence"].evidence for citation in item.citations
-        } <= {"shop_description", "shop_review", "blog", "blog_comment", "nested_comment"}
+        } <= {
+            "shop_identity_fact",
+            "shop_attribute_fact",
+            "shop_description",
+            "shop_review",
+            "blog",
+            "blog_comment",
+            "nested_comment",
+        }
     finally:
         await runtime.close()
 

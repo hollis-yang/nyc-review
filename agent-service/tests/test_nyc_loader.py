@@ -26,8 +26,10 @@ def test_generated_nyc_content_is_loadable_as_rag_documents():
         documents = load_generated_documents(output)
         import_manifest = json.loads((output / "import_manifest.json").read_text())
 
-        assert len(documents) == 36 + 144 + 48 + 96
+        assert len(documents) == (36 * 3) + 144 + 48 + 96
         assert {document.content_type for document in documents} == {
+            "shop_identity_fact",
+            "shop_attribute_fact",
             "shop_description",
             "shop_review",
             "blog",
@@ -57,7 +59,19 @@ def test_hybrid_shop_provenance_is_written_to_rag_payloads(tmp_path):
     ]
 
     assert public_documents
-    assert all(document.content_source_type == "SYNTHETIC" for document in public_documents)
+    identity_facts = [
+        document
+        for document in public_documents
+        if document.content_type == "shop_identity_fact"
+    ]
+    generated_evidence = [
+        document
+        for document in public_documents
+        if document.document_kind == "evidence"
+    ]
+    assert all(document.content_source_type == "NYC_OPEN_DATA" for document in identity_facts)
+    assert all(document.synthetic is False for document in identity_facts)
+    assert all(document.content_source_type == "SYNTHETIC" for document in generated_evidence)
     assert all(document.shop_external_id.startswith("43nn-pn8j:") for document in public_documents)
     assert all(document.shop_source_url for document in public_documents)
     assert all("reviews" in document.synthetic_fields for document in public_documents)
@@ -147,9 +161,12 @@ def test_real_shop_description_and_hierarchical_synthetic_review_keep_distinct_p
 
     documents = load_generated_documents(tmp_path)
 
-    assert len(documents) == 2
+    assert len(documents) == 4
+    identity = next(document for document in documents if document.content_type == "shop_identity_fact")
     description = next(document for document in documents if document.content_type == "shop_description")
     thread = next(document for document in documents if document.content_type == "shop_review_thread")
+    assert identity.content_source_type == "OPENSTREETMAP"
+    assert identity.synthetic is False
     assert description.content_source_type == "OPENSTREETMAP"
     assert description.content_source_name == "OpenStreetMap contributors"
     assert description.content_source_url == "https://www.openstreetmap.org/node/501"

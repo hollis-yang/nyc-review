@@ -39,6 +39,11 @@ async def preview_run(payload: AgentRunRequest, request: Request):
             "datasetSha256": runtime.dataset_sha256,
             "sourceCounts": runtime.source_counts,
             "ragIndexStats": runtime.rag_index_stats,
+            "retrievalVersion": runtime.retrieval_version,
+            "retrieval": {
+                "candidates": state["candidates"].retrieval_metadata,
+                "evidence": state["evidence"].retrieval_metadata,
+            },
         },
     )
 

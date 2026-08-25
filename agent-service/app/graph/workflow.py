@@ -24,6 +24,7 @@ class WorkflowServices:
     shops: ShopToolService
     rag: RagService
     itinerary: ItineraryService
+    final_candidate_limit: int = 5
 
 
 def traced_node(name: str, agent: str, operation):
@@ -35,6 +36,7 @@ def traced_node(name: str, agent: str, operation):
         except Exception:
             raise
         duration_ms = round((time.perf_counter() - started) * 1_000, 3)
+        attributes = update.pop("_trace_attributes", {})
         update["traces"] = [
             {
                 "span_id": str(uuid4()),
@@ -44,7 +46,7 @@ def traced_node(name: str, agent: str, operation):
                 "status": "completed",
                 "started_at": started_at.isoformat(),
                 "duration_ms": duration_ms,
-                "attributes": {},
+                "attributes": attributes,
             }
         ]
         return update
@@ -54,7 +56,7 @@ def traced_node(name: str, agent: str, operation):
 
 def build_multi_agent_graph(services: WorkflowServices):
     supervisor = SupervisorAgent()
-    discovery = DiscoveryAgent(services.shops)
+    discovery = DiscoveryAgent(services.shops, services.rag, services.final_candidate_limit)
     evidence = EvidenceAgent(services.rag)
     itinerary = ItineraryAgent(services.itinerary)
     verifier = VerifierAgent()
@@ -83,7 +85,12 @@ def build_multi_agent_graph(services: WorkflowServices):
 
 def build_single_agent_graph(services: WorkflowServices):
     supervisor = SupervisorAgent()
-    single = SingleAgent(services.shops, services.rag, services.itinerary)
+    single = SingleAgent(
+        services.shops,
+        services.rag,
+        services.itinerary,
+        services.final_candidate_limit,
+    )
     verifier = VerifierAgent()
 
     graph = StateGraph(AgentState)

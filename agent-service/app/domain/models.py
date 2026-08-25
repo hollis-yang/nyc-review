@@ -111,12 +111,14 @@ class CandidateSet(BaseModel):
     applied_constraints: list[str] = Field(default_factory=list)
     relaxed_constraints: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    retrieval_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceCitation(BaseModel):
     citation_id: str
     shop_id: int = Field(gt=0)
     content_type: str
+    document_kind: str = "evidence"
     excerpt: str = Field(max_length=600)
     source_id: str
     created_at: str | None = None
@@ -130,6 +132,7 @@ class EvidenceCitation(BaseModel):
     root_id: int | None = None
     max_depth: int | None = Field(default=None, ge=0, le=2)
     reply_count: int = Field(default=0, ge=0)
+    security_test: bool = False
 
 
 class ShopEvidence(BaseModel):
@@ -141,6 +144,7 @@ class ShopEvidence(BaseModel):
 
 class EvidencePack(BaseModel):
     evidence: list[ShopEvidence]
+    retrieval_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ItineraryStop(BaseModel):

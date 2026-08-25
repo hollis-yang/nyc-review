@@ -21,21 +21,69 @@ def iter_generated_documents(data_directory: Path) -> Iterator[RagDocument]:
     shops = _read_json(data_directory / "shops.json")
     blogs = _read_json(data_directory / "blogs.json")
     blog_comments = _read_json(data_directory / "blog_comments.json")
+    subcategory_path = data_directory / "shop_subcategories.json"
+    subcategories = {
+        item["id"]: item for item in _read_json(subcategory_path)
+    } if subcategory_path.is_file() else {}
     shops_by_id = {shop["id"]: shop for shop in shops}
     blogs_by_id = {blog["id"]: blog for blog in blogs}
 
     for shop in shops:
+        common = _shop_document_fields(shop, subcategories)
+        identity_provenance = _identity_fact_provenance(shop)
+        yield RagDocument(
+            document_id=f"shop_identity_fact:{shop['id']}",
+            shop_id=shop["id"],
+            content_type="shop_identity_fact",
+            document_kind="fact",
+            source_id=f"shop:{shop['id']}:identity",
+            text=_identity_fact_text(shop, common),
+            evidence_tags=[],
+            data_version=shop.get("dataVersion"),
+            untrusted_content=False,
+            **identity_provenance,
+            **common,
+            **_shop_provenance(shop),
+        )
+        attribute_synthetic = shop.get("sourceType") in (None, "MOCK", "LEGACY") or bool(
+            {"avgPriceCents", "priceLevel", "score", "tags"}
+            & set(shop.get("syntheticFields") or [])
+        )
+        yield RagDocument(
+            document_id=f"shop_attribute_fact:{shop['id']}",
+            shop_id=shop["id"],
+            content_type="shop_attribute_fact",
+            document_kind="fact",
+            source_id=f"shop:{shop['id']}:attributes",
+            text=_attribute_fact_text(shop),
+            evidence_tags=shop.get("tags") or [],
+            data_version=shop.get("dataVersion"),
+            untrusted_content=False,
+            content_source_type=(
+                "SYNTHETIC"
+                if shop.get("sourceType") in (None, "MOCK", "LEGACY")
+                else "MIXED" if attribute_synthetic else (shop.get("sourceType") or "PUBLIC_SOURCE")
+            ),
+            content_source_name=(
+                "HMDP deterministic NYC generator"
+                if shop.get("sourceType") in (None, "MOCK", "LEGACY")
+                else "HMDP resolved merchant catalog"
+            ),
+            synthetic=attribute_synthetic,
+            **common,
+            **_shop_provenance(shop),
+        )
         yield RagDocument(
             document_id=f"shop:{shop['id']}",
             shop_id=shop["id"],
             content_type="shop_description",
+            document_kind="evidence",
             source_id=f"shop:{shop['id']}",
             text=clean_display_text(shop["description"]),
-            category=_category_name(shop["typeId"]),
-            neighborhood=shop["neighborhood"],
             evidence_tags=shop.get("tags") or [],
             data_version=shop.get("dataVersion"),
             untrusted_content=False,
+            **common,
             **_content_provenance(shop, field_name="description"),
             **_shop_provenance(shop),
         )
@@ -60,13 +108,18 @@ def iter_generated_documents(data_directory: Path) -> Iterator[RagDocument]:
             document_id=f"blog:{blog['id']}",
             shop_id=blog["shopId"],
             content_type="blog",
+            document_kind="evidence",
             source_id=f"blog:{blog['id']}",
             # The card title is presentation metadata. Index the actual post body
             # so citations read like evidence instead of repeating a templated title.
             text=clean_display_text(blog["content"]),
             created_at=blog.get("createTime"),
             category=_category_name(shop["typeId"]),
+            borough=shop.get("borough"),
             neighborhood=shop["neighborhood"],
+            shop_name=shop.get("name"),
+            avg_price_cents=shop.get("avgPriceCents"),
+            score=(shop.get("score") / 10 if shop.get("score") is not None else None),
             evidence_tags=shop.get("tags") or [],
             data_version=shop.get("dataVersion"),
             untrusted_content=True,
@@ -81,11 +134,16 @@ def iter_generated_documents(data_directory: Path) -> Iterator[RagDocument]:
             document_id=f"blog_comment:{comment['id']}",
             shop_id=shop["id"],
             content_type="nested_comment" if is_nested else "blog_comment",
+            document_kind="evidence",
             source_id=f"blog_comment:{comment['id']}",
             text=clean_display_text(comment["content"]),
             created_at=comment.get("createTime"),
             category=_category_name(shop["typeId"]),
+            borough=shop.get("borough"),
             neighborhood=shop["neighborhood"],
+            shop_name=shop.get("name"),
+            avg_price_cents=shop.get("avgPriceCents"),
+            score=(shop.get("score") / 10 if shop.get("score") is not None else None),
             data_version=shop.get("dataVersion"),
             untrusted_content=True,
             **_record_content_provenance(comment, shop, content_kind="blog comment"),
@@ -101,12 +159,17 @@ def _flat_review_document(review: dict, shops_by_id: dict[int, dict]) -> RagDocu
         document_id=f"shop_review:{review['id']}",
         shop_id=review["shopId"],
         content_type="shop_review",
+        document_kind="evidence",
         source_id=f"shop_review:{review['id']}",
         text=clean_display_text(review["content"]),
         created_at=review.get("createTime"),
         language=review.get("language") or "en",
         category=_category_name(shop["typeId"]),
+        borough=shop.get("borough"),
         neighborhood=shop["neighborhood"],
+        shop_name=shop.get("name"),
+        avg_price_cents=shop.get("avgPriceCents"),
+        score=(shop.get("score") / 10 if shop.get("score") is not None else None),
         evidence_tags=review.get("evidenceTags") or [],
         data_version=shop.get("dataVersion"),
         untrusted_content=True,
@@ -200,12 +263,17 @@ def _review_thread_document(
         document_id=f"shop_review_thread:{root_id}",
         shop_id=shop_id,
         content_type="shop_review_thread",
+        document_kind="evidence",
         source_id=f"shop_review_thread:{root_id}",
         text="\n".join(_review_thread_line(row) for row in ordered),
         created_at=root.get("createTime"),
         language=root.get("language") or "en",
         category=_category_name(shop["typeId"]),
+        borough=shop.get("borough"),
         neighborhood=shop["neighborhood"],
+        shop_name=shop.get("name"),
+        avg_price_cents=shop.get("avgPriceCents"),
+        score=(shop.get("score") / 10 if shop.get("score") is not None else None),
         evidence_tags=evidence_tags,
         data_version=shop.get("dataVersion"),
         untrusted_content=True,
@@ -293,11 +361,68 @@ def _category_name(type_id: int) -> str:
     return names[type_id]
 
 
+def _shop_document_fields(shop: dict, subcategories: dict[int, dict]) -> dict:
+    subcategory = subcategories.get(shop.get("subcategoryId")) or {}
+    score = shop.get("score")
+    return {
+        "category": _category_name(shop["typeId"]),
+        "subcategory": subcategory.get("name"),
+        "borough": shop.get("borough"),
+        "neighborhood": shop.get("neighborhood"),
+        "shop_name": shop.get("name"),
+        "avg_price_cents": shop.get("avgPriceCents"),
+        "score": (score / 10 if score is not None else None),
+    }
+
+
+def _identity_fact_text(shop: dict, common: dict) -> str:
+    parts = [
+        str(shop.get("name") or "NYC merchant"),
+        str(common.get("category") or ""),
+        str(common.get("subcategory") or ""),
+        str(shop.get("neighborhood") or ""),
+        str(shop.get("borough") or ""),
+        str(shop.get("address") or ""),
+    ]
+    return ". ".join(part for part in parts if part) + "."
+
+
+def _attribute_fact_text(shop: dict) -> str:
+    parts: list[str] = []
+    tags = [str(tag).replace("_", " ") for tag in shop.get("tags") or []]
+    if tags:
+        parts.append("Features: " + ", ".join(tags))
+    price = shop.get("avgPriceCents")
+    if isinstance(price, int) and price > 0:
+        parts.append(f"Estimated per-person or per-visit price: ${price / 100:g}")
+    price_range = shop.get("priceRangeText")
+    if price_range:
+        parts.append(f"Published price range: {price_range}")
+    score = shop.get("score")
+    if score is not None:
+        parts.append(f"Platform rating: {score / 10:g} out of 5")
+    status = shop.get("businessStatus")
+    if status:
+        parts.append(f"Business status: {str(status).replace('_', ' ').lower()}")
+    return ". ".join(parts or ["Merchant catalog attributes are available"]) + "."
+
+
 def _content_provenance(shop: dict, field_name: str) -> dict:
     synthetic = field_name in set(shop.get("syntheticFields") or []) or (
         shop.get("sourceType") in (None, "MOCK", "LEGACY")
     )
     if synthetic:
+        return _synthetic_content_provenance("HMDP deterministic NYC generator")
+    return {
+        "content_source_type": shop.get("sourceType") or "PUBLIC_SOURCE",
+        "content_source_name": shop.get("sourceName"),
+        "content_source_url": shop.get("sourceUrl"),
+        "synthetic": False,
+    }
+
+
+def _identity_fact_provenance(shop: dict) -> dict:
+    if shop.get("sourceType") in (None, "MOCK", "LEGACY"):
         return _synthetic_content_provenance("HMDP deterministic NYC generator")
     return {
         "content_source_type": shop.get("sourceType") or "PUBLIC_SOURCE",

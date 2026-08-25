@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = Field(default=8.0, gt=0, le=60)
     rag_adapter: Literal["memory", "qdrant"] = "memory"
     qdrant_location: str = "http://127.0.0.1:6333"
-    qdrant_collection: str = "hmdp_content_v1"
+    qdrant_collection: str = "hmdp_content_v2"
+    retrieval_version: str = "p12-rag-v1"
     rag_data_directory: Path | None = None
     rag_index_batch_size: int = Field(default=128, ge=1, le=2_048)
     embedding_provider: Literal["hash", "openai"] = "hash"
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     model_fallback_to_heuristic: bool = True
     run_store_path: str = DEFAULT_RUN_STORE_PATH
     max_candidates: int = Field(default=5, ge=1, le=20)
+    discovery_pool_size: int = Field(default=50, ge=5, le=100)
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)
     run_timeout_seconds: float = Field(default=45.0, gt=1, le=300)

@@ -15,7 +15,7 @@ class AgentShopToolServiceTest {
     void clampsSearchAndEvidenceLimits() {
         assertEquals(5, AgentShopToolService.normalizeLimit(null));
         assertEquals(1, AgentShopToolService.normalizeLimit(-10));
-        assertEquals(20, AgentShopToolService.normalizeLimit(100));
+        assertEquals(100, AgentShopToolService.normalizeLimit(100));
         assertEquals(20, AgentShopToolService.normalizeEvidenceLimit(null));
         assertEquals(50, AgentShopToolService.normalizeEvidenceLimit(100));
     }

@@ -40,7 +40,13 @@ class McpDomainService:
             longitude=longitude,
             visit_time=visit_time,
         )
-        candidates = await self._runtime.shop_service.search(constraints)
+        candidate_pool = await self._runtime.shop_service.search(constraints)
+        final_limit = self._runtime.settings.max_candidates if self._runtime.settings else 5
+        candidates = await self._runtime.rag_service.rank_candidates(
+            constraints,
+            candidate_pool,
+            limit=final_limit,
+        )
         return candidates.model_dump(mode="json")
 
     async def get_shop_detail(self, shop_id: int) -> dict[str, Any]:

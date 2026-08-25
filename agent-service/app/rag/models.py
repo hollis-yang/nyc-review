@@ -7,15 +7,22 @@ class RagDocument(BaseModel):
     document_id: str
     shop_id: int = Field(gt=0)
     content_type: str
+    document_kind: str = "evidence"
     source_id: str
     text: str = Field(min_length=1)
     created_at: str | None = None
     language: str = "en"
     category: str | None = None
+    subcategory: str | None = None
+    borough: str | None = None
     neighborhood: str | None = None
+    shop_name: str | None = None
+    avg_price_cents: int | None = Field(default=None, ge=0)
+    score: float | None = Field(default=None, ge=0, le=5)
     evidence_tags: list[str] = Field(default_factory=list)
     data_version: str | None = None
     dataset_sha256: str | None = None
+    retrieval_version: str = "p12-rag-v1"
     untrusted_content: bool = True
     content_source_type: str = "SYNTHETIC"
     content_source_name: str | None = None

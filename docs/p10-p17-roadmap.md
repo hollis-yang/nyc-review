@@ -12,7 +12,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 | P10 | Complete; checkpoint ready | Expand the image strategy to all 5,000 shops | Crawled 2,740 official sites; validated responses; rejected trackers, logos, broken and undersized assets; deduplicated and ranked candidates; retained 1–3 images per shop with category fallback | 100% display coverage; 1,772 shops (35.44%) have merchant-specific images; full bundle validation passes |
 | P11 | Complete; checkpoint ready | Continue real merchant-field enrichment | Added a pinned official JSON-LD provider with nested contact, hours, reservation, rating-scale and price-range resolution | External rating 21, price 152, phone 3,278, hours 2,831 and reservation URL 58; shared Spring/React/Agent contract remains in place |
 | P11.5 | Complete; checkpoint ready | Improve images and per-person prices without a paid Places API | Bounded same-site gallery/menu/location/service crawl; sitemap, `srcset`, CSS and PDF support; official menu/service price distribution and deterministic category estimate | 1,871 merchant-image shops (37.42%); external price 918; official-menu average price 844; 5,000/5,000 map projection; v4 full-bundle gates pass |
-| P12 | Pending | Upgrade RAG retrieval quality | Separate fact/evidence types; hybrid lexical/vector recall; query rewrite; metadata filters; reranking; evidence deduplication; merchant diversity; Verifier improvements; fixed eval set | Recall@10 at least 85%; evidence coverage at least 95%; structured-constraint satisfaction at least 90%; no duplicate merchant recommendations |
+| P12 | Complete; isolated checkpoint accepted | Upgrade RAG retrieval quality | Separate fact/evidence types; hybrid lexical/vector recall; bilingual query expansion; metadata filters; broad candidate pool; reranking; evidence deduplication; merchant diversity; Verifier improvements; frozen/current/stress eval layers | 145,000-point/72-case gate passed: Recall@10 99.54%; evidence and constraint satisfaction 100%; duplicate/security/version failures 0; local P95 5.20 s |
 | P13 | Pending | Expand real merchant scale | Grow from 5,000 to 10,000+ across all six categories and five boroughs; incremental crawl; diff import; history and rollback metadata | Merchant identities remain 100% real-source; versions are traceable; refresh is incremental rather than full replacement |
 | P14 | Pending | Stability, performance and bug closeout | RabbitMQ/Redis Lua load tests; idempotency and dead-letter tests; Agent concurrency, timeout, cancel and recovery; map/list performance; bilingual and UI regression | No oversell; zero duplicate orders; Agent recovery works; map/list stay responsive at target scale; core regression suite passes |
 | P15 | Final-stage | Move Qdrant to server mode | Replace local-path storage; payload indexes; collection aliases; multiple Agent instances; backup and health checks | No local file lock or 20,000-point warning; concurrent Agent instances work; index versions switch without downtime |
@@ -25,7 +25,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 P9/P9.1 complete
   → P10/P11 checkpoint import and visual acceptance (`nyc-real-v3-7577e407-m20260824`)
   → P11.5 checkpoint import and visual acceptance (`nyc-real-v4-0f51676d-m20260824`)
-  → P12 RAG quality
+  → P12 RAG quality (complete; `p12-rag-v1` / `hmdp_content_v2`)
   → P13 10,000+ scale
   → P14 stability and performance
   → P15 Qdrant server mode

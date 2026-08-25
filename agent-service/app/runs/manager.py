@@ -618,6 +618,11 @@ class AgentRunManager:
                 "datasetSha256": self._runtime.dataset_sha256,
                 "sourceCounts": self._runtime.source_counts,
                 "ragIndexStats": self._runtime.rag_index_stats,
+                "retrievalVersion": self._runtime.retrieval_version,
+                "retrieval": {
+                    "candidates": state["candidates"].retrieval_metadata,
+                    "evidence": state["evidence"].retrieval_metadata,
+                },
                 "modelProvider": extraction.provider,
                 "model": extraction.model,
                 "promptVersion": extraction.prompt_version,

@@ -154,3 +154,13 @@ Agent Service 同时在 `http://127.0.0.1:8090/mcp` 提供 Streamable HTTP MCP�
 uv run python -m evals.run_eval
 uv run python -m evals.run_eval --output .local/p4-eval-report.json
 ```
+
+P12 另有固定语料的检索质量门禁。72 条中英文用例直接测量混合检索与证据层，避免模型解析波动掩盖 RAG 回退：
+
+```bash
+uv run python -m evals.p12.run_retrieval_eval \
+  --qdrant-location ./.local/qdrant-p12 \
+  --output ./.local/p12-eval-report.json
+```
+
+完整配置、验收指标以及未来数据版本的双基准方式见 [P12 RAG Quality Runbook](../docs/p12-rag-quality-runbook.md)。

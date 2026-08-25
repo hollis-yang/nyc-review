@@ -216,6 +216,54 @@ async def test_verifier_accepts_friendly_neighborhood_inside_official_nta_label(
     )
 
 
+async def test_p12_verifier_rejects_duplicate_external_merchant_identity():
+    class DuplicateIdentityShopService:
+        async def search(self, constraints: UserConstraints) -> CandidateSet:
+            return CandidateSet(
+                candidates=[
+                    ShopCandidate(
+                        shop_id=901,
+                        name="Same Merchant Downtown",
+                        category="Food & Dining",
+                        neighborhood="Midtown",
+                        latitude=40.76,
+                        longitude=-73.98,
+                        external_id="openstreetmap:node:901",
+                    ),
+                    ShopCandidate(
+                        shop_id=902,
+                        name="Same Merchant Uptown",
+                        category="Food & Dining",
+                        neighborhood="Midtown",
+                        latitude=40.77,
+                        longitude=-73.97,
+                        external_id="openstreetmap:node:901",
+                    ),
+                ]
+            )
+
+    workflow = build_multi_agent_graph(
+        WorkflowServices(
+            shops=DuplicateIdentityShopService(),
+            rag=InMemoryRagService(),
+            itinerary=HaversineItineraryService(),
+        )
+    )
+    state = await workflow.ainvoke(
+        {
+            "request": AgentRunRequest(
+                constraints=UserConstraints(query="Dinner in Midtown")
+            ),
+            "events": [],
+        }
+    )
+
+    assert state["verification"].valid is False
+    assert any(
+        issue.code == "DUPLICATE_MERCHANT" for issue in state["verification"].issues
+    )
+
+
 async def test_verifier_rejects_evidence_entries_without_citations():
     class SingleShopService:
         async def search(self, constraints: UserConstraints) -> CandidateSet:

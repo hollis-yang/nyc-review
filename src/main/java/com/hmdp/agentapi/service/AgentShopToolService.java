@@ -35,7 +35,10 @@ import java.util.stream.Collectors;
 public class AgentShopToolService {
 
     static final int DEFAULT_LIMIT = 5;
-    static final int MAX_LIMIT = 20;
+    // P12 retrieves a broad structured pool and lets the Agent's hybrid RAG
+    // reranker select the final five merchants. The endpoint remains internal
+    // and all public/MCP result limits keep their existing contracts.
+    static final int MAX_LIMIT = 100;
     static final int MAX_EVIDENCE_LIMIT = 50;
 
     private final IShopService shopService;

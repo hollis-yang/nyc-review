@@ -42,6 +42,7 @@ class AgentRuntime:
     dataset_sha256: str | None = None
     source_counts: dict[str, int] = field(default_factory=dict)
     rag_index_stats: dict[str, int] = field(default_factory=dict)
+    retrieval_version: str = "p12-rag-v1"
     qdrant_client: AsyncQdrantClient | None = None
     run_manager: AgentRunManager | None = None
     model_provider: str = "heuristic"
@@ -75,6 +76,7 @@ class AgentRuntime:
                 collection_name=settings.qdrant_collection,
                 index_batch_size=settings.rag_index_batch_size,
                 dataset_sha256=dataset_sha256,
+                retrieval_version=settings.retrieval_version,
             )
             if settings.rag_data_directory is not None:
                 data_directory = settings.rag_data_directory.resolve()
@@ -92,6 +94,7 @@ class AgentRuntime:
             shops=shops,
             rag=rag,
             itinerary=itinerary,
+            final_candidate_limit=settings.max_candidates,
         )
         workflows = {
             AgentMode.SINGLE: build_single_agent_graph(services),
@@ -107,6 +110,7 @@ class AgentRuntime:
             dataset_sha256=dataset_sha256,
             source_counts=source_counts,
             rag_index_stats=rag_index_stats,
+            retrieval_version=settings.retrieval_version,
             qdrant_client=qdrant_client,
             model_provider=settings.model_provider,
             action_service=AgentActionService(
@@ -149,12 +153,12 @@ def _build_shop_service(settings: Settings):
             base_url=settings.backend_base_url,
             timeout_seconds=settings.request_timeout_seconds,
             auth_token=settings.backend_auth_token,
-            max_candidates=settings.max_candidates,
+            max_candidates=settings.discovery_pool_size,
         )
     if settings.rag_data_directory is not None:
         data_directory = settings.rag_data_directory.resolve()
         _validate_data_directory(data_directory)
-        return GeneratedNycShopToolService(data_directory, settings.max_candidates)
+        return GeneratedNycShopToolService(data_directory, settings.discovery_pool_size)
     return MockShopToolService()
 
 

@@ -51,6 +51,7 @@ async def test_mcp_domain_service_reuses_runtime_search_rag_route_and_verifier()
         )
 
         assert detail["shop_id"] == shop_ids[0]
+        assert search["retrieval_metadata"]["retrievalVersion"] == "p12-rag-v1"
         assert evidence["evidence"][0]["citations"]
         assert [stop["shop_id"] for stop in route["stops"]] == shop_ids
         assert validation["verification"]["valid"] is True

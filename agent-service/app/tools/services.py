@@ -29,6 +29,14 @@ class ShopToolService(Protocol):
 
 
 class RagService(Protocol):
+    async def rank_candidates(
+        self,
+        constraints: UserConstraints,
+        candidates: CandidateSet,
+        *,
+        limit: int,
+    ) -> CandidateSet: ...
+
     async def retrieve(self, constraints: UserConstraints, candidates: CandidateSet) -> EvidencePack: ...
 
 
@@ -455,6 +463,24 @@ class HttpShopToolService:
 
 class InMemoryRagService:
     """RAG contract adapter with explicit untrusted citations for workflow tests."""
+
+    async def rank_candidates(
+        self,
+        constraints: UserConstraints,
+        candidates: CandidateSet,
+        *,
+        limit: int,
+    ) -> CandidateSet:
+        return candidates.model_copy(
+            update={
+                "candidates": candidates.candidates[:limit],
+                "retrieval_metadata": {
+                    "retrievalVersion": "p12-rag-v1",
+                    "candidatePool": len(candidates.candidates),
+                    "finalCandidates": min(limit, len(candidates.candidates)),
+                },
+            }
+        )
 
     async def retrieve(self, constraints: UserConstraints, candidates: CandidateSet) -> EvidencePack:
         evidence = []
