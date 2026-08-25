@@ -93,7 +93,11 @@ class ShopCandidate(BaseModel):
     description: str | None = None
     price_level: int | None = Field(default=None, ge=1, le=4)
     comments: int | None = Field(default=None, ge=0)
+    local_review_count: int | None = Field(default=None, ge=0)
+    local_score: float | None = Field(default=None, ge=0, le=5)
     rating_count: int | None = Field(default=None, ge=0)
+    external_rating_count: int | None = Field(default=None, ge=0)
+    external_score: float | None = Field(default=None, ge=0, le=5)
     price_range_text: str | None = None
     phone: str | None = None
     website: str | None = None

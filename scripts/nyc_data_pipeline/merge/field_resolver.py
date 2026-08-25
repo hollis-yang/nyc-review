@@ -52,7 +52,15 @@ class FieldResolver:
         if status not in {"OPERATIONAL", "TEMPORARILY_CLOSED", "PERMANENTLY_CLOSED"}:
             status = "OPERATIONAL"
         rating = rating_tenths(value("rating"))
+        rating_provider = providers.get("rating")
         rating_count = count(value("ratingCount"))
+        rating_count_provider = providers.get("ratingCount")
+        external_rating = rating if rating_provider and rating_provider != "HMDP_GENERATED" else None
+        external_rating_count = (
+            rating_count
+            if rating_count_provider and rating_count_provider != "HMDP_GENERATED"
+            else None
+        )
         avg_price_cents = _positive_cents(value("avgPriceCents"))
         resolved_level = price_level(value("priceLevel")) or price_level(value("priceRangeText"))
         range_text = price_text(value("priceRangeText"), resolved_level or resolved.get("priceLevel"))
@@ -63,7 +71,11 @@ class FieldResolver:
             "website": website,
             "reservationUrl": reservation_url,
             "businessStatus": status,
-            "ratingCount": rating_count if rating_count is not None else int(resolved.get("comments") or 0),
+            "localReviewCount": int(resolved.get("localReviewCount", resolved.get("comments") or 0)),
+            "localScore": resolved.get("localScore", resolved.get("score")),
+            "ratingCount": external_rating_count,
+            "externalRatingCount": external_rating_count,
+            "externalScore": external_rating,
             "priceRangeText": range_text or ("$" * int(resolved.get("priceLevel") or 0) or None),
             "healthGrade": health_grade,
             "lastEnrichedAt": max(
@@ -71,8 +83,13 @@ class FieldResolver:
                 default="2026-08-24T00:00:00Z",
             ),
         })
-        if rating is not None:
-            resolved["score"] = rating
+        local_count = int(resolved.get("localReviewCount") or 0)
+        local_score = resolved.get("localScore")
+        resolved["score"] = (
+            local_score if local_count >= 5 and local_score is not None
+            else external_rating if external_rating is not None
+            else local_score
+        )
         if resolved_level is not None:
             resolved["priceLevel"] = resolved_level
         if avg_price_cents is not None:

@@ -37,12 +37,16 @@ META_KEYS = (
     "twitter:image:src",
 )
 SKIP_IMAGE_PATTERN = re.compile(
-    r"(?:pixel|spacer|favicon|sprite|tracking|analytics|(?:^|[-_/])logo(?:[-_.?/]|$)|"
+    r"(?:pixel|spacer|favicon|sprite|tracking|analytics|(?:^|[-_/])logo(?:mark)?(?:[-_.?/]|$)|"
     r"(?:^|[-_/])icon(?:[-_.?/]|$)|badge|avatar|payment|captcha)",
     re.IGNORECASE,
 )
 MAX_IMAGE_SAMPLE_BYTES = 524_288
 MAX_IMAGES_PER_SHOP = 3
+# P13 accepts useful card-sized merchant photos that were previously rejected
+# by the desktop-oriented 320×180 cutoff. Logo/icon/path filters still apply.
+MIN_IMAGE_WIDTH = 240
+MIN_IMAGE_HEIGHT = 150
 
 
 class _PageImageParser(HTMLParser):
@@ -110,7 +114,9 @@ def _official_image_candidates(html: str, page_url: str) -> list[dict[str, Any]]
         raw_candidates.extend((url, rank, None, None) for url in parser.meta.get(key, []))
     raw_candidates.extend((url, 6, None, None) for url in parser.link_images)
     for src, width, height, context in parser.page_images:
-        if width is not None and height is not None and (width < 320 or height < 180):
+        if width is not None and height is not None and (
+            width < MIN_IMAGE_WIDTH or height < MIN_IMAGE_HEIGHT
+        ):
             continue
         if SKIP_IMAGE_PATTERN.search(context):
             continue
@@ -244,7 +250,12 @@ def _validate_remote_image(candidate: dict[str, Any]) -> dict[str, Any] | None:
     width = width or candidate.get("declaredWidth")
     height = height or candidate.get("declaredHeight")
     if width is not None and height is not None:
-        if width < 320 or height < 180 or width / height > 5.0 or height / width > 3.0:
+        if (
+            width < MIN_IMAGE_WIDTH
+            or height < MIN_IMAGE_HEIGHT
+            or width / height > 6.0
+            or height / width > 4.0
+        ):
             return None
     return {
         **candidate,

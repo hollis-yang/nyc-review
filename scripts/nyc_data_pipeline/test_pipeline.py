@@ -4,12 +4,14 @@ import unittest
 
 from .images.image_matcher import ImageMatcher
 from .fetch_official_site_images import extract_official_image_urls
+from .fetch_wikimedia_search_images import _name_match
 from .fetch_official_site_deep import (
     _extra_image_candidates,
     _jsonld_prices,
     _price_stats,
     _target_links,
     _text_prices,
+    extract_visible_contact_fields,
 )
 from .matching import EntityMatcher
 from .merge.field_resolver import FieldResolver
@@ -37,6 +39,12 @@ class EntityMatcherTest(unittest.TestCase):
         )
         self.assertIsNone(result)
 
+    def test_wikimedia_name_search_requires_significant_merchant_tokens(self) -> None:
+        self.assertTrue(_name_match("Dino's Pizzeria", "File:Dino's Pizzeria New York dining room.jpg"))
+        self.assertTrue(_name_match("Eleven Madison Park", "File:Eleven Madison Park NYC exterior.jpg"))
+        self.assertFalse(_name_match("Dino's Pizzeria", "File:Dino restaurant logo.svg"))
+        self.assertFalse(_name_match("Eleven Madison Park", "File:Madison Square Park New York.jpg"))
+
 
 class OfficialSiteTest(unittest.TestCase):
     def test_extracts_official_page_images_in_priority_order(self) -> None:
@@ -63,6 +71,17 @@ class OfficialSiteTest(unittest.TestCase):
         '''
         result = extract_official_image_urls(html, "https://example.com/")
         self.assertEqual(["https://example.com/dining-room.jpg"], result)
+
+    def test_excludes_logomark_candidates(self) -> None:
+        html = '<img src="/assets/logomark.svg" width="1200" height="600">'
+        self.assertEqual([], extract_official_image_urls(html, "https://example.com/"))
+
+    def test_p13_accepts_card_sized_non_logo_merchant_photo(self) -> None:
+        html = '<img src="/counter.jpg" width="260" height="160" alt="Cafe counter">'
+        self.assertEqual(
+            ["https://example.com/counter.jpg"],
+            extract_official_image_urls(html, "https://example.com/"),
+        )
 
     def test_extracts_local_business_json_ld(self) -> None:
         html = '''<script type="application/ld+json">{
@@ -131,6 +150,21 @@ class OfficialSiteTest(unittest.TestCase):
         self.assertEqual("OFFICIAL_MENU_MEDIAN_BY_CATEGORY", stats["derivation"])
         self.assertGreater(stats["estimatedSpendCents"], stats["medianPriceCents"])
 
+    def test_extracts_visible_first_party_contact_hours_and_booking(self) -> None:
+        html = '''
+          <a href="tel:+12125550100">Call</a>
+          <a href="/reservations">Book a table</a>
+          <div>Monday 9:00 AM - 5:30 PM</div>
+          <div>Tuesday 10:00 AM to 6:00 PM</div>
+        '''
+        fields = extract_visible_contact_fields(html, "https://example.com/contact")
+        self.assertEqual("+12125550100", fields["telephone"])
+        self.assertEqual("https://example.com/reservations", fields["reservationUrl"])
+        hours = {item["dayOfWeek"]: item for item in fields["openingHoursSpecification"]}
+        self.assertEqual("09:00", hours["https://schema.org/Monday"]["opens"])
+        self.assertEqual("17:30", hours["https://schema.org/Monday"]["closes"])
+        self.assertEqual("18:00", hours["https://schema.org/Tuesday"]["closes"])
+
     def test_official_menu_stats_resolve_range_and_average_price(self) -> None:
         snapshot = {
             "metadata": {"fetchedAt": "2026-08-24T00:00:00Z", "datasetVersion": "2026-08-24"},
@@ -192,6 +226,9 @@ class ResolverTest(unittest.TestCase):
         result = FieldResolver(observations).resolve({"id": 1, "comments": 20, "priceLevel": 2})
         self.assertEqual(47, result.shop["score"])
         self.assertEqual(214, result.shop["ratingCount"])
+        self.assertEqual(47, result.shop["externalScore"])
+        self.assertEqual(214, result.shop["externalRatingCount"])
+        self.assertEqual(20, result.shop["localReviewCount"])
 
     def test_resolves_official_menu_average_price(self) -> None:
         observation = FieldObservation(
@@ -239,6 +276,22 @@ class ImageMatcherTest(unittest.TestCase):
         images, _ = ImageMatcher().assign(shops, fallback, merchant, "test-v1")
         self.assertEqual("OFFICIAL_SITE_IMAGE", images[0]["matchType"])
         self.assertEqual(1, len(images))
+
+    def test_snapshot_logomark_is_rejected_again_at_merge_time(self) -> None:
+        shops = [{"id": 1, "externalId": "osm:1", "name": "Cafe", "address": "1 Main St"}]
+        fallback = [{
+            "shopId": 1, "sortOrder": 1, "url": "https://images.example/fallback.jpg",
+            "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fallback.jpg",
+            "sourceName": "Wikimedia Commons", "licenseName": "CC BY 4.0",
+            "licenseUrl": "https://creativecommons.org/licenses/by/4.0/", "attribution": "A",
+        }]
+        merchant = {"records": [{
+            "externalId": "osm:1", "url": "https://cafe.example/assets/logomark.svg",
+            "sourceUrl": "https://cafe.example/", "sourceName": "Official website",
+            "matchType": "OFFICIAL_SITE_IMAGE", "usagePolicy": "REMOTE_REFERENCE",
+        }]}
+        images, _ = ImageMatcher().assign(shops, fallback, merchant, "test-v1")
+        self.assertEqual("CATEGORY_FALLBACK", images[0]["matchType"])
 
     def test_exact_licensed_image_precedes_fallback(self) -> None:
         shops = [{"id": 1, "externalId": "osm:1", "name": "Cafe", "address": "1 Main St"}]

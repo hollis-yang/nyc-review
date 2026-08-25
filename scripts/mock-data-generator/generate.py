@@ -19,6 +19,12 @@ from pathlib import Path
 from typing import Any
 
 from import_bundle import build_import_bundle
+from content_v2 import (
+    generate_realistic_note_comments,
+    generate_realistic_notes,
+    generate_realistic_review_threads,
+)
+from content_quality import build_content_quality_report, enforce_content_quality
 
 MOCK_DATA_VERSION = "nyc-mock-v2"
 HYBRID_DATA_VERSION = "nyc-hybrid-v1"
@@ -562,7 +568,11 @@ def generate_shops(
             "priceLevel": price_level,
             "sold": rng.randint(80, 25_000),
             "comments": 0,
+            "localReviewCount": 0,
             "score": score,
+            "localScore": None,
+            "externalScore": None,
+            "externalRatingCount": None,
             "timezone": "America/New_York",
             "sourceType": "MOCK",
             "externalId": f"mock:{shop_id}",
@@ -701,7 +711,11 @@ def generate_real_shops(
             "priceLevel": price_level,
             "sold": 0,
             "comments": 0,
+            "localReviewCount": 0,
             "score": None,
+            "localScore": None,
+            "externalScore": None,
+            "externalRatingCount": None,
             "timezone": "America/New_York",
             "sourceType": "OPENSTREETMAP",
             "externalId": record["externalId"],
@@ -1375,7 +1389,9 @@ def update_shop_comment_counts(shops: list[dict[str, Any]], reviews: Iterable[di
     for review in reviews:
         counts[review["shopId"]] = counts.get(review["shopId"], 0) + 1
     for shop in shops:
-        shop["comments"] = counts.get(shop["id"], 0)
+        count = counts.get(shop["id"], 0)
+        shop["comments"] = count
+        shop["localReviewCount"] = count
 
 
 def update_threaded_shop_review_stats(
@@ -1389,8 +1405,14 @@ def update_threaded_shop_review_stats(
         ratings.setdefault(review["shopId"], []).append(int(review["rating"]))
     for shop in shops:
         values = ratings.get(shop["id"], [])
-        shop["comments"] = len(values)
-        shop["score"] = round(sum(values) * 10 / len(values)) if values else None
+        local_count = len(values)
+        local_score = round(sum(values) * 10 / local_count) if values else None
+        shop["comments"] = local_count
+        shop["localReviewCount"] = local_count
+        shop["localScore"] = local_score
+        # Twenty local roots per merchant are enough for the product display;
+        # external aggregates remain separately available as source evidence.
+        shop["score"] = local_score if local_count >= 5 else shop.get("externalScore") or local_score
 
 
 def update_blog_comment_counts(blogs: list[dict[str, Any]], comments: Iterable[dict[str, Any]]) -> None:
@@ -1498,12 +1520,20 @@ def generate_dataset(
         real_shop_count = apply_real_shop_snapshot(shops, subcategories, source_snapshot)
     users = generate_users(rng, profile.users)
     reviews = (
-        generate_threaded_reviews(rng, profile.reviews, shops, users)
+        generate_realistic_review_threads(rng, profile.reviews, shops, users)
         if real_only
         else generate_reviews(rng, profile.reviews, shops, users)
     )
-    blogs = generate_blogs(rng, profile.blogs, shops, users)
-    blog_comments = generate_blog_comments(rng, profile.blog_comments, blogs, users)
+    blogs = (
+        generate_realistic_notes(rng, profile.blogs, shops, users)
+        if real_only
+        else generate_blogs(rng, profile.blogs, shops, users)
+    )
+    blog_comments = (
+        generate_realistic_note_comments(rng, profile.blog_comments, blogs, users)
+        if real_only
+        else generate_blog_comments(rng, profile.blog_comments, blogs, users)
+    )
     follows = generate_follows(rng, profile.follows, profile.users)
     vouchers, seckill_vouchers = generate_vouchers(
         rng,
@@ -1516,6 +1546,10 @@ def generate_dataset(
     else:
         update_shop_comment_counts(shops, reviews)
     update_blog_comment_counts(blogs, blog_comments)
+    content_quality = None
+    if real_only:
+        content_quality = build_content_quality_report(shops, reviews, blogs, blog_comments)
+        enforce_content_quality(content_quality, len(shops))
 
     datasets = {
         "shop_types.json": [
@@ -1537,6 +1571,8 @@ def generate_dataset(
     output.mkdir(parents=True, exist_ok=True)
     for filename, payload in datasets.items():
         write_json_atomic(output / filename, payload)
+    if content_quality is not None:
+        write_json_atomic(output / "content_quality_report.json", content_quality)
 
     dataset_files = {
         filename: {"sha256": sha256(output / filename)}
@@ -1573,6 +1609,9 @@ def generate_dataset(
             "syntheticBlogComments": len(blog_comments),
             "syntheticVouchers": len(vouchers),
             "reviewDepthCounts": dict(sorted(depth_counts.items())),
+            "contentGeneratorVersion": (
+                content_quality.get("generatorVersion") if content_quality else None
+            ),
             "illustrativeImages": len(shop_images),
             "sourceCounts": dict(sorted(source_counts.items())),
             "sourceDatasetId": source_metadata.get("datasetId"),
@@ -1599,9 +1638,13 @@ def generate_dataset(
         },
         "files": {
             filename: {"sha256": sha256(output / filename)}
-            for filename in sorted(
-                [*datasets, "mysql_import.sql", "redis_seed.resp", "import_manifest.json"]
-            )
+            for filename in sorted([
+                *datasets,
+                "mysql_import.sql",
+                "redis_seed.resp",
+                "import_manifest.json",
+                *(["content_quality_report.json"] if content_quality is not None else []),
+            ])
         },
         "importBundle": import_bundle,
     }

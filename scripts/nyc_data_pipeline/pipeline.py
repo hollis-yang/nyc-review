@@ -27,6 +27,11 @@ PHASE_CONFIG = {
         "dataGeneration": "v4",
         "profile": "p11-5",
     },
+    "p13": {
+        "pipelineVersion": "p13-v2",
+        "dataGeneration": "v5",
+        "profile": "p13",
+    },
 }
 BASE_DATASET_FILES = (
     "shop_types.json", "shop_subcategories.json", "shops.json", "shop_images.json",
@@ -44,6 +49,7 @@ def enrich_bundle(
     fsq_snapshot_path: Path | None = None,
     official_site_snapshot_path: Path | None = None,
     merchant_image_snapshot_path: Path | None = None,
+    wikimedia_search_image_snapshot_path: Path | None = None,
     official_site_image_snapshot_path: Path | None = None,
     pilot_per_type: int | None = None,
     phase: str = "p10-p11",
@@ -61,10 +67,12 @@ def enrich_bundle(
     fsq_snapshot = load_json(fsq_snapshot_path, default={"records": []})
     official_snapshot = load_json(official_site_snapshot_path, default={"records": []})
     merchant_images = load_json(merchant_image_snapshot_path, default={"records": []})
+    wikimedia_search_images = load_json(wikimedia_search_image_snapshot_path, default={"records": []})
     official_site_images = load_json(official_site_image_snapshot_path, default={"records": []})
     combined_merchant_images = {
         "records": [
             *(merchant_images.get("records") or []),
+            *(wikimedia_search_images.get("records") or []),
             *(official_site_images.get("records") or []),
         ],
     }
@@ -84,6 +92,7 @@ def enrich_bundle(
     for optional_path in (
         dohmh_snapshot_path, fsq_snapshot_path, official_site_snapshot_path,
         merchant_image_snapshot_path, official_site_image_snapshot_path,
+        wikimedia_search_image_snapshot_path,
     ):
         if optional_path is not None:
             source_hashes.append(sha256_file(optional_path))
@@ -138,9 +147,28 @@ def enrich_bundle(
     datasets["image_credits.json"] = image_credits
     _replace_data_version(datasets, data_version)
 
+    module_path = Path(__file__).resolve().parents[1] / "mock-data-generator"
+    sys.path.insert(0, str(module_path))
+    try:
+        from content_quality import build_content_quality_report, enforce_content_quality
+        content_quality = build_content_quality_report(
+            resolved_shops,
+            datasets["shop_reviews.json"],
+            datasets["blogs.json"],
+            datasets["blog_comments.json"],
+        )
+        enforce_content_quality(content_quality, len(resolved_shops))
+    finally:
+        sys.path.remove(str(module_path))
+    missing_field_queue = _missing_field_queue(
+        resolved_shops, resolved_provider_maps, assigned_images, data_version,
+    )
+
     output.mkdir(parents=True, exist_ok=True)
     for filename, payload in datasets.items():
         write_json_atomic(output / filename, payload)
+    write_json_atomic(output / "content_quality_report.json", content_quality)
+    write_json_atomic(output / "p13_missing_field_queue.json", missing_field_queue)
     dataset_hash, dataset_files = dataset_sha256(output, list(datasets))
 
     profile_prefix = str(phase_config["profile"])
@@ -176,6 +204,7 @@ def enrich_bundle(
             "syntheticBlogComments": len(datasets["blog_comments.json"]),
             "syntheticVouchers": len(datasets["vouchers.json"]),
             "reviewDepthCounts": dict(sorted(depth_counts.items())),
+            "contentGeneratorVersion": content_quality["generatorVersion"],
             "illustrativeImages": sum(1 for image in assigned_images if image["matchType"] == "CATEGORY_FALLBACK"),
             "enrichmentProviders": sorted({item["provider"] for item in matches}),
             "enrichmentPipelineVersion": pipeline_version,
@@ -186,12 +215,14 @@ def enrich_bundle(
             "sourceSnapshots": _source_manifests(
                 osm_snapshot_path, dohmh_snapshot_path, fsq_snapshot_path,
                 official_site_snapshot_path, merchant_image_snapshot_path,
-                official_site_image_snapshot_path,
+                official_site_image_snapshot_path, wikimedia_search_image_snapshot_path,
             ),
         },
         "files": {
             **dataset_files,
             "enrichment_report.json": {"sha256": sha256_file(output / "enrichment_report.json")},
+            "content_quality_report.json": {"sha256": sha256_file(output / "content_quality_report.json")},
+            "p13_missing_field_queue.json": {"sha256": sha256_file(output / "p13_missing_field_queue.json")},
             "mysql_import.sql": {"sha256": sha256_file(output / "mysql_import.sql")},
             "redis_seed.resp": {"sha256": sha256_file(output / "redis_seed.resp")},
             "import_manifest.json": {"sha256": sha256_file(output / "import_manifest.json")},
@@ -376,6 +407,24 @@ def _report(
             "externalPriceCoverageAboveP11Baseline": coverage["price"]["count"] > 152,
             "officialMenuDerivedAvgPriceNonZero": coverage["avgPrice"]["count"] > 0,
         })
+    stretch_targets: dict[str, bool] = {}
+    if phase == "p13":
+        quality_gates.update({
+            "merchantSpecificImageCoverageAboveP11_5": coverage["merchantSpecificImage"]["count"] > 1871,
+            "phoneCoverageAboveP11_5": coverage["phone"]["count"] > 3290,
+            "hoursCoverageAboveP11_5": coverage["businessHours"]["count"] > 2837,
+            "externalOrMenuPriceCoverageAboveP11_5": len(fields["price"] | fields["avgPrice"]) > 918,
+            "officialMenuPriceCoverageAboveP11_5": coverage["avgPrice"]["count"] > 844,
+            "reservationCoverageAboveP11_5": coverage["reservationUrl"]["count"] > 108,
+        })
+        stretch_targets = {
+            "merchantSpecificImageCoverage50Pct": coverage["merchantSpecificImage"]["percentage"] >= 50,
+            "phoneCoverage75Pct": coverage["phone"]["percentage"] >= 75,
+            "hoursCoverage70Pct": coverage["businessHours"]["percentage"] >= 70,
+            "externalOrMenuPriceCoverage30Pct": (
+                len(fields["price"] | fields["avgPrice"]) * 100 / total >= 30 if total else False
+            ),
+        }
     return {
         "dataVersion": data_version,
         "datasetSha256": dataset_hash,
@@ -384,6 +433,12 @@ def _report(
         "displayFallbackCoverage": {"count": display_count, "percentage": round(display_count * 100 / total, 2) if total else 0},
         "qualityGates": quality_gates,
         "qualityGateStatus": "passed" if all(quality_gates.values()) else "failed",
+        "stretchTargets": stretch_targets,
+        "stretchTargetStatus": (
+            "passed" if stretch_targets and all(stretch_targets.values())
+            else "not-met" if stretch_targets
+            else "not-applicable"
+        ),
         "imageManifest": build_image_manifest(images),
         "byCategory": {key: dict(value) for key, value in sorted(by_category.items())},
         "byBorough": {key: dict(value) for key, value in sorted(by_borough.items())},
@@ -392,6 +447,60 @@ def _report(
             "Coverage counts only externally observed fields; deterministic platform ratings and price estimates are excluded.",
             "Low match scores remain internal and are never rendered as confidence or source labels in the product UI.",
         ],
+    }
+
+
+def _missing_field_queue(
+    shops: list[dict[str, Any]],
+    providers: dict[int, dict[str, str]],
+    images: list[dict[str, Any]],
+    data_version: str,
+) -> dict[str, Any]:
+    """Prioritize bounded free-source work without inventing field matches."""
+
+    merchant_image_ids = {
+        int(image["shopId"])
+        for image in images
+        if image.get("matchType") != "CATEGORY_FALLBACK"
+    }
+    weights = {
+        "merchantImage": 5,
+        "businessHours": 4,
+        "phone": 3,
+        "avgPriceCents": 3,
+        "website": 2,
+        "reservationUrl": 1,
+    }
+    records: list[dict[str, Any]] = []
+    for shop in shops:
+        shop_id = int(shop["id"])
+        resolved = providers.get(shop_id, {})
+        missing: list[str] = []
+        if shop_id not in merchant_image_ids:
+            missing.append("merchantImage")
+        if not ({"businessHours", "openingHours"} & set(resolved)):
+            missing.append("businessHours")
+        for field in ("phone", "avgPriceCents", "website", "reservationUrl"):
+            if field not in resolved:
+                missing.append(field)
+        if not missing:
+            continue
+        records.append({
+            "shopId": shop_id,
+            "name": shop["name"],
+            "typeId": shop["typeId"],
+            "borough": shop.get("borough"),
+            "website": shop.get("website"),
+            "missingFields": missing,
+            "priority": sum(weights[field] for field in missing),
+            "dataVersion": data_version,
+        })
+    records.sort(key=lambda item: (-int(item["priority"]), int(item["shopId"])))
+    return {
+        "dataVersion": data_version,
+        "policy": "official-site-osm-wikidata-wikimedia-nyc-open-data-no-paid-api",
+        "records": records,
+        "counts": dict(sorted(Counter(field for item in records for field in item["missingFields"]).items())),
     }
 
 
@@ -420,6 +529,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fsq-os", type=Path)
     parser.add_argument("--official-sites", type=Path)
     parser.add_argument("--merchant-images", type=Path)
+    parser.add_argument("--wikimedia-search-images", type=Path)
     parser.add_argument("--official-site-images", type=Path)
     parser.add_argument("--pilot-per-type", type=int)
     parser.add_argument("--phase", choices=sorted(PHASE_CONFIG), default="p10-p11")
@@ -434,6 +544,9 @@ def main() -> None:
         fsq_snapshot_path=args.fsq_os.resolve() if args.fsq_os else None,
         official_site_snapshot_path=args.official_sites.resolve() if args.official_sites else None,
         merchant_image_snapshot_path=args.merchant_images.resolve() if args.merchant_images else None,
+        wikimedia_search_image_snapshot_path=(
+            args.wikimedia_search_images.resolve() if args.wikimedia_search_images else None
+        ),
         official_site_image_snapshot_path=args.official_site_images.resolve() if args.official_site_images else None,
         pilot_per_type=args.pilot_per_type,
         phase=args.phase,

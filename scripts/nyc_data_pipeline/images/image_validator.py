@@ -1,16 +1,25 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..providers.official_site import is_safe_public_url
 
 OPEN_LICENSE_PREFIXES = ("CC0", "CC BY", "CC-BY", "PUBLIC DOMAIN")
+NON_CONTENT_IMAGE_PATTERN = re.compile(
+    r"(?:pixel|spacer|favicon|sprite|tracking|analytics|"
+    r"(?:^|[-_/])logo(?:mark)?(?:[-_.?/]|$)|"
+    r"(?:^|[-_/])icon(?:[-_.?/]|$)|badge|avatar|payment|captcha)",
+    re.IGNORECASE,
+)
 
 
 def valid_image(record: dict[str, Any], *, merchant_specific: bool) -> bool:
     url = str(record.get("url") or record.get("displayUrl") or "")
     source_url = str(record.get("sourceUrl") or record.get("sourcePageUrl") or "")
     if not is_safe_public_url(url) or not is_safe_public_url(source_url):
+        return False
+    if NON_CONTENT_IMAGE_PATTERN.search(url):
         return False
     if merchant_specific:
         official_reference = (

@@ -94,14 +94,22 @@ public class Shop implements Serializable {
     private Integer sold;
 
     /**
-     * 评论数量
+     * Legacy local root-review count. New clients should use
+     * {@link #localReviewCount}; both values are kept equal by imports and
+     * live review writes.
      */
     private Integer comments;
+
+    /** Number of depth-zero reviews that can be browsed through /shop-review. */
+    private Integer localReviewCount;
 
     /**
      * 评分，1~5分，乘10保存，避免小数
      */
     private Integer score;
+
+    /** Local depth-zero review average, multiplied by ten. */
+    private Integer localScore;
 
     /**
      * 营业时间，例如 10:00-22:00
@@ -116,7 +124,17 @@ public class Shop implements Serializable {
 
     private String businessStatus;
 
+    /**
+     * Legacy alias for externalRatingCount. It must never be presented as the
+     * number of locally browsable reviews.
+     */
     private Integer ratingCount;
+
+    /** Source-observed aggregate rating, multiplied by ten. */
+    private Integer externalScore;
+
+    /** Source-observed aggregate rating/review count; content is not local. */
+    private Integer externalRatingCount;
 
     private String priceRangeText;
 

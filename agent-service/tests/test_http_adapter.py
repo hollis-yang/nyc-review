@@ -22,7 +22,11 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
             "priceLevel": 2,
             "score": 4.7,
             "comments": 12,
+            "localReviewCount": 12,
+            "localScore": 4.6,
             "ratingCount": 214,
+            "externalRatingCount": 214,
+            "externalScore": 4.7,
             "priceRangeText": "$$",
             "phone": "+1 212 555 0100",
             "website": "https://fixture.example",
@@ -59,6 +63,10 @@ def test_http_adapter_preserves_spring_nyc_enrichment_and_data_version():
     assert candidate.external_id == "43nn-pn8j:123"
     assert candidate.synthetic_fields == ["reviews", "prices"]
     assert candidate.rating_count == 214
+    assert candidate.local_review_count == 12
+    assert candidate.local_score == 4.6
+    assert candidate.external_rating_count == 214
+    assert candidate.external_score == 4.7
     assert candidate.price_range_text == "$$"
     assert candidate.website == "https://fixture.example"
     assert candidate.business_status == "OPERATIONAL"

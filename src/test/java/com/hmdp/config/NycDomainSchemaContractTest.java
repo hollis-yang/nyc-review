@@ -70,6 +70,10 @@ class NycDomainSchemaContractTest {
                 "syntheticFields",
                 "dataVersion",
                 "ratingCount",
+                "localReviewCount",
+                "localScore",
+                "externalRatingCount",
+                "externalScore",
                 "priceRangeText",
                 "businessStatus",
                 "healthGrade"
@@ -101,6 +105,26 @@ class NycDomainSchemaContractTest {
         assertNotNull(ShopImage.class.getDeclaredField("matchType"));
         assertNotNull(ShopImage.class.getDeclaredField("isPrimary"));
         assertNotNull(ShopImage.class.getDeclaredField("availabilityStatus"));
+    }
+
+    @Test
+    void p13MigrationSeparatesLocalAndExternalReviewAggregates() throws Exception {
+        try (InputStream input = getClass().getResourceAsStream("/db/p12_p13_data_quality.sql")) {
+            assertNotNull(input);
+            String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(migration.contains("COLUMN_NAME='local_review_count'"));
+            assertTrue(migration.contains("COLUMN_NAME='local_score'"));
+            assertTrue(migration.contains("COLUMN_NAME='external_score'"));
+            assertTrue(migration.contains("COLUMN_NAME='external_rating_count'"));
+            assertTrue(migration.contains("`provider` <> 'HMDP_GENERATED'"));
+            assertTrue(migration.contains("`parent_id` IS NULL OR `parent_id` = 0"));
+        }
+
+        assertNotNull(Shop.class.getDeclaredField("localReviewCount"));
+        assertNotNull(Shop.class.getDeclaredField("localScore"));
+        assertNotNull(Shop.class.getDeclaredField("externalScore"));
+        assertNotNull(Shop.class.getDeclaredField("externalRatingCount"));
     }
 
     @Test

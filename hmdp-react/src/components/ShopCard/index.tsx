@@ -10,7 +10,9 @@ export interface ShopData {
   images: string;
   score?: number | null;
   comments: number;
+  localReviewCount?: number | null;
   ratingCount?: number | null;
+  externalRatingCount?: number | null;
   area: string;
   distance?: number;
   avgPrice?: number | null;
@@ -29,7 +31,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const imgSrc = shop.images ? shop.images.split(',')[0] : '';
-  const displayRatingCount = shop.ratingCount ?? shop.comments;
+  const displayReviewCount = shop.localReviewCount ?? shop.comments;
 
   const formatDistance = (d: number) => {
     if (d < 1000) return d.toFixed(1) + 'm';
@@ -64,7 +66,7 @@ export default function ShopCard({ shop }: ShopCardProps) {
             <span style={{ color: '#999', fontSize: 11 }}>{t('shopCard.ratingUnavailable')}</span>
           )}
           <span style={{ color: '#999', fontSize: 10, marginLeft: 4 }}>
-            {displayRatingCount}{t('shopCard.comments')}
+            {displayReviewCount}{t('shopCard.comments')}
           </span>
         </div>
         <div className={styles.area}>

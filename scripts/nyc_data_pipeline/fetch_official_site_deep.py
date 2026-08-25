@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from .fetch_official_site_images import (
     MAX_IMAGES_PER_SHOP,
@@ -41,17 +41,29 @@ from .providers.official_site import (
 from .snapshots import write_json_atomic
 
 TARGET_PATTERN = re.compile(
-    r"(?:menu|gallery|galleries|photo|locations?|visit|services?|pricing|price-list|our-work)",
+    r"(?:menu|gallery|galleries|photo|locations?|visit|services?|pricing|price-list|our-work|about|contact|hours|reserv|book|events?|story|team|space|food|drink|classes|treatments?|portfolio|studio|facility)",
     re.IGNORECASE,
 )
 SKIP_PAGE_PATTERN = re.compile(
-    r"(?:login|sign-in|account|cart|checkout|privacy|terms|career|press|blog|news|event)",
+    r"(?:login|sign-in|account|cart|checkout|privacy|terms|career|press|blog|news)",
     re.IGNORECASE,
 )
 CSS_URL_PATTERN = re.compile(r"url\(\s*['\"]?([^)'\"]+)", re.IGNORECASE)
 PRICE_PATTERN = re.compile(r"(?<![\w$])\$\s*(\d{1,3}(?:\.\d{1,2})?)")
-MAX_DEEP_PAGES = 4
+MAX_DEEP_PAGES = 8
 MAX_PDF_BYTES = 6_000_000
+DAY_NAMES = {
+    "mon": "Monday", "monday": "Monday", "tue": "Tuesday", "tues": "Tuesday", "tuesday": "Tuesday",
+    "wed": "Wednesday", "wednesday": "Wednesday", "thu": "Thursday", "thur": "Thursday",
+    "thurs": "Thursday", "thursday": "Thursday", "fri": "Friday", "friday": "Friday",
+    "sat": "Saturday", "saturday": "Saturday", "sun": "Sunday", "sunday": "Sunday",
+}
+DAY_PATTERN = re.compile(r"\b(" + "|".join(sorted(DAY_NAMES, key=len, reverse=True)) + r")\b", re.I)
+TIME_RANGE_PATTERN = re.compile(
+    r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|to)\s*"
+    r"(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b",
+    re.I,
+)
 
 
 class _DeepPageParser(HTMLParser):
@@ -165,7 +177,7 @@ def _target_links(html: str, page_url: str, root_url: str) -> tuple[list[str], l
         if parsed.path.lower().endswith(".pdf"):
             pdfs.append(candidate)
             continue
-        priority = 0 if re.search(r"menu|pricing|price-list|services?", label, re.I) else 1
+        priority = 0 if re.search(r"menu|pricing|price-list|services?|contact|hours|reserv|book", label, re.I) else 1
         pages.append((priority, candidate))
     pages.sort(key=lambda item: (item[0], item[1]))
     return [url for _, url in pages], pdfs
@@ -257,6 +269,71 @@ def _jsonld_prices(documents: list[Any]) -> list[float]:
 
 def _text_prices(text: str) -> list[float]:
     return [float(value) for value in PRICE_PATTERN.findall(text) if 2 <= float(value) <= 500]
+
+
+def _clock(hour_text: str, minute_text: str | None, meridiem: str | None) -> str | None:
+    hour = int(hour_text)
+    minute = int(minute_text or 0)
+    token = re.sub(r"[^apm]", "", str(meridiem or "").lower())
+    if token.startswith("p") and hour < 12:
+        hour += 12
+    elif token.startswith("a") and hour == 12:
+        hour = 0
+    if not token and hour == 24:
+        hour = 0
+    if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def extract_visible_contact_fields(html: str, page_url: str) -> dict[str, Any]:
+    """Extract bounded first-party facts that are often absent from JSON-LD."""
+
+    parser = _DeepPageParser()
+    parser.feed(html[:MAX_RESPONSE_BYTES])
+    phone = None
+    reservation_url = None
+    for href, label in parser.anchors:
+        raw = html_module.unescape(href.strip())
+        if raw.lower().startswith("tel:") and phone is None:
+            candidate = " ".join(unquote(raw[4:]).split()).strip()
+            if 7 <= len([character for character in candidate if character.isdigit()]) <= 15:
+                phone = candidate[:64]
+            continue
+        candidate_url = urljoin(page_url, raw)
+        if (
+            reservation_url is None
+            and is_safe_public_url(candidate_url)
+            and _same_site(page_url, candidate_url)
+            and re.search(r"reserv|book|appointment", f"{candidate_url} {label}", re.I)
+        ):
+            reservation_url = candidate_url
+
+    hours_by_day: dict[str, dict[str, Any]] = {}
+    for text in parser.text:
+        compact = " ".join(text.split())
+        if len(compact) > 180:
+            continue
+        days = [DAY_NAMES[match.group(1).lower()] for match in DAY_PATTERN.finditer(compact)]
+        time_match = TIME_RANGE_PATTERN.search(compact)
+        if not days or time_match is None:
+            continue
+        opens = _clock(time_match.group(1), time_match.group(2), time_match.group(3))
+        closes = _clock(time_match.group(4), time_match.group(5), time_match.group(6))
+        if opens is None or closes is None:
+            continue
+        for day in days:
+            hours_by_day[day] = {
+                "@type": "OpeningHoursSpecification",
+                "dayOfWeek": f"https://schema.org/{day}",
+                "opens": opens,
+                "closes": closes,
+            }
+    return {
+        "telephone": phone,
+        "reservationUrl": reservation_url,
+        "openingHoursSpecification": list(hours_by_day.values()),
+    }
 
 
 def _pdf_text(raw: bytes) -> str:
@@ -358,7 +435,10 @@ def _crawl_shop(
     if not page_links:
         root = urlparse(final_url)
         base = f"{root.scheme}://{root.netloc}"
-        page_links.extend([f"{base}/menu", f"{base}/gallery", f"{base}/locations"])
+        page_links.extend([
+            f"{base}/menu", f"{base}/gallery", f"{base}/locations",
+            f"{base}/contact", f"{base}/about", f"{base}/hours",
+        ])
     page_links = [url for url in dict.fromkeys(page_links) if url != final_url][:MAX_DEEP_PAGES]
     pdf_links = list(dict.fromkeys(pdf_links))[:1]
 
@@ -368,6 +448,7 @@ def _crawl_shop(
     prices = _jsonld_prices(extract_jsonld_documents(html))
     price_pages: list[str] = [final_url] if prices else []
     local_business = extract_local_business_jsonld(html)
+    visible_fields = extract_visible_contact_fields(html, final_url)
     pages_crawled = 1
 
     for page_url in page_links:
@@ -389,6 +470,18 @@ def _crawl_shop(
             prices.extend(page_prices)
             price_pages.append(page_final_url)
         local_business.extend(extract_local_business_jsonld(page_html))
+        page_visible = extract_visible_contact_fields(page_html, page_final_url)
+        if not visible_fields.get("telephone") and page_visible.get("telephone"):
+            visible_fields["telephone"] = page_visible["telephone"]
+        if not visible_fields.get("reservationUrl") and page_visible.get("reservationUrl"):
+            visible_fields["reservationUrl"] = page_visible["reservationUrl"]
+        existing_hours = {
+            str(item.get("dayOfWeek")): item
+            for item in visible_fields.get("openingHoursSpecification") or []
+        }
+        for item in page_visible.get("openingHoursSpecification") or []:
+            existing_hours[str(item.get("dayOfWeek"))] = item
+        visible_fields["openingHoursSpecification"] = list(existing_hours.values())
 
         if len(image_records) < MAX_IMAGES_PER_SHOP:
             candidates = [*_official_image_candidates(page_html, page_final_url), *_extra_image_candidates(page_html, page_final_url)]
@@ -423,6 +516,17 @@ def _crawl_shop(
     if menu_stats:
         merged = dict(merged or {"@type": "LocalBusiness", "name": shop.get("name"), "url": final_url})
         merged["menuPriceStats"] = menu_stats
+    if any(visible_fields.values()):
+        merged = dict(merged or {"@type": "LocalBusiness", "name": shop.get("name"), "url": final_url})
+        if not merged.get("telephone") and visible_fields.get("telephone"):
+            merged["telephone"] = visible_fields["telephone"]
+        if not (merged.get("openingHours") or merged.get("openingHoursSpecification")) and visible_fields.get("openingHoursSpecification"):
+            merged["openingHoursSpecification"] = visible_fields["openingHoursSpecification"]
+        if visible_fields.get("reservationUrl") and not merged.get("potentialAction"):
+            merged["potentialAction"] = {
+                "@type": "ReserveAction",
+                "target": {"urlTemplate": visible_fields["reservationUrl"]},
+            }
     site_record = base_site
     if merged:
         site_record = {
@@ -494,7 +598,7 @@ def fetch(
                 "shopsWithImages": shops_with_images,
                 "recordCount": len(image_records),
                 "maxImagesPerShop": MAX_IMAGES_PER_SHOP,
-                "matchPolicy": "homepage-plus-same-site-gallery-location-menu-sitemap-srcset-css",
+                "matchPolicy": "homepage-plus-same-site-gallery-location-menu-contact-about-hours-reservation-sitemap-srcset-css",
                 "usagePolicy": "REMOTE_REFERENCE",
             },
             "records": image_records,

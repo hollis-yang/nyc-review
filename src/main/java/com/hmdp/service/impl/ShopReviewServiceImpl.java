@@ -171,11 +171,16 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
     }
 
     boolean updateShopReviewAggregate(Long shopId, int ratingScore) {
+        String currentCount = "COALESCE(local_review_count, comments, 0)";
+        String currentScore = "COALESCE(local_score, score, 0)";
+        String updatedScore = "ROUND((" + currentScore + " * " + currentCount + " + "
+                + ratingScore + ") / (" + currentCount + " + 1))";
+        String updatedCount = currentCount + " + 1";
         return shopService.update()
-                .setSql("score = ROUND((COALESCE(score, 0) * COALESCE(comments, 0) + "
-                        + ratingScore + ") / (COALESCE(comments, 0) + 1))")
-                .setSql("rating_count = GREATEST(COALESCE(rating_count, 0), COALESCE(comments, 0)) + 1")
-                .setSql("comments = COALESCE(comments, 0) + 1")
+                .setSql("score = " + updatedScore)
+                .setSql("local_score = " + updatedScore)
+                .setSql("comments = " + updatedCount)
+                .setSql("local_review_count = " + updatedCount)
                 .eq("id", shopId)
                 .update();
     }

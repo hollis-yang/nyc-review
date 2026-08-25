@@ -31,7 +31,9 @@ interface ShopInfo {
   images: string[];
   score?: number | null;
   comments: number;
+  localReviewCount?: number | null;
   ratingCount?: number | null;
+  externalRatingCount?: number | null;
   address: string;
   openHours?: string;
   avgPrice?: number;
@@ -185,7 +187,7 @@ export default function ShopDetail() {
   const imageAssets: ShopImageAsset[] = shop.imageAssets?.length
     ? [...shop.imageAssets].sort((first, second) => (first.displayOrder ?? first.sortOrder ?? 0) - (second.displayOrder ?? second.sortOrder ?? 0))
     : shop.images.map((displayUrl, index) => ({ displayUrl, sortOrder: index, imageType: 'LEGACY' }));
-  const displayRatingCount = shop.ratingCount ?? shop.comments;
+  const displayReviewCount = shop.localReviewCount ?? shop.comments;
   const operational = !shop.businessStatus || shop.businessStatus === 'OPERATIONAL';
 
   return (
@@ -216,7 +218,7 @@ export default function ShopDetail() {
               <span style={{ color: '#999', fontSize: 12 }}>{t('shopCard.ratingUnavailable')}</span>
             )}
             <span style={{ color: '#999', fontSize: 11, marginLeft: 4 }}>
-              {displayRatingCount}{t('shopCard.comments')}
+              {displayReviewCount}{t('shopCard.comments')}
             </span>
             {shop.avgPrice != null && (
               <span style={{ color: '#666', fontSize: 11, marginLeft: 6 }}>
@@ -314,7 +316,7 @@ export default function ShopDetail() {
 
         <div className={styles.comments}>
           <div className={styles.commentsHead}>
-            <div>{t('shopDetail.reviews')} <span>（{reviewTotal || shop.comments}）</span></div>
+            <div>{t('shopDetail.reviews')} <span>（{reviewTotal}）</span></div>
             {reviewTotal > 3 && (
               <div style={{ cursor: 'pointer' }} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</div>
             )}

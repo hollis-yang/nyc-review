@@ -22,7 +22,7 @@ public interface ShopMapper extends BaseMapper<Shop> {
             SELECT
                 shop.*,
                 (
-                    LN(1 + GREATEST(COALESCE(shop.rating_count, 0), COALESCE(shop.comments, 0))) * 20
+                    LN(1 + COALESCE(shop.local_review_count, shop.comments, 0)) * 20
                     + LN(1 + COALESCE(blog_activity.likes, 0)) * 10
                     + LN(1 + COALESCE(shop.sold, 0)) * 5
                     + COALESCE(favorite_activity.favorites, 0) * 5

@@ -10,6 +10,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from content_quality import build_content_quality_report, enforce_content_quality
+
 REQUIRED_BOROUGHS = {"Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"}
 PUBLIC_SOURCE = "NYC_OPEN_DATA"
 REAL_SOURCES = {"NYC_OPEN_DATA", "OPENSTREETMAP"}
@@ -65,6 +67,8 @@ def validate_dataset(directory: Path) -> dict[str, Any]:
     images = _read_list(image_path) if image_path.is_file() else []
     observation_path = directory / "shop_field_observations.json"
     observations = _read_list(observation_path) if observation_path.is_file() else []
+    quality_path = directory / "content_quality_report.json"
+    stored_quality = _read_object(quality_path) if quality_path.is_file() else None
     shop_ids = [int(shop["id"]) for shop in shops]
     if len(shop_ids) != len(set(shop_ids)):
         raise ValueError("shops.json contains duplicate shop IDs")
@@ -111,6 +115,7 @@ def validate_dataset(directory: Path) -> dict[str, Any]:
             observations,
             source_counts,
             shop_id_set,
+            stored_quality,
         )
     return {
         "dataVersion": manifest.get("dataVersion"),
@@ -139,6 +144,7 @@ def _validate_real_only(
     observations: list[dict[str, Any]],
     source_counts: Counter[str],
     shop_id_set: set[int],
+    stored_quality: dict[str, Any] | None,
 ) -> None:
     provenance = manifest.get("provenance") or {}
     data_version = str(manifest.get("dataVersion") or "")
@@ -147,10 +153,10 @@ def _validate_real_only(
     if not isinstance(seed, int) or len(snapshot_sha256) != 64:
         raise ValueError("REAL_ONLY manifest must retain its source snapshot SHA-256 and seed")
     profile_name = str(manifest.get("profile") or "")
-    if data_version.startswith(("nyc-real-v2-", "nyc-real-v3-", "nyc-real-v4-")):
+    if data_version.startswith(("nyc-real-v2-", "nyc-real-v3-", "nyc-real-v4-", "nyc-real-v5-")):
         enrichment_sha256 = str(provenance.get("enrichmentVersionSha256") or "")
         generation = next(
-            value for value in ("v2", "v3", "v4")
+            value for value in ("v2", "v3", "v4", "v5")
             if data_version.startswith(f"nyc-real-{value}-")
         )
         expected_version = f"nyc-real-{generation}-{enrichment_sha256[:8]}-m20260824"
@@ -216,11 +222,21 @@ def _validate_real_only(
         raise ValueError("every real shop must have seven daily business-hour rows")
 
     _validate_images(images, shop_id_set, provenance, shops, data_version)
-    if profile_name in {"p10-p11-full", "p11-5-full"}:
+    if profile_name in {"p10-p11-full", "p11-5-full", "p13-full"}:
         _validate_p10_p11(images, observations, shop_id_set)
-    if profile_name == "p11-5-full":
+    if profile_name in {"p11-5-full", "p13-full"}:
         _validate_p11_5(images, observations, shops)
+    if profile_name == "p13-full":
+        _validate_p13(images, observations)
     depth_counts, root_count = _validate_review_threads(reviews, shop_id_set, shops)
+    computed_quality = build_content_quality_report(shops, reviews, blogs, blog_comments)
+    enforce_content_quality(computed_quality, len(shops))
+    if stored_quality is None:
+        raise ValueError("REAL_ONLY dataset is missing content_quality_report.json")
+    if stored_quality != computed_quality:
+        raise ValueError("content_quality_report.json does not match generated content")
+    if provenance.get("contentGeneratorVersion") != computed_quality.get("generatorVersion"):
+        raise ValueError("manifest contentGeneratorVersion does not match quality report")
     _validate_synthetic_content(
         blogs,
         blog_comments,
@@ -451,6 +467,41 @@ def _validate_p11_5(
     failed = [label for label, passed in checks.items() if not passed]
     if failed:
         raise ValueError(f"P11.5 quality gates failed: {', '.join(failed)}")
+
+
+def _validate_p13(
+    images: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+) -> None:
+    merchant_shops = {
+        int(image["shopId"])
+        for image in images
+        if image.get("matchType") != "CATEGORY_FALLBACK"
+    }
+    external = [
+        item for item in observations
+        if item.get("provider") in {
+            "OPENSTREETMAP", "OFFICIAL_SITE", "FSQ_OS_PLACES", "NYC_DOHMH",
+        }
+    ]
+    by_field = {
+        field: {int(item["shopId"]) for item in external if item.get("fieldName") == field}
+        for field in (
+            "phone", "businessHours", "openingHours", "priceLevel", "priceRangeText",
+            "avgPriceCents", "reservationUrl",
+        )
+    }
+    checks = {
+        "merchant-specific images above P11.5": len(merchant_shops) > 1871,
+        "phone above P11.5": len(by_field["phone"]) > 3290,
+        "hours above P11.5": len(by_field["businessHours"] | by_field["openingHours"]) > 2837,
+        "price above P11.5": len(by_field["priceLevel"] | by_field["priceRangeText"] | by_field["avgPriceCents"]) > 918,
+        "official menu price above P11.5": len(by_field["avgPriceCents"]) > 844,
+        "reservation above P11.5": len(by_field["reservationUrl"]) > 108,
+    }
+    failed = [label for label, passed in checks.items() if not passed]
+    if failed:
+        raise ValueError(f"P13 enrichment quality gates failed: {', '.join(failed)}")
 
 
 def _real_data_version(snapshot_sha256: str, seed: int, profile_name: str) -> str:

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, models
 
 from app.config import Settings
 from app.domain.models import UserConstraints
@@ -235,6 +235,7 @@ async def run(args) -> tuple[dict, bool]:
 
 async def _build_runtime(args, suite: dict, data_directory: Path):
     if not args.reuse_index:
+        await _require_isolated_collection(args, suite)
         return await AgentRuntime.create(
             Settings(
                 adapter="mock",
@@ -281,6 +282,52 @@ async def _build_runtime(args, suite: dict, data_directory: Path):
         rag_index_stats={"total": count, "reused": count},
         close=close,
     )
+
+
+async def _require_isolated_collection(args, suite: dict) -> None:
+    """Refuse to benchmark a collection containing another corpus.
+
+    The application service can intentionally retain multiple dataset scopes
+    in one collection and filters them at query time. An evaluation collection
+    is different: foreign points distort local-mode latency and make the point
+    count in the report misleading. Require a new path/collection rather than
+    silently appending another 145k-point corpus.
+    """
+
+    client = AsyncQdrantClient(path=str(args.qdrant_location))
+    try:
+        if not await client.collection_exists(args.collection):
+            return
+        total = (await client.count(args.collection, exact=True)).count
+        if not total:
+            return
+        matching_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="data_version",
+                    match=models.MatchValue(value=suite["dataVersion"]),
+                ),
+                models.FieldCondition(
+                    key="dataset_sha256",
+                    match=models.MatchValue(value=suite["datasetSha256"]),
+                ),
+            ]
+        )
+        matching = (
+            await client.count(
+                args.collection,
+                count_filter=matching_filter,
+                exact=True,
+            )
+        ).count
+        if matching != total:
+            raise ValueError(
+                "Evaluation collection contains points from another corpus "
+                f"({matching}/{total} match). Use a new --qdrant-location or "
+                "--collection so latency and point-count gates remain isolated."
+            )
+    finally:
+        await client.close()
 
 
 def build_parser() -> argparse.ArgumentParser:

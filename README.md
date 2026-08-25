@@ -3,7 +3,7 @@
 黑马点评 NYC AI 全栈改造项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
 
 架构边界与不可回退能力见 [目标架构](docs/target-architecture.md) 和 [验收标准](docs/acceptance-criteria.md)。
-当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md) 和 [P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md)。
+当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md) 和 [P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md)。
 
 ## 环境要求
 

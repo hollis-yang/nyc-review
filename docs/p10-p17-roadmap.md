@@ -13,7 +13,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 | P11 | Complete; checkpoint ready | Continue real merchant-field enrichment | Added a pinned official JSON-LD provider with nested contact, hours, reservation, rating-scale and price-range resolution | External rating 21, price 152, phone 3,278, hours 2,831 and reservation URL 58; shared Spring/React/Agent contract remains in place |
 | P11.5 | Complete; checkpoint ready | Improve images and per-person prices without a paid Places API | Bounded same-site gallery/menu/location/service crawl; sitemap, `srcset`, CSS and PDF support; official menu/service price distribution and deterministic category estimate | 1,871 merchant-image shops (37.42%); external price 918; official-menu average price 844; 5,000/5,000 map projection; v4 full-bundle gates pass |
 | P12 | Complete; isolated checkpoint accepted | Upgrade RAG retrieval quality | Separate fact/evidence types; hybrid lexical/vector recall; bilingual query expansion; metadata filters; broad candidate pool; reranking; evidence deduplication; merchant diversity; Verifier improvements; frozen/current/stress eval layers | 145,000-point/72-case gate passed: Recall@10 99.54%; evidence and constraint satisfaction 100%; duplicate/security/version failures 0; local P95 5.20 s |
-| P13 | Pending | Expand real merchant scale | Grow from 5,000 to 10,000+ across all six categories and five boroughs; incremental crawl; diff import; history and rollback metadata | Merchant identities remain 100% real-source; versions are traceable; refresh is incremental rather than full replacement |
+| P13 | Complete; checkpoint ready | Improve the depth and realism of the 5,000-shop corpus | Separated local browsable reviews from external rating metadata; generated diverse category-aware review threads, notes and comments; deepened bounded official-site/Wikimedia/NYC enrichment; rebuilt the full corpus after a balanced 600-shop Pilot | 5,000 stable real-source identities; 100,000 roots plus 63,500 replies; local review/API counts agree; exact duplicates 0 and near duplicates 0.294%; merchant images 38.12% (50% remains a stretch target); current-corpus RAG Recall@10 99.54%, evidence/constraints 100%, local P95 3.90 s |
 | P14 | Pending | Stability, performance and bug closeout | RabbitMQ/Redis Lua load tests; idempotency and dead-letter tests; Agent concurrency, timeout, cancel and recovery; map/list performance; bilingual and UI regression | No oversell; zero duplicate orders; Agent recovery works; map/list stay responsive at target scale; core regression suite passes |
 | P15 | Final-stage | Move Qdrant to server mode | Replace local-path storage; payload indexes; collection aliases; multiple Agent instances; backup and health checks | No local file lock or 20,000-point warning; concurrent Agent instances work; index versions switch without downtime |
 | P16 | Final-stage | Final release-candidate alignment and rollback rehearsal | Freeze the latest accepted checkpoint; repeat MySQL/Redis/map/Qdrant identity audit; verify backup restoration and collection switch; cut the release candidate | MySQL, Redis, map, Agent and RAG share the same `dataVersion`, `datasetSha256` and `shopIdsSha256`; rollback is rehearsed |
@@ -26,7 +26,7 @@ P9/P9.1 complete
   → P10/P11 checkpoint import and visual acceptance (`nyc-real-v3-7577e407-m20260824`)
   → P11.5 checkpoint import and visual acceptance (`nyc-real-v4-0f51676d-m20260824`)
   → P12 RAG quality (complete; `p12-rag-v1` / `hmdp_content_v2`)
-  → P13 10,000+ scale
+  → P13 5,000-shop depth and content realism (complete; `nyc-real-v5-8b645404-m20260824`)
   → P14 stability and performance
   → P15 Qdrant server mode
   → P16 final release-candidate alignment
@@ -61,7 +61,10 @@ P9/P9.1 complete
 - P11 resolves factual fields before P12 evaluates retrieval correctness.
 - P11.5 improves official image and menu-price evidence while leaving rating
   expansion to a future licensed or paid provider decision.
-- P12 establishes the quality baseline before P13 changes corpus scale.
+- P12 establishes the quality baseline before P13 changes corpus content and
+  evidence distribution. P13 keeps the 5,000 merchant identities and IDs
+  stable, and evaluates the refreshed corpus in a separate Qdrant path before
+  checkpoint promotion.
 - P14 establishes load limits before P15 enables multiple Agent instances.
 - P15 must finish before the P16 production-style Qdrant alias switch.
 - P17 documents only commands and metrics reproduced by P14–P16.

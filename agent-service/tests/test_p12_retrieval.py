@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from qdrant_client import AsyncQdrantClient
@@ -10,7 +11,11 @@ from app.rag.embeddings import DeterministicHashEmbeddingService
 from app.rag.lexical import canonical_tags, expand_query, lexical_tokens
 from app.rag.models import RagDocument
 from app.rag.qdrant_store import QdrantRagService
-from evals.p12.run_retrieval_eval import evaluate_gate, load_suite
+from evals.p12.run_retrieval_eval import (
+    _require_isolated_collection,
+    evaluate_gate,
+    load_suite,
+)
 
 P12_DIRECTORY = Path(__file__).parents[1] / "evals" / "p12"
 
@@ -152,6 +157,39 @@ def test_p12_suite_refuses_a_mixed_corpus(tmp_path):
 
     with pytest.raises(ValueError, match="does not match corpus"):
         load_suite(suite_path, tmp_path)
+
+
+async def test_p12_eval_refuses_a_collection_from_another_corpus(tmp_path):
+    location = tmp_path / "qdrant"
+    collection = "isolated_eval"
+    client = AsyncQdrantClient(path=str(location))
+    rag = QdrantRagService(
+        client=client,
+        embeddings=DeterministicHashEmbeddingService(dimensions=64),
+        collection_name=collection,
+        dataset_sha256="a" * 64,
+    )
+    await rag.sync(
+        [
+            RagDocument(
+                document_id="identity:1",
+                shop_id=1,
+                content_type="shop_identity_fact",
+                source_id="identity:1",
+                text="Old corpus merchant",
+                data_version="old-version",
+            )
+        ],
+        data_version="old-version",
+    )
+    await client.close()
+
+    args = SimpleNamespace(qdrant_location=location, collection=collection)
+    with pytest.raises(ValueError, match="another corpus"):
+        await _require_isolated_collection(
+            args,
+            {"dataVersion": "new-version", "datasetSha256": "b" * 64},
+        )
 
 
 def test_p12_quality_gate_reports_retrieval_regressions():

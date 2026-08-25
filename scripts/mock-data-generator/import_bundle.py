@@ -204,8 +204,14 @@ def build_mysql_sql(
             else "-- HMDP content is synthetic; some establishment identity fields may come from NYC Open Data."
         ),
         (
-            "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, and p11_p2_p3_shop_enrichment.sql. "
-            "Run p9 plus the matching neighborhood import afterward to rebuild map projections."
+            "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, "
+            "p11_p2_p3_shop_enrichment.sql, and p12_p13_data_quality.sql. Run p9 plus the "
+            "matching neighborhood import afterward to rebuild map projections."
+            if data_version.startswith("nyc-real-v5-")
+            else
+            "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, and "
+            "p11_p2_p3_shop_enrichment.sql. Run p9 plus the matching neighborhood import "
+            "afterward to rebuild map projections."
             if real_only
             else "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql."
         ),
@@ -317,7 +323,8 @@ def build_mysql_sql(
         (
             "id", "name", "type_id", "subcategory_id", "images", "area", "borough", "address",
             "description", "x", "y", "avg_price", "price_level", "sold", "comments", "score",
-            "open_hours", "phone", "website", "reservation_url", "business_status", "rating_count",
+            "local_review_count", "local_score", "open_hours", "phone", "website", "reservation_url",
+            "business_status", "rating_count", "external_score", "external_rating_count",
             "price_range_text", "health_grade", "last_enriched_at", "timezone", "source_type",
             "external_id", "source_name", "source_url", "source_fetched_at", "synthetic_fields",
             "data_version", "create_time", "update_time",
@@ -328,9 +335,12 @@ def build_mysql_sql(
                 item["area"], item["borough"], item["address"], item["description"], item["x"], item["y"],
                 item["avgPriceCents"] // 100 if item.get("avgPriceCents") is not None else None,
                 item.get("priceLevel"), item["sold"], item["comments"], item["score"],
+                item.get("localReviewCount", item["comments"]), item.get("localScore", item["score"]),
                 _first_open_hours(item["id"], hours), item.get("phone"), item.get("website"),
                 item.get("reservationUrl"), item.get("businessStatus", "OPERATIONAL"),
-                item.get("ratingCount"), item.get("priceRangeText"), item.get("healthGrade"),
+                item.get("ratingCount"), item.get("externalScore"),
+                item.get("externalRatingCount", item.get("ratingCount")),
+                item.get("priceRangeText"), item.get("healthGrade"),
                 _mysql_datetime(item.get("lastEnrichedAt")), item["timezone"], item["sourceType"],
                 item.get("externalId"), item.get("sourceName"), item.get("sourceUrl"),
                 _mysql_datetime(item.get("sourceFetchedAt")),
