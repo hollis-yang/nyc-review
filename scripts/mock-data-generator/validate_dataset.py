@@ -147,9 +147,12 @@ def _validate_real_only(
     if not isinstance(seed, int) or len(snapshot_sha256) != 64:
         raise ValueError("REAL_ONLY manifest must retain its source snapshot SHA-256 and seed")
     profile_name = str(manifest.get("profile") or "")
-    if data_version.startswith(("nyc-real-v2-", "nyc-real-v3-")):
+    if data_version.startswith(("nyc-real-v2-", "nyc-real-v3-", "nyc-real-v4-")):
         enrichment_sha256 = str(provenance.get("enrichmentVersionSha256") or "")
-        generation = "v3" if data_version.startswith("nyc-real-v3-") else "v2"
+        generation = next(
+            value for value in ("v2", "v3", "v4")
+            if data_version.startswith(f"nyc-real-{value}-")
+        )
         expected_version = f"nyc-real-{generation}-{enrichment_sha256[:8]}-m20260824"
         if len(enrichment_sha256) != 64 or data_version != expected_version:
             raise ValueError("enriched dataVersion must be bound to its source snapshot set")
@@ -213,8 +216,10 @@ def _validate_real_only(
         raise ValueError("every real shop must have seven daily business-hour rows")
 
     _validate_images(images, shop_id_set, provenance, shops, data_version)
-    if profile_name == "p10-p11-full":
+    if profile_name in {"p10-p11-full", "p11-5-full"}:
         _validate_p10_p11(images, observations, shop_id_set)
+    if profile_name == "p11-5-full":
+        _validate_p11_5(images, observations, shops)
     depth_counts, root_count = _validate_review_threads(reviews, shop_id_set, shops)
     _validate_synthetic_content(
         blogs,
@@ -404,6 +409,48 @@ def _validate_p10_p11(
     failed = [label for label, passed in checks.items() if not passed]
     if failed:
         raise ValueError(f"P11 quality gates failed: {', '.join(failed)}")
+
+
+def _validate_p11_5(
+    images: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+    shops: list[dict[str, Any]],
+) -> None:
+    """Require measurable gains over the accepted P11 full checkpoint."""
+    merchant_shops = {
+        int(image["shopId"])
+        for image in images
+        if image.get("matchType") != "CATEGORY_FALLBACK"
+    }
+    external = [
+        observation for observation in observations
+        if observation.get("provider") in {
+            "OPENSTREETMAP", "OFFICIAL_SITE", "FSQ_OS_PLACES", "NYC_DOHMH",
+        }
+    ]
+    price_shops = {
+        int(observation["shopId"])
+        for observation in external
+        if observation.get("fieldName") in {"priceLevel", "priceRangeText"}
+    }
+    menu_price_shops = {
+        int(observation["shopId"])
+        for observation in external
+        if observation.get("fieldName") == "avgPriceCents"
+    }
+    checks = {
+        "merchant-specific image coverage above P11 baseline": len(merchant_shops) > 1772,
+        "external price coverage above P11 baseline": len(price_shops) > 152,
+        "official menu-derived average price": len(menu_price_shops) > 0,
+    }
+    synthetic_by_id = {
+        int(shop["id"]): set(shop.get("syntheticFields") or []) for shop in shops
+    }
+    if any("avgPriceCents" in synthetic_by_id[shop_id] for shop_id in menu_price_shops):
+        checks["menu-derived average price is not marked synthetic"] = False
+    failed = [label for label, passed in checks.items() if not passed]
+    if failed:
+        raise ValueError(f"P11.5 quality gates failed: {', '.join(failed)}")
 
 
 def _real_data_version(snapshot_sha256: str, seed: int, profile_name: str) -> str:

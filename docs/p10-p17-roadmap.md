@@ -11,6 +11,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 | --- | --- | --- | --- | --- |
 | P10 | Complete; checkpoint ready | Expand the image strategy to all 5,000 shops | Crawled 2,740 official sites; validated responses; rejected trackers, logos, broken and undersized assets; deduplicated and ranked candidates; retained 1–3 images per shop with category fallback | 100% display coverage; 1,772 shops (35.44%) have merchant-specific images; full bundle validation passes |
 | P11 | Complete; checkpoint ready | Continue real merchant-field enrichment | Added a pinned official JSON-LD provider with nested contact, hours, reservation, rating-scale and price-range resolution | External rating 21, price 152, phone 3,278, hours 2,831 and reservation URL 58; shared Spring/React/Agent contract remains in place |
+| P11.5 | Complete; checkpoint ready | Improve images and per-person prices without a paid Places API | Bounded same-site gallery/menu/location/service crawl; sitemap, `srcset`, CSS and PDF support; official menu/service price distribution and deterministic category estimate | 1,871 merchant-image shops (37.42%); external price 918; official-menu average price 844; 5,000/5,000 map projection; v4 full-bundle gates pass |
 | P12 | Pending | Upgrade RAG retrieval quality | Separate fact/evidence types; hybrid lexical/vector recall; query rewrite; metadata filters; reranking; evidence deduplication; merchant diversity; Verifier improvements; fixed eval set | Recall@10 at least 85%; evidence coverage at least 95%; structured-constraint satisfaction at least 90%; no duplicate merchant recommendations |
 | P13 | Pending | Expand real merchant scale | Grow from 5,000 to 10,000+ across all six categories and five boroughs; incremental crawl; diff import; history and rollback metadata | Merchant identities remain 100% real-source; versions are traceable; refresh is incremental rather than full replacement |
 | P14 | Pending | Stability, performance and bug closeout | RabbitMQ/Redis Lua load tests; idempotency and dead-letter tests; Agent concurrency, timeout, cancel and recovery; map/list performance; bilingual and UI regression | No oversell; zero duplicate orders; Agent recovery works; map/list stay responsive at target scale; core regression suite passes |
@@ -23,6 +24,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 ```text
 P9/P9.1 complete
   → P10/P11 checkpoint import and visual acceptance (`nyc-real-v3-7577e407-m20260824`)
+  → P11.5 checkpoint import and visual acceptance (`nyc-real-v4-0f51676d-m20260824`)
   → P12 RAG quality
   → P13 10,000+ scale
   → P14 stability and performance
@@ -57,6 +59,8 @@ P9/P9.1 complete
 
 - P10 reuses the P9 official-site image Pilot and its URL/content validation.
 - P11 resolves factual fields before P12 evaluates retrieval correctness.
+- P11.5 improves official image and menu-price evidence while leaving rating
+  expansion to a future licensed or paid provider decision.
 - P12 establishes the quality baseline before P13 changes corpus scale.
 - P14 establishes load limits before P15 enables multiple Agent instances.
 - P15 must finish before the P16 production-style Qdrant alias switch.

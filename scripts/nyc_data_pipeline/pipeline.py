@@ -15,8 +15,19 @@ from .schemas import FieldObservation
 from .snapshots import dataset_sha256, load_json, sha256_file, write_json_atomic
 
 GENERATED_PROVIDER = "HMDP_GENERATED"
-PIPELINE_VERSION = "p10-p11-v2"
 REAL_PROVIDERS = {"OPENSTREETMAP", "OFFICIAL_SITE", "FSQ_OS_PLACES", "NYC_DOHMH"}
+PHASE_CONFIG = {
+    "p10-p11": {
+        "pipelineVersion": "p10-p11-v2",
+        "dataGeneration": "v3",
+        "profile": "p10-p11",
+    },
+    "p11-5": {
+        "pipelineVersion": "p11-5-v1",
+        "dataGeneration": "v4",
+        "profile": "p11-5",
+    },
+}
 BASE_DATASET_FILES = (
     "shop_types.json", "shop_subcategories.json", "shops.json", "shop_images.json",
     "shop_business_hours.json", "users.json", "shop_reviews.json", "blogs.json",
@@ -35,7 +46,12 @@ def enrich_bundle(
     merchant_image_snapshot_path: Path | None = None,
     official_site_image_snapshot_path: Path | None = None,
     pilot_per_type: int | None = None,
+    phase: str = "p10-p11",
 ) -> dict[str, Any]:
+    if phase not in PHASE_CONFIG:
+        raise ValueError(f"Unsupported enrichment phase: {phase}")
+    phase_config = PHASE_CONFIG[phase]
+    pipeline_version = str(phase_config["pipelineVersion"])
     datasets = {filename: load_json(bundle / filename, default=[]) for filename in BASE_DATASET_FILES}
     if pilot_per_type:
         datasets = _pilot_subset(datasets, pilot_per_type)
@@ -73,9 +89,12 @@ def enrich_bundle(
             source_hashes.append(sha256_file(optional_path))
     base_manifest = load_json(bundle / "manifest.json", default={})
     enrichment_version_sha256 = hashlib.sha256(
-        (PIPELINE_VERSION + str(base_manifest.get("datasetSha256")) + "".join(source_hashes)).encode()
+        (pipeline_version + str(base_manifest.get("datasetSha256")) + "".join(source_hashes)).encode()
     ).hexdigest()
-    data_version = f"nyc-real-v3-{enrichment_version_sha256[:8]}-m20260824"
+    data_version = (
+        f"nyc-real-{phase_config['dataGeneration']}-"
+        f"{enrichment_version_sha256[:8]}-m20260824"
+    )
 
     resolver = FieldResolver(observations)
     old_hours_by_shop: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -91,6 +110,11 @@ def enrich_bundle(
         resolved_shops.append(resolved)
         resolved_hours.extend(result.hours or old_hours_by_shop[int(shop["id"])])
         resolved_provider_maps[int(shop["id"])] = result.resolved_providers
+        if result.resolved_providers.get("avgPriceCents") in REAL_PROVIDERS:
+            resolved["syntheticFields"] = [
+                field for field in resolved.get("syntheticFields") or []
+                if field != "avgPriceCents"
+            ]
 
     assigned_images, image_credits = ImageMatcher().assign(
         resolved_shops, datasets["shop_images.json"], combined_merchant_images, data_version,
@@ -119,9 +143,13 @@ def enrich_bundle(
         write_json_atomic(output / filename, payload)
     dataset_hash, dataset_files = dataset_sha256(output, list(datasets))
 
-    profile = "p10-p11-pilot" if pilot_per_type else "p10-p11-full"
+    profile_prefix = str(phase_config["profile"])
+    profile = f"{profile_prefix}-pilot" if pilot_per_type else f"{profile_prefix}-full"
     import_bundle = _build_import_bundle(output, datasets, base_manifest, dataset_hash, profile)
-    report = _report(resolved_shops, resolved_provider_maps, assigned_images, observations, data_version, dataset_hash)
+    report = _report(
+        resolved_shops, resolved_provider_maps, assigned_images, observations,
+        data_version, dataset_hash, phase,
+    )
     write_json_atomic(output / "enrichment_report.json", report)
     source_counts = Counter(str(shop.get("sourceType") or "UNKNOWN") for shop in resolved_shops)
     depth_counts = Counter(str(review.get("depth", 0)) for review in datasets["shop_reviews.json"])
@@ -150,7 +178,7 @@ def enrich_bundle(
             "reviewDepthCounts": dict(sorted(depth_counts.items())),
             "illustrativeImages": sum(1 for image in assigned_images if image["matchType"] == "CATEGORY_FALLBACK"),
             "enrichmentProviders": sorted({item["provider"] for item in matches}),
-            "enrichmentPipelineVersion": PIPELINE_VERSION,
+            "enrichmentPipelineVersion": pipeline_version,
             "enrichmentVersionSha256": enrichment_version_sha256,
             "sourceMatches": len(matches),
             "fieldObservations": len(observations),
@@ -296,6 +324,7 @@ def _report(
     observations: list[dict[str, Any]],
     data_version: str,
     dataset_hash: str,
+    phase: str,
 ) -> dict[str, Any]:
     total = len(shops)
     real_fields = defaultdict(set)
@@ -312,6 +341,7 @@ def _report(
         "operatingStatus": real_fields["businessStatus"],
         "rating": real_fields["rating"],
         "price": real_fields["priceLevel"] | real_fields["priceRangeText"],
+        "avgPrice": real_fields["avgPriceCents"],
         "merchantSpecificImage": merchant_images,
     }
     by_category: dict[str, Counter[str]] = defaultdict(Counter)
@@ -338,6 +368,14 @@ def _report(
         "hoursCoverageAboveP9Baseline": coverage["businessHours"]["count"] > 2759,
         "reservationUrlCoverageNonZero": coverage["reservationUrl"]["count"] > 0,
     }
+    if phase == "p11-5":
+        quality_gates.update({
+            "merchantSpecificImageCoverageAboveP11Baseline": (
+                coverage["merchantSpecificImage"]["count"] > 1772
+            ),
+            "externalPriceCoverageAboveP11Baseline": coverage["price"]["count"] > 152,
+            "officialMenuDerivedAvgPriceNonZero": coverage["avgPrice"]["count"] > 0,
+        })
     return {
         "dataVersion": data_version,
         "datasetSha256": dataset_hash,
@@ -374,7 +412,7 @@ def _source_manifests(*paths: Path | None) -> list[dict[str, Any]]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build a P10/P11 real-only bundle with official fields and validated images")
+    parser = argparse.ArgumentParser(description="Build a versioned real-only enrichment bundle")
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--osm", type=Path, required=True)
@@ -384,6 +422,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--merchant-images", type=Path)
     parser.add_argument("--official-site-images", type=Path)
     parser.add_argument("--pilot-per-type", type=int)
+    parser.add_argument("--phase", choices=sorted(PHASE_CONFIG), default="p10-p11")
     return parser.parse_args()
 
 
@@ -397,6 +436,7 @@ def main() -> None:
         merchant_image_snapshot_path=args.merchant_images.resolve() if args.merchant_images else None,
         official_site_image_snapshot_path=args.official_site_images.resolve() if args.official_site_images else None,
         pilot_per_type=args.pilot_per_type,
+        phase=args.phase,
     )
     print(json.dumps({
         "status": "ok", "dataVersion": manifest["dataVersion"],

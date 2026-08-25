@@ -4,6 +4,13 @@ import unittest
 
 from .images.image_matcher import ImageMatcher
 from .fetch_official_site_images import extract_official_image_urls
+from .fetch_official_site_deep import (
+    _extra_image_candidates,
+    _jsonld_prices,
+    _price_stats,
+    _target_links,
+    _text_prices,
+)
 from .matching import EntityMatcher
 from .merge.field_resolver import FieldResolver
 from .merge.hours_resolver import normalize_hours
@@ -90,6 +97,64 @@ class OfficialSiteTest(unittest.TestCase):
         self.assertEqual("$20-$40", values["priceRangeText"])
         self.assertEqual(4.0, values["rating"])
 
+    def test_discovers_deep_pages_and_responsive_images(self) -> None:
+        html = '''
+          <a href="/menus/dinner.pdf">Dinner menu</a>
+          <a href="/gallery">Photos</a>
+          <a href="/privacy">Privacy</a>
+          <picture><source srcset="/small.jpg 480w, /large.jpg 1200w"></picture>
+          <div style="background-image:url('/dining-room.jpg')"></div>
+        '''
+        pages, pdfs = _target_links(html, "https://example.com", "https://example.com")
+        self.assertEqual(["https://example.com/gallery"], pages)
+        self.assertEqual(["https://example.com/menus/dinner.pdf"], pdfs)
+        candidates = _extra_image_candidates(html, "https://example.com")
+        urls = {item["url"] for item in candidates}
+        self.assertIn("https://example.com/large.jpg", urls)
+        self.assertIn("https://example.com/dining-room.jpg", urls)
+
+    def test_derives_menu_prices_from_jsonld_and_visible_text(self) -> None:
+        documents = [{
+            "@type": "Menu",
+            "hasMenuSection": [{
+                "hasMenuItem": [
+                    {"offers": {"price": "18", "priceCurrency": "USD"}},
+                    {"offers": {"lowPrice": 22, "highPrice": 31, "priceCurrency": "USD"}},
+                ],
+            }],
+        }]
+        prices = _jsonld_prices(documents)
+        prices.extend(_text_prices("Soup $9.50 Pasta $24 Wine $16"))
+        self.assertEqual([18.0, 22.0, 31.0], prices[:3])
+        stats = _price_stats(prices, 1, ["https://example.com/menu"])
+        self.assertIsNotNone(stats)
+        self.assertEqual("OFFICIAL_MENU_MEDIAN_BY_CATEGORY", stats["derivation"])
+        self.assertGreater(stats["estimatedSpendCents"], stats["medianPriceCents"])
+
+    def test_official_menu_stats_resolve_range_and_average_price(self) -> None:
+        snapshot = {
+            "metadata": {"fetchedAt": "2026-08-24T00:00:00Z", "datasetVersion": "2026-08-24"},
+            "records": [{
+                "externalId": "official-site:1", "name": "Example", "address": "1 Main St",
+                "latitude": 40.75, "longitude": -73.98, "sourceUrl": "https://example.com",
+                "jsonLd": {
+                    "@type": "Restaurant", "name": "Example",
+                    "menuPriceStats": {
+                        "lowerPriceCents": 1800,
+                        "upperPriceCents": 3200,
+                        "estimatedSpendCents": 3400,
+                    },
+                },
+            }],
+        }
+        result = OfficialSiteProvider().collect(
+            [{"id": 1, "name": "Example", "address": "1 Main St", "y": 40.75, "x": -73.98}],
+            snapshot,
+        )
+        values = {item.field_name: item.value for item in result.observations}
+        self.assertEqual("$18-$32", values["priceRangeText"])
+        self.assertEqual(3400, values["avgPriceCents"])
+
     def test_ssrf_targets_are_rejected(self) -> None:
         for url in (
             "http://127.0.0.1/admin", "http://169.254.169.254/latest/meta-data",
@@ -127,6 +192,17 @@ class ResolverTest(unittest.TestCase):
         result = FieldResolver(observations).resolve({"id": 1, "comments": 20, "priceLevel": 2})
         self.assertEqual(47, result.shop["score"])
         self.assertEqual(214, result.shop["ratingCount"])
+
+    def test_resolves_official_menu_average_price(self) -> None:
+        observation = FieldObservation(
+            1, "avgPriceCents", 4200, "OFFICIAL_SITE", "site:1",
+            "2026-08-24T00:00:00Z", None, .91, 100, "v2",
+        ).as_dict()
+        result = FieldResolver([observation]).resolve({
+            "id": 1, "avgPriceCents": 2300, "comments": 20, "priceLevel": 2,
+        })
+        self.assertEqual(4200, result.shop["avgPriceCents"])
+        self.assertEqual("OFFICIAL_SITE", result.resolved_providers["avgPriceCents"])
 
     def test_normalizes_osm_hours(self) -> None:
         result = normalize_hours("Mo-Fr 09:00-18:00; Sa 10:00-14:00; Su off", 1)

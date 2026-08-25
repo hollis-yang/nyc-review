@@ -23,7 +23,12 @@ def _write_json(path, value) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
-def _write_real_only_bundle(path: Path, *, first_source_type: str = "OPENSTREETMAP") -> None:
+def _write_real_only_bundle(
+    path: Path,
+    *,
+    first_source_type: str = "OPENSTREETMAP",
+    image_mode: str | None = None,
+) -> None:
     shops = []
     for type_id in range(1, 7):
         shops.append(
@@ -36,7 +41,10 @@ def _write_real_only_bundle(path: Path, *, first_source_type: str = "OPENSTREETM
                 "sourceName": "OpenStreetMap contributors",
                 "sourceUrl": f"https://www.openstreetmap.org/node/{type_id}",
                 "sourceFetchedAt": "2026-08-23T12:00:00Z",
-                "syntheticFields": ["images", "reviews"],
+                "syntheticFields": (
+                    ["reviews"] if image_mode in {"merchant", "illustrative_missing"}
+                    else ["images", "reviews"]
+                ),
                 "dataVersion": "nyc-real-v1",
             }
         )
@@ -46,6 +54,17 @@ def _write_real_only_bundle(path: Path, *, first_source_type: str = "OPENSTREETM
         "blogs.json": [],
         "blog_comments.json": [],
     }
+    if image_mode is not None:
+        values["shop_images.json"] = [
+            {
+                "id": type_id,
+                "shopId": type_id,
+                "imageType": "MERCHANT_SPECIFIC" if image_mode == "merchant" else "ILLUSTRATIVE",
+                "matchType": "OFFICIAL_SITE_IMAGE" if image_mode == "merchant" else "CATEGORY_FALLBACK",
+                "url": f"https://images.example/{type_id}.jpg",
+            }
+            for type_id in range(1, 7)
+        ]
     dataset_files = {}
     for filename, value in values.items():
         _write_json(path / filename, value)
@@ -185,6 +204,23 @@ def test_real_only_dataset_requires_traceable_non_mock_merchants_in_all_six_cate
     assert data_version == "nyc-real-v1"
     assert dataset_sha256
     assert source_counts == {"OPENSTREETMAP": 6}
+
+
+def test_real_only_dataset_accepts_merchant_images_without_synthetic_image_disclosure(tmp_path):
+    _write_real_only_bundle(tmp_path, image_mode="merchant")
+
+    data_version, dataset_sha256, source_counts = _validate_data_directory(tmp_path)
+
+    assert data_version == "nyc-real-v1"
+    assert dataset_sha256
+    assert source_counts == {"OPENSTREETMAP": 6}
+
+
+def test_real_only_dataset_requires_disclosure_for_illustrative_images(tmp_path):
+    _write_real_only_bundle(tmp_path, image_mode="illustrative_missing")
+
+    with pytest.raises(ValueError, match="illustrative images"):
+        _validate_data_directory(tmp_path)
 
 
 def test_real_only_dataset_rejects_a_mock_merchant_even_when_manifest_matches(tmp_path):

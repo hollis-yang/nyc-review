@@ -53,6 +53,7 @@ class FieldResolver:
             status = "OPERATIONAL"
         rating = rating_tenths(value("rating"))
         rating_count = count(value("ratingCount"))
+        avg_price_cents = _positive_cents(value("avgPriceCents"))
         resolved_level = price_level(value("priceLevel")) or price_level(value("priceRangeText"))
         range_text = price_text(value("priceRangeText"), resolved_level or resolved.get("priceLevel"))
         health_grade = str(value("healthGrade") or "").strip().upper() or None
@@ -74,6 +75,8 @@ class FieldResolver:
             resolved["score"] = rating
         if resolved_level is not None:
             resolved["priceLevel"] = resolved_level
+        if avg_price_cents is not None:
+            resolved["avgPriceCents"] = avg_price_cents
         hours_value = value("businessHours")
         if hours_value is None:
             hours_value = value("openingHours")
@@ -94,3 +97,11 @@ def _url(value: Any) -> str | None:
 def _phone(value: Any) -> str | None:
     text = " ".join(str(value or "").split()).strip()
     return text[:64] if len([character for character in text if character.isdigit()]) >= 7 else None
+
+
+def _positive_cents(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if 100 <= parsed <= 500_000 else None

@@ -255,7 +255,14 @@ def _validate_data_directory(
     if str(data_version or "").startswith("nyc-real-") and identity_mode != "REAL_ONLY":
         raise ValueError("nyc-real datasets must declare merchantIdentityMode as REAL_ONLY.")
     if identity_mode == "REAL_ONLY":
-        _validate_real_only_shops(shops, manifest, data_version)
+        image_path = data_directory / "shop_images.json"
+        shop_images = None
+        if image_path.is_file():
+            with image_path.open(encoding="utf-8") as handle:
+                shop_images = json.load(handle)
+            if not isinstance(shop_images, list):
+                raise ValueError("Generated shop_images.json must contain a list.")
+        _validate_real_only_shops(shops, manifest, data_version, shop_images)
     return data_version, dataset_sha256, dict(sorted(source_counts.items()))
 
 
@@ -271,6 +278,7 @@ def _validate_real_only_shops(
     shops: list[dict],
     manifest: dict,
     data_version: str | None,
+    shop_images: list[dict] | None = None,
 ) -> None:
     if not shops:
         raise ValueError("REAL_ONLY dataset must contain at least one merchant.")
@@ -303,15 +311,55 @@ def _validate_real_only_shops(
     source_keys = [(shop.get("sourceType"), shop.get("externalId")) for shop in shops]
     if len(source_keys) != len(set(source_keys)):
         raise ValueError("REAL_ONLY dataset contains duplicate source merchant identities.")
-    missing_disclosures = [
+    missing_review_disclosures = [
         shop.get("id")
         for shop in shops
-        if not {"images", "reviews"}.issubset(set(shop.get("syntheticFields") or []))
+        if "reviews" not in set(shop.get("syntheticFields") or [])
     ]
-    if missing_disclosures:
+    if missing_review_disclosures:
         raise ValueError(
-            "REAL_ONLY merchants must disclose illustrative images and synthetic reviews for shop IDs: "
-            + ", ".join(map(str, missing_disclosures[:10]))
+            "REAL_ONLY merchants must disclose synthetic reviews for shop IDs: "
+            + ", ".join(map(str, missing_review_disclosures[:10]))
+        )
+    if shop_images is None:
+        # Backward-compatible safety gate for older bundles that predate the
+        # per-image provenance file and therefore cannot prove an image is
+        # merchant-specific.
+        missing_image_disclosures = [
+            shop.get("id")
+            for shop in shops
+            if "images" not in set(shop.get("syntheticFields") or [])
+        ]
+    else:
+        shop_ids = {int(shop["id"]) for shop in shops}
+        image_shop_ids = {
+            int(image.get("shopId") or 0)
+            for image in shop_images
+            if int(image.get("shopId") or 0) in shop_ids
+        }
+        if image_shop_ids != shop_ids:
+            missing = sorted(shop_ids - image_shop_ids)
+            raise ValueError(
+                "REAL_ONLY dataset is missing display images for shop IDs: "
+                + ", ".join(map(str, missing[:10]))
+            )
+        illustrative_shop_ids = {
+            int(image["shopId"])
+            for image in shop_images
+            if image.get("imageType") == "ILLUSTRATIVE"
+            or image.get("matchType") == "CATEGORY_FALLBACK"
+        }
+        synthetic_fields_by_shop = {
+            int(shop["id"]): set(shop.get("syntheticFields") or []) for shop in shops
+        }
+        missing_image_disclosures = [
+            shop_id for shop_id in sorted(illustrative_shop_ids)
+            if "images" not in synthetic_fields_by_shop[shop_id]
+        ]
+    if missing_image_disclosures:
+        raise ValueError(
+            "REAL_ONLY merchants with illustrative images must disclose synthetic images for shop IDs: "
+            + ", ".join(map(str, missing_image_disclosures[:10]))
         )
     category_ids = {shop.get("typeId") for shop in shops}
     if category_ids != set(range(1, 7)):

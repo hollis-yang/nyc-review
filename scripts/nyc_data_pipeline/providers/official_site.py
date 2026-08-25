@@ -62,9 +62,13 @@ class _JsonLdParser(HTMLParser):
             pass
 
 
-def extract_local_business_jsonld(html: str) -> list[dict[str, Any]]:
+def extract_jsonld_documents(html: str) -> list[Any]:
     parser = _JsonLdParser()
     parser.feed(html[:2_000_000])
+    return parser.documents
+
+
+def extract_local_business_jsonld(html: str) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
 
     def visit(value: Any) -> None:
@@ -80,7 +84,7 @@ def extract_local_business_jsonld(html: str) -> list[dict[str, Any]]:
             if normalized.intersection(TYPE_NAMES):
                 result.append(value)
 
-    for document in parser.documents:
+    for document in extract_jsonld_documents(html):
         visit(document)
     return result
 
@@ -153,6 +157,12 @@ def _price_range(values: dict[str, Any]) -> Any:
             return f"{prefix}{low}-{prefix}{high}"
         if price not in (None, ""):
             return f"{prefix}{price}"
+    menu_stats = values.get("menuPriceStats")
+    if isinstance(menu_stats, dict):
+        low = menu_stats.get("lowerPriceCents")
+        high = menu_stats.get("upperPriceCents")
+        if isinstance(low, int) and isinstance(high, int) and low > 0 and high >= low:
+            return f"${low / 100:g}-${high / 100:g}"
     return None
 
 
@@ -209,6 +219,11 @@ class OfficialSiteProvider:
                 "reservationPolicy": reservation_policy,
                 "openingHours": values.get("openingHours") or values.get("openingHoursSpecification"),
                 "priceRangeText": _price_range(values),
+                "avgPriceCents": (
+                    values.get("menuPriceStats", {}).get("estimatedSpendCents")
+                    if isinstance(values.get("menuPriceStats"), dict)
+                    else None
+                ),
                 "rating": rating,
                 "ratingCount": rating_count,
                 "image": values.get("image"),
