@@ -1,0 +1,39 @@
+{
+  "acceptedReservations": 1000,
+  "environment": {
+    "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+    "database": "hmdp_p14_load",
+    "project": "hmdp-p14-load",
+    "rabbitVersion": "4.1.8",
+    "redisSentinel": "isolated-load-only",
+    "springHealth": "UP"
+  },
+  "initialStock": 1000,
+  "invariants": {
+    "databaseStockMatches": true,
+    "errorQueueEmpty": true,
+    "noOversell": true,
+    "oneOrderPerUser": true,
+    "orderQueueDrained": true,
+    "publisherRecoveryDrained": true,
+    "redisAndMySqlAgree": true,
+    "uniqueOrderIds": true
+  },
+  "mysql": {
+    "orders": 1000,
+    "stock": 0,
+    "uniqueOrderIds": 1000,
+    "uniqueUsers": 1000
+  },
+  "rabbitmq": {
+    "errorQueue": 0,
+    "ready": 0,
+    "unacknowledged": 0
+  },
+  "redis": {
+    "pendingPublisherRecords": 0,
+    "stock": 0,
+    "uniqueUsers": 1000
+  },
+  "status": "ok"
+}

@@ -4,8 +4,10 @@ import com.hmdp.service.IVoucherOrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -20,6 +22,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VoucherOrderRabbitReliabilityTest {
+
+    @Test
+    void productionConstructorIsExplicitlySelectedForSpringInjection() {
+        Constructor<?> productionConstructor = java.util.Arrays.stream(
+                        VoucherOrderPublisher.class.getConstructors()
+                )
+                .filter(constructor -> constructor.getParameterCount() == 4)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(productionConstructor.isAnnotationPresent(Autowired.class));
+    }
 
     @Test
     void publisherAckRemovesRecoveryRecordOnlyAfterBrokerConfirmation() {

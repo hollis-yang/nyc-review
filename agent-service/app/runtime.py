@@ -87,7 +87,10 @@ class AgentRuntime:
                 indexed_documents = index_stats.total_documents
                 rag_index_stats = index_stats.as_metadata()
         else:
-            rag = InMemoryRagService()
+            rag = InMemoryRagService(
+                data_version=data_version,
+                dataset_sha256=dataset_sha256,
+            )
 
         itinerary = HaversineItineraryService()
         services = WorkflowServices(

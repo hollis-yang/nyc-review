@@ -6,6 +6,7 @@ import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -28,6 +29,7 @@ public class VoucherOrderPublisher {
     private final Duration confirmTimeout;
     private final int replayBatchSize;
 
+    @Autowired
     public VoucherOrderPublisher(
             RabbitTemplate rabbitTemplate,
             StringRedisTemplate stringRedisTemplate,

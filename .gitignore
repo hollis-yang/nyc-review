@@ -73,3 +73,6 @@ data/sources/official-site-merchant-images-*.json
 data/sources/wikimedia-merchant-images-*.json
 !data/sources/osm-nyc-places-*.manifest.json
 agent-service/.local/
+
+# P14.1 isolated load-test credentials are generated locally.
+reports/p14-1/runtime/

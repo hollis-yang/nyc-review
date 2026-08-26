@@ -16,6 +16,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 | P13 | Complete; checkpoint ready | Improve the depth and realism of the 5,000-shop corpus | Separated local browsable reviews from external rating metadata; generated diverse category-aware review threads, notes and comments; deepened bounded official-site/Wikimedia/NYC enrichment; rebuilt the full corpus after a balanced 600-shop Pilot | 5,000 stable real-source identities; 100,000 roots plus 63,500 replies; local review/API counts agree; exact duplicates 0 and near duplicates 0.294%; merchant images 38.12% (50% remains a stretch target); current-corpus RAG Recall@10 99.54%, evidence/constraints 100%, local P95 3.90 s |
 | P13.5 | Complete; frontend-only | Raise merchant and note visual coverage without changing the P13 corpus | Added one frontend visual resolver; retained exact merchant images first; pinned 218 licensed contextual photos; added deterministic category/shop covers; replaced note defaults; added broken-image fallback, credits and visual audits across every React entry point | 5,000/5,000 photo-backed and non-default shop visuals; 10,000 generated notes with 0% default-image rate; exact merchant-image count remains 1,906; max contextual reuse 15; no backend/RAG identity change; build and audit pass |
 | P14 | Complete | Stability, performance and bug closeout | Added isolated Redis Lua load gates; deterministic Rabbit ack/nack/replay/idempotency tests; Agent Unicode/result-limit/verifier/Trace fixes; concurrency, cancel, shutdown, owner and restart tests; map/list benchmarks; bilingual/UI audits | No oversell or duplicate reservation; 18/18 Agent soak runs verified; map/list P95 gates passed; 66 Agent and 124 safe Java tests passed; React lint/build/visual gates passed |
+| P14.1 | Complete | Full-stack backend load and failure-recovery baseline | Added a guarded 5,000-shop Compose stack; Actuator/Prometheus metrics; k6 read, burst, duplicate-user, authenticated mixed and endurance stages; cross-system order invariants; RabbitMQ/MySQL/Redis outage drills | 90,001-request endurance gate and 2,695 req/s burst passed; no oversell, duplicate or backlog; 100/100 concurrent Agent runs verified; all three recovery drills and 67 Agent/125 safe Java tests passed |
 | P15 | Final-stage | Move Qdrant to server mode | Replace local-path storage; payload indexes; collection aliases; multiple Agent instances; backup and health checks | No local file lock or 20,000-point warning; concurrent Agent instances work; index versions switch without downtime |
 | P16 | Final-stage | Final release-candidate alignment and rollback rehearsal | Freeze the latest accepted checkpoint; repeat MySQL/Redis/map/Qdrant identity audit; verify backup restoration and collection switch; cut the release candidate | MySQL, Redis, map, Agent and RAG share the same `dataVersion`, `datasetSha256` and `shopIdsSha256`; rollback is rehearsed |
 | P17 | Closeout | Package the portfolio project | One-command Compose; CI; README and architecture diagrams; test manual; sample prompts; performance report; demo script; secret and temporary-file audit | Clean one-command startup; stable demo of seckill, RabbitMQ, multi-Agent, RAG, MCP, map clustering, bilingual UI and DeepSeek translation |
@@ -30,6 +31,7 @@ P9/P9.1 complete
   → P13 5,000-shop depth and content realism (complete; `nyc-real-v5-8b645404-m20260824`)
   → P13.5 frontend merchant/note visual coverage (complete; no data checkpoint change)
   → P14 stability and performance (complete; no data checkpoint change)
+  → P14.1 isolated full-stack load and failure recovery (complete; no data checkpoint change)
   → P15 Qdrant server mode
   → P16 final release-candidate alignment
   → P17 portfolio delivery
@@ -71,9 +73,14 @@ P9/P9.1 complete
   assets, image resolution and fallback behavior. It does not alter MySQL,
   Redis, Spring, Agent Service, Qdrant, `dataVersion` or RAG evaluation inputs,
   so it neither requires a checkpoint import nor blocks independent P14 work.
-- P14 establishes load limits before P15 enables multiple Agent instances.
+- P14 establishes deterministic correctness gates; P14.1 establishes the
+  isolated full-stack capacity and failure-recovery baseline before P15 enables
+  multiple Agent instances.
 - P14 is complete. Its accepted machine-readable results are under
   `reports/p14/`; commands and failure drills are in
   [P14 Stability and Performance Runbook](p14-stability-performance-runbook.md).
+- P14.1 is complete. Its full-stack load reports are under `reports/p14-1/`;
+  isolation, replay and reproduction commands are in
+  [P14.1 Backend Load and Failure-Recovery Runbook](p14-1-backend-load-runbook.md).
 - P15 must finish before the P16 production-style Qdrant alias switch.
 - P17 documents only commands and metrics reproduced by P14–P16.

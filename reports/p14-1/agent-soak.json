@@ -1,0 +1,815 @@
+{
+  "completed": 100,
+  "failed": 0,
+  "fallbackRuns": 0,
+  "meanMs": 650.663,
+  "observedConcurrency": 10,
+  "p50Ms": 609.8,
+  "p95Ms": 1073.22,
+  "records": [
+    {
+      "candidateCount": 3,
+      "durationMs": 605.763,
+      "modelFallbackUsed": false,
+      "runId": "01607de0-cc21-4470-a8ca-2d349df91f4c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 595.862,
+      "modelFallbackUsed": false,
+      "runId": "06773794-4f8a-4b7d-93fc-b6fee4036788",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 598.408,
+      "modelFallbackUsed": false,
+      "runId": "09efe435-949b-4282-a17c-deeecaa47235",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 564.279,
+      "modelFallbackUsed": false,
+      "runId": "0c617885-cf1e-4160-89b5-53d280796e08",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 601.718,
+      "modelFallbackUsed": false,
+      "runId": "0e891ae8-152d-413f-8058-25b935baf002",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 609.647,
+      "modelFallbackUsed": false,
+      "runId": "0f1a79da-4d22-41be-985d-2cfe11d1d291",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 633.718,
+      "modelFallbackUsed": false,
+      "runId": "11021d6a-854b-4c6e-aabc-5c95bd7ffcd6",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 873.687,
+      "modelFallbackUsed": false,
+      "runId": "1175ab98-a3a9-49e4-973a-96eb1f650f42",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 612.525,
+      "modelFallbackUsed": false,
+      "runId": "15029592-e29d-4e7f-baf9-141da7c13cfa",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 604.718,
+      "modelFallbackUsed": false,
+      "runId": "15051144-d4cb-4bbe-9309-cdc47e879e9f",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 599.051,
+      "modelFallbackUsed": false,
+      "runId": "16e4bb44-3881-44a1-a0ef-be8f1b830a97",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 609.8,
+      "modelFallbackUsed": false,
+      "runId": "20b44de4-5a12-42a4-9bda-86161447d083",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 597.294,
+      "modelFallbackUsed": false,
+      "runId": "22613378-2cf7-4e95-8390-1e4c407edb8c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 629.164,
+      "modelFallbackUsed": false,
+      "runId": "22cd4761-0ea2-433e-a1c0-f28224cc5a6e",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 586.432,
+      "modelFallbackUsed": false,
+      "runId": "2e2bef28-ef48-4f20-975d-3d91ea1cb507",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 587.252,
+      "modelFallbackUsed": false,
+      "runId": "2e5a4108-ce4d-46c9-9172-2be5eeec2540",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 580.018,
+      "modelFallbackUsed": false,
+      "runId": "34ac0841-f2c6-41ea-9ef8-bf69d4172c44",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 577.263,
+      "modelFallbackUsed": false,
+      "runId": "38cd60ae-3106-406f-8f8e-3a440cbd3855",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 1073.963,
+      "modelFallbackUsed": false,
+      "runId": "3ae6dc0a-ee1e-424c-b65e-7f45582661e5",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 584.252,
+      "modelFallbackUsed": false,
+      "runId": "3db198cf-8d42-4813-b93a-8675f8b957a2",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 563.133,
+      "modelFallbackUsed": false,
+      "runId": "3fb03699-da0f-4ac6-b56b-b173339e6a5e",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 1073.22,
+      "modelFallbackUsed": false,
+      "runId": "4214cca5-d1a9-411f-800c-7016fe730f70",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 593.845,
+      "modelFallbackUsed": false,
+      "runId": "43221de0-3cbd-4dd7-aae9-b9d96bc509da",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 609.992,
+      "modelFallbackUsed": false,
+      "runId": "4334af8e-da47-4720-b6a1-fbfc6ef147eb",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 611.043,
+      "modelFallbackUsed": false,
+      "runId": "4464bd30-f663-4773-8e47-507d4549f87b",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 646.608,
+      "modelFallbackUsed": false,
+      "runId": "44c580a9-ace8-4c1e-80c5-17026a0ebf55",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 605.252,
+      "modelFallbackUsed": false,
+      "runId": "4520612b-4d01-4c47-b398-87dfe56a0df8",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 608.145,
+      "modelFallbackUsed": false,
+      "runId": "461498fd-c83b-4ece-8d7c-1459aba3a031",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 593.374,
+      "modelFallbackUsed": false,
+      "runId": "48610d9f-433d-4fac-83c4-8a46a973a7b8",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 630.5,
+      "modelFallbackUsed": false,
+      "runId": "49c65868-a4c5-4807-af84-cda56ff66a4c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 334.72,
+      "modelFallbackUsed": false,
+      "runId": "4aae4e94-bc1c-463f-94e6-73453f4e79cc",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 1154.746,
+      "modelFallbackUsed": false,
+      "runId": "4de2cec5-474e-4d34-961a-bc3d9077ad86",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 616.148,
+      "modelFallbackUsed": false,
+      "runId": "4e45d4f0-25bd-4d07-80d1-6887940d76b0",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 1153.845,
+      "modelFallbackUsed": false,
+      "runId": "4f77ccf9-48b3-41dd-b20c-e126ea6345c3",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 1072.633,
+      "modelFallbackUsed": false,
+      "runId": "4fb9f887-b00d-4150-95b4-6dcbe75287be",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 634.096,
+      "modelFallbackUsed": false,
+      "runId": "5373cfba-d7c9-426b-b1be-5f0162325d78",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 572.012,
+      "modelFallbackUsed": false,
+      "runId": "5722064f-8523-488e-94a1-637d5488d094",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 629.967,
+      "modelFallbackUsed": false,
+      "runId": "597ee5f1-af19-4e70-be5f-05be01b45516",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 1155.354,
+      "modelFallbackUsed": false,
+      "runId": "5998916c-8953-45e6-837f-03873b74dfc9",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 611.234,
+      "modelFallbackUsed": false,
+      "runId": "5a8610d1-7b4e-4f82-b45c-b96e16bdbe4f",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 1071.804,
+      "modelFallbackUsed": false,
+      "runId": "5c4d77be-f169-495c-b7bd-d42974dede0d",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 615.975,
+      "modelFallbackUsed": false,
+      "runId": "68e7d4b0-38b4-47e3-aacd-f5bdc04c090f",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 620.546,
+      "modelFallbackUsed": false,
+      "runId": "698ce6a7-5fcb-4cc6-911a-74d6b62f4064",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 564.213,
+      "modelFallbackUsed": false,
+      "runId": "757e3fe8-f1d4-4889-844f-c8b6b4e44270",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 626.744,
+      "modelFallbackUsed": false,
+      "runId": "75a07860-0bf8-411a-94a4-e5930836a8f1",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 1170.513,
+      "modelFallbackUsed": false,
+      "runId": "75a11f09-9103-43ff-919e-6220efc7d863",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 334.635,
+      "modelFallbackUsed": false,
+      "runId": "77fb672c-edb1-498d-83f7-0c6180851b59",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 1071.531,
+      "modelFallbackUsed": false,
+      "runId": "78871f75-7086-47a8-8cb8-251cd1766147",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 595.701,
+      "modelFallbackUsed": false,
+      "runId": "7889b2c7-8388-48c6-bfed-449fcdc35e00",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 615.824,
+      "modelFallbackUsed": false,
+      "runId": "7a0b8db6-211c-40f7-a99f-21e3e7962be1",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 282.84,
+      "modelFallbackUsed": false,
+      "runId": "845031e5-cad5-429e-a6ac-b5ca89d457d2",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 647.197,
+      "modelFallbackUsed": false,
+      "runId": "867dd85b-6226-4ec1-b323-a6be0b56605b",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 609.254,
+      "modelFallbackUsed": false,
+      "runId": "89c74e6a-1bcd-4ccf-b9b2-5e2b54d9db2f",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 593.818,
+      "modelFallbackUsed": false,
+      "runId": "8a807160-58cb-4f28-99f8-4b05f6210cad",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 597.103,
+      "modelFallbackUsed": false,
+      "runId": "8fe17411-3bea-419f-a55f-25f413daf400",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 610.349,
+      "modelFallbackUsed": false,
+      "runId": "90b56b91-1dad-4e17-949d-6326628796b7",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 587.211,
+      "modelFallbackUsed": false,
+      "runId": "90e8970e-3e9d-4b64-8f0d-16e929208591",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 592.828,
+      "modelFallbackUsed": false,
+      "runId": "92bbbb4f-13c0-4468-b324-3c7f3e47e6ba",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 613.788,
+      "modelFallbackUsed": false,
+      "runId": "93426baf-9c22-4af2-bec7-0e0d4d6bc31b",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 604.698,
+      "modelFallbackUsed": false,
+      "runId": "961dd513-3b1d-40d9-a574-37cb9150d7df",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 669.986,
+      "modelFallbackUsed": false,
+      "runId": "96588c2a-7296-42fb-9f7c-b7eecababc36",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 664.324,
+      "modelFallbackUsed": false,
+      "runId": "99803742-4903-4ae1-8d1e-376fb3558462",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 579.361,
+      "modelFallbackUsed": false,
+      "runId": "9e625cb6-02b3-48cb-851e-bc955e1d3e1c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 632.128,
+      "modelFallbackUsed": false,
+      "runId": "a30d11b2-50d3-4dc0-bb60-55ba697d78fb",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 562.479,
+      "modelFallbackUsed": false,
+      "runId": "a6828017-e903-4f5a-ac34-f842467a21a7",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 595.862,
+      "modelFallbackUsed": false,
+      "runId": "a7b5ad13-acba-4233-916d-196f4b5f7f9a",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 605.483,
+      "modelFallbackUsed": false,
+      "runId": "a7cfb72d-d153-45d8-81d4-12d5e8487103",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 559.207,
+      "modelFallbackUsed": false,
+      "runId": "aa34b110-1d8f-49cd-9226-948f36c285a5",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 627.404,
+      "modelFallbackUsed": false,
+      "runId": "ab924194-414e-4146-9f0e-434f198bf3db",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 598.806,
+      "modelFallbackUsed": false,
+      "runId": "aeba49b7-ffc2-4ee8-b543-d0af95fab8ab",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 601.213,
+      "modelFallbackUsed": false,
+      "runId": "afef031a-2779-4221-a341-30c1e7130d7c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 700.051,
+      "modelFallbackUsed": false,
+      "runId": "b0fcbdad-e819-4b81-abd7-e2e6c8d9daad",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 598.576,
+      "modelFallbackUsed": false,
+      "runId": "b2a136b2-4e10-4eb2-a795-597fb2c8f0ec",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 615.798,
+      "modelFallbackUsed": false,
+      "runId": "b2fc5f9e-205a-4120-999d-106963a656b4",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 622.381,
+      "modelFallbackUsed": false,
+      "runId": "b56c5cdd-625d-4f21-9cfe-f7edab7e9204",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 550.688,
+      "modelFallbackUsed": false,
+      "runId": "b5ef7cde-16b5-4d3e-a134-6a2cf487f7c7",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 662.735,
+      "modelFallbackUsed": false,
+      "runId": "b6df7660-282d-436c-80f1-31a73a07e2ab",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 616.278,
+      "modelFallbackUsed": false,
+      "runId": "b9adc335-fdb7-4b08-961f-27d093103d7e",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 592.439,
+      "modelFallbackUsed": false,
+      "runId": "bcf2a9e4-2602-4762-806e-8758a85271c1",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 615.905,
+      "modelFallbackUsed": false,
+      "runId": "bd4c6dcc-b900-48b8-a9fa-e97258b43289",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 577.371,
+      "modelFallbackUsed": false,
+      "runId": "bdc44116-4e8f-4851-a609-38b59a2eb894",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 620.397,
+      "modelFallbackUsed": false,
+      "runId": "c56219d0-ccc4-43c9-a327-9a58dcba5251",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 2,
+      "durationMs": 612.855,
+      "modelFallbackUsed": false,
+      "runId": "ce0d8257-86da-446f-967d-0f25edbc16d9",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 605.618,
+      "modelFallbackUsed": false,
+      "runId": "d7648515-869a-4ec1-b68e-148030d2702d",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 598.345,
+      "modelFallbackUsed": false,
+      "runId": "ddde801a-d5a8-4cb9-a12f-95f6b2313b66",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 604.203,
+      "modelFallbackUsed": false,
+      "runId": "e26ce19f-3469-42b2-8fd8-0684251b5efb",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 1052.074,
+      "modelFallbackUsed": false,
+      "runId": "e2ede09e-2019-462c-9fb2-7b2d12399c2c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 595.089,
+      "modelFallbackUsed": false,
+      "runId": "e6d32bd7-da28-4155-aa5c-79bf8552fcd5",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 601.866,
+      "modelFallbackUsed": false,
+      "runId": "e6d38dfb-c1ff-4dcc-a66e-8ce738d43661",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 597.493,
+      "modelFallbackUsed": false,
+      "runId": "e746a1c3-a085-446b-b5eb-9527cac4f36b",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 616.239,
+      "modelFallbackUsed": false,
+      "runId": "e8c0b0d5-15c5-49f6-97f3-827bf6267139",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 616.15,
+      "modelFallbackUsed": false,
+      "runId": "e9348192-59f6-4353-a4ca-8f3e2fa9b65c",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 610.784,
+      "modelFallbackUsed": false,
+      "runId": "e9bb368f-9dea-4c31-8d1f-3029d6efe3cc",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 577.638,
+      "modelFallbackUsed": false,
+      "runId": "ee665c42-c58c-4fb6-a059-eb6fe627a687",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 610.265,
+      "modelFallbackUsed": false,
+      "runId": "f3304a5f-ef40-409a-9fd1-90d256ec6322",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 631.629,
+      "modelFallbackUsed": false,
+      "runId": "f5e7e818-9f0f-4da0-8582-2afdd0d1c784",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 5,
+      "durationMs": 634.735,
+      "modelFallbackUsed": false,
+      "runId": "f905843b-af64-4614-be37-fb5892484f7b",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 4,
+      "durationMs": 640.83,
+      "modelFallbackUsed": false,
+      "runId": "fc5d0cde-1442-4d87-9dcf-8062b90b071d",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 558.722,
+      "modelFallbackUsed": false,
+      "runId": "fca1280b-4cd2-4231-b965-648fd42eaba6",
+      "status": "waiting_confirmation",
+      "verified": true
+    },
+    {
+      "candidateCount": 3,
+      "durationMs": 611.617,
+      "modelFallbackUsed": false,
+      "runId": "fe54673d-21a1-4be9-bcf3-208c1c80ca10",
+      "status": "waiting_confirmation",
+      "verified": true
+    }
+  ],
+  "requestedConcurrency": 10,
+  "runs": 100,
+  "status": "ok",
+  "verified": 100
+}

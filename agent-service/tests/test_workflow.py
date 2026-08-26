@@ -11,6 +11,34 @@ from app.graph.workflow import WorkflowServices, build_multi_agent_graph, build_
 from app.tools.services import HaversineItineraryService, InMemoryRagService, MockShopToolService
 
 
+async def test_in_memory_rag_citations_keep_the_configured_dataset_identity():
+    rag = InMemoryRagService(
+        data_version="nyc-real-test-v1",
+        dataset_sha256="a" * 64,
+    )
+    constraints = UserConstraints(query="Quiet dinner", desired_tags=["quiet"])
+    candidates = CandidateSet(
+        candidates=[
+            ShopCandidate(
+                shop_id=901,
+                name="Versioned Fixture",
+                category="Food & Dining",
+                neighborhood="Midtown",
+                latitude=40.75,
+                longitude=-73.98,
+                tags=["quiet"],
+                data_version="nyc-real-test-v1",
+            )
+        ]
+    )
+
+    evidence = await rag.retrieve(constraints, candidates)
+
+    citation = evidence.evidence[0].citations[0]
+    assert citation.data_version == "nyc-real-test-v1"
+    assert citation.dataset_sha256 == "a" * 64
+
+
 async def test_multi_agent_graph_runs_parallel_branches_and_verifies_results():
     workflow = build_multi_agent_graph(
         WorkflowServices(

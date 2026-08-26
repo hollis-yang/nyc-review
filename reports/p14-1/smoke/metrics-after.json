@@ -1,0 +1,849 @@
+{
+  "containers": [
+    {
+      "BlockIO": "0B / 171MB",
+      "CPUPerc": "0.14%",
+      "Container": "44294181fbabb6fa14d6d3df5ee7eb1540abb2785988850355f49b5272967f28",
+      "ID": "44294181fbab",
+      "MemPerc": "3.95%",
+      "MemUsage": "313.3MiB / 7.75GiB",
+      "Name": "hmdp-p14-load-agent-service-1",
+      "NetIO": "17.3MB / 2.63MB",
+      "PIDs": "26"
+    },
+    {
+      "BlockIO": "39.2MB / 22MB",
+      "CPUPerc": "2.85%",
+      "Container": "d2ab2b408c9aef4dc902468b69978092e1aa71a8e3ece4e13a18b3ebde9ae638",
+      "ID": "d2ab2b408c9a",
+      "MemPerc": "5.59%",
+      "MemUsage": "443.6MiB / 7.75GiB",
+      "Name": "hmdp-p14-load-mysql-1",
+      "NetIO": "57.9kB / 18.6kB",
+      "PIDs": "38"
+    },
+    {
+      "BlockIO": "0B / 5.19MB",
+      "CPUPerc": "0.04%",
+      "Container": "0ffa9f0b2e065e6870d09b8adffde4512d3cf5de47e7f4903f26bb0424452987",
+      "ID": "0ffa9f0b2e06",
+      "MemPerc": "0.39%",
+      "MemUsage": "31.17MiB / 7.75GiB",
+      "Name": "hmdp-p14-load-prometheus-1",
+      "NetIO": "130MB / 1.41MB",
+      "PIDs": "12"
+    },
+    {
+      "BlockIO": "131kB / 180kB",
+      "CPUPerc": "0.22%",
+      "Container": "7aca50dfb33c4e81acac8b5ed3d7bfc3f943ee758c50d69ec395db40b5280c6e",
+      "ID": "7aca50dfb33c",
+      "MemPerc": "1.34%",
+      "MemUsage": "106MiB / 7.75GiB",
+      "Name": "hmdp-p14-load-rabbitmq-1",
+      "NetIO": "140kB / 276kB",
+      "PIDs": "41"
+    },
+    {
+      "BlockIO": "0B / 0B",
+      "CPUPerc": "0.55%",
+      "Container": "27bd2acc516429fff1926a15c97b654774ba70278bf4bca26280d94314402f26",
+      "ID": "27bd2acc5164",
+      "MemPerc": "0.13%",
+      "MemUsage": "10.37MiB / 7.75GiB",
+      "Name": "hmdp-p14-load-redis-1",
+      "NetIO": "118kB / 50.1kB",
+      "PIDs": "6"
+    },
+    {
+      "BlockIO": "0B / 356kB",
+      "CPUPerc": "0.51%",
+      "Container": "9d004b6a5dcd8d02e9d53e2c276ef3294b56caf224ec16d84897408a8dc31bfd",
+      "ID": "9d004b6a5dcd",
+      "MemPerc": "8.17%",
+      "MemUsage": "648MiB / 7.75GiB",
+      "Name": "hmdp-p14-load-spring-1",
+      "NetIO": "12.2MB / 13.3MB",
+      "PIDs": "138"
+    }
+  ],
+  "environment": {
+    "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+    "database": "hmdp_p14_load",
+    "project": "hmdp-p14-load",
+    "rabbitVersion": "4.1.8",
+    "redisSentinel": "isolated-load-only",
+    "springHealth": "UP"
+  },
+  "label": "smoke-after",
+  "mysql": {
+    "Aborted_connects": 0,
+    "Connections": 103,
+    "Created_tmp_disk_tables": 0,
+    "Innodb_buffer_pool_read_requests": 19156,
+    "Innodb_buffer_pool_reads": 1290,
+    "Innodb_row_lock_time": 0,
+    "Innodb_row_lock_waits": 0,
+    "Questions": 358,
+    "Slow_queries": 0,
+    "Threads_connected": 3,
+    "Threads_running": 2,
+    "rolledBackTransactionsInHistory": 0
+  },
+  "rabbitmq": {
+    "overview": {
+      "churn_rates": {
+        "channel_closed": 3,
+        "channel_closed_details": {
+          "rate": 0.0
+        },
+        "channel_created": 16,
+        "channel_created_details": {
+          "rate": 0.0
+        },
+        "connection_closed": 3,
+        "connection_closed_details": {
+          "rate": 0.0
+        },
+        "connection_created": 4,
+        "connection_created_details": {
+          "rate": 0.0
+        },
+        "queue_created": 0,
+        "queue_created_details": {
+          "rate": 0.0
+        },
+        "queue_declared": 2,
+        "queue_declared_details": {
+          "rate": 0.0
+        },
+        "queue_deleted": 0,
+        "queue_deleted_details": {
+          "rate": 0.0
+        }
+      },
+      "cluster_name": "rabbit@7aca50dfb33c",
+      "cluster_tags": {},
+      "contexts": [
+        {
+          "cowboy_opts": "[{sendfile,false}]",
+          "description": "RabbitMQ Management",
+          "node": "rabbit@7aca50dfb33c",
+          "path": "/",
+          "port": "15672",
+          "ssl_opts": []
+        },
+        {
+          "cowboy_opts": "[{sendfile,false}]",
+          "description": "RabbitMQ Prometheus",
+          "node": "rabbit@7aca50dfb33c",
+          "path": "/",
+          "port": "15692",
+          "protocol": "'http/prometheus'",
+          "ssl_opts": []
+        }
+      ],
+      "default_queue_type": "classic",
+      "disable_stats": false,
+      "enable_queue_totals": false,
+      "erlang_full_version": "Erlang/OTP 27 [erts-15.2.7.12] [source] [64-bit] [smp:10:10] [ds:10:10:10] [async-threads:1] [jit]",
+      "erlang_version": "27.3.4.16",
+      "exchange_types": [
+        {
+          "description": "AMQP direct exchange, as per the AMQP specification",
+          "enabled": true,
+          "name": "direct"
+        },
+        {
+          "description": "AMQP fanout exchange, as per the AMQP specification",
+          "enabled": true,
+          "name": "fanout"
+        },
+        {
+          "description": "AMQP headers exchange, as per the AMQP specification",
+          "enabled": true,
+          "name": "headers"
+        },
+        {
+          "description": "AMQP topic exchange, as per the AMQP specification",
+          "enabled": true,
+          "name": "topic"
+        },
+        {
+          "description": "Picks one random local binding (queue) to route via (to).",
+          "enabled": true,
+          "name": "x-local-random"
+        }
+      ],
+      "is_op_policy_updating_enabled": true,
+      "listeners": [
+        {
+          "ip_address": "::",
+          "node": "rabbit@7aca50dfb33c",
+          "port": 5672,
+          "protocol": "amqp",
+          "socket_opts": {
+            "backlog": 128,
+            "exit_on_close": false,
+            "linger": [
+              true,
+              0
+            ],
+            "nodelay": true
+          },
+          "tls": false
+        },
+        {
+          "ip_address": "::",
+          "node": "rabbit@7aca50dfb33c",
+          "port": 25672,
+          "protocol": "clustering",
+          "socket_opts": [],
+          "tls": false
+        },
+        {
+          "ip_address": "::",
+          "node": "rabbit@7aca50dfb33c",
+          "port": 15672,
+          "protocol": "http",
+          "socket_opts": {
+            "cowboy_opts": {
+              "sendfile": false
+            },
+            "port": 15672
+          },
+          "tls": false
+        },
+        {
+          "ip_address": "::",
+          "node": "rabbit@7aca50dfb33c",
+          "port": 15692,
+          "protocol": "http/prometheus",
+          "socket_opts": {
+            "cowboy_opts": {
+              "sendfile": false
+            },
+            "port": 15692,
+            "protocol": "http/prometheus"
+          },
+          "tls": false
+        }
+      ],
+      "management_version": "4.1.8",
+      "message_stats": {
+        "ack": 28,
+        "ack_details": {
+          "rate": 1.0
+        },
+        "confirm": 30,
+        "confirm_details": {
+          "rate": 1.0
+        },
+        "deliver": 28,
+        "deliver_details": {
+          "rate": 1.0
+        },
+        "deliver_get": 30,
+        "deliver_get_details": {
+          "rate": 1.0
+        },
+        "deliver_no_ack": 0,
+        "deliver_no_ack_details": {
+          "rate": 0.0
+        },
+        "disk_reads": 1,
+        "disk_reads_details": {
+          "rate": 0.0
+        },
+        "disk_writes": 25,
+        "disk_writes_details": {
+          "rate": 0.0
+        },
+        "drop_unroutable": 0,
+        "drop_unroutable_details": {
+          "rate": 0.0
+        },
+        "get": 0,
+        "get_details": {
+          "rate": 0.0
+        },
+        "get_empty": 1,
+        "get_empty_details": {
+          "rate": 0.0
+        },
+        "get_no_ack": 2,
+        "get_no_ack_details": {
+          "rate": 0.0
+        },
+        "publish": 30,
+        "publish_details": {
+          "rate": 1.0
+        },
+        "redeliver": 0,
+        "redeliver_details": {
+          "rate": 0.0
+        },
+        "return_unroutable": 0,
+        "return_unroutable_details": {
+          "rate": 0.0
+        }
+      },
+      "node": "rabbit@7aca50dfb33c",
+      "node_tags": {},
+      "object_totals": {
+        "channels": 13,
+        "connections": 1,
+        "consumers": 1,
+        "exchanges": 9,
+        "queues": 2
+      },
+      "product_name": "RabbitMQ",
+      "product_version": "4.1.8",
+      "queue_totals": {
+        "messages": 0,
+        "messages_details": {
+          "rate": 0.0
+        },
+        "messages_ready": 0,
+        "messages_ready_details": {
+          "rate": 0.0
+        },
+        "messages_unacknowledged": 0,
+        "messages_unacknowledged_details": {
+          "rate": 0.0
+        }
+      },
+      "rabbitmq_version": "4.1.8",
+      "rates_mode": "basic",
+      "sample_retention_policies": {
+        "basic": [
+          600,
+          3600
+        ],
+        "detailed": [
+          600
+        ],
+        "global": [
+          600,
+          3600,
+          28800,
+          86400
+        ]
+      },
+      "statistics_db_event_queue": 0
+    },
+    "queues": {
+      "hmdp.voucher.order.error.queue": {
+        "arguments": {
+          "x-queue-type": "classic"
+        },
+        "auto_delete": false,
+        "consumer_capacity": 0,
+        "consumer_details": [],
+        "consumer_utilisation": 0,
+        "consumers": 0,
+        "deliveries": [],
+        "durable": true,
+        "effective_policy_definition": {},
+        "exclusive": false,
+        "exclusive_consumer_tag": null,
+        "garbage_collection": {
+          "fullsweep_after": 65535,
+          "max_heap_size": 0,
+          "min_bin_vheap_size": 46422,
+          "min_heap_size": 233,
+          "minor_gcs": 15
+        },
+        "head_message_timestamp": null,
+        "idle_since": "2026-08-26T21:12:20.017+00:00",
+        "incoming": [],
+        "memory": 5360,
+        "message_bytes": 0,
+        "message_bytes_paged_out": 0,
+        "message_bytes_persistent": 0,
+        "message_bytes_ram": 0,
+        "message_bytes_ready": 0,
+        "message_bytes_unacknowledged": 0,
+        "message_stats": {
+          "ack": 0,
+          "ack_details": {
+            "rate": 0.0
+          },
+          "deliver": 0,
+          "deliver_details": {
+            "rate": 0.0
+          },
+          "deliver_get": 2,
+          "deliver_get_details": {
+            "rate": 0.0
+          },
+          "deliver_no_ack": 0,
+          "deliver_no_ack_details": {
+            "rate": 0.0
+          },
+          "get": 0,
+          "get_details": {
+            "rate": 0.0
+          },
+          "get_empty": 1,
+          "get_empty_details": {
+            "rate": 0.0
+          },
+          "get_no_ack": 2,
+          "get_no_ack_details": {
+            "rate": 0.0
+          },
+          "publish": 2,
+          "publish_details": {
+            "rate": 0.0
+          },
+          "redeliver": 0,
+          "redeliver_details": {
+            "rate": 0.0
+          }
+        },
+        "messages": 0,
+        "messages_details": {
+          "rate": 0.0
+        },
+        "messages_paged_out": 0,
+        "messages_persistent": 0,
+        "messages_ram": 0,
+        "messages_ready": 0,
+        "messages_ready_details": {
+          "rate": 0.0
+        },
+        "messages_ready_ram": 0,
+        "messages_unacknowledged": 0,
+        "messages_unacknowledged_details": {
+          "rate": 0.0
+        },
+        "messages_unacknowledged_ram": 0,
+        "name": "hmdp.voucher.order.error.queue",
+        "node": "rabbit@7aca50dfb33c",
+        "operator_policy": null,
+        "policy": null,
+        "reductions": 11727,
+        "reductions_details": {
+          "rate": 0.0
+        },
+        "single_active_consumer_tag": null,
+        "state": "running",
+        "storage_version": 2,
+        "type": "classic",
+        "vhost": "/hmdp-p14-load"
+      },
+      "hmdp.voucher.order.queue": {
+        "arguments": {
+          "x-queue-type": "classic"
+        },
+        "auto_delete": false,
+        "consumer_capacity": 1.0,
+        "consumer_details": [
+          {
+            "ack_required": true,
+            "active": true,
+            "activity_status": "up",
+            "arguments": {},
+            "channel_details": {
+              "connection_name": "172.19.0.5:35732 -> 172.19.0.3:5672",
+              "name": "172.19.0.5:35732 -> 172.19.0.3:5672 (12)",
+              "node": "rabbit@7aca50dfb33c",
+              "number": 12,
+              "peer_host": "172.19.0.5",
+              "peer_port": 35732,
+              "user": "p14-load"
+            },
+            "consumer_tag": "amq.ctag-SOqkWMzxxy41TvO5oQUZTQ",
+            "consumer_timeout": 1800000,
+            "exclusive": false,
+            "prefetch_count": 16,
+            "queue": {
+              "name": "hmdp.voucher.order.queue",
+              "vhost": "/hmdp-p14-load"
+            }
+          }
+        ],
+        "consumer_utilisation": 1.0,
+        "consumers": 1,
+        "deliveries": [],
+        "durable": true,
+        "effective_policy_definition": {},
+        "exclusive": false,
+        "exclusive_consumer_tag": null,
+        "garbage_collection": {
+          "fullsweep_after": 65535,
+          "max_heap_size": 0,
+          "min_bin_vheap_size": 46422,
+          "min_heap_size": 233,
+          "minor_gcs": 1
+        },
+        "head_message_timestamp": null,
+        "idle_since": "2026-08-26T21:12:57.932+00:00",
+        "incoming": [],
+        "memory": 10144,
+        "message_bytes": 0,
+        "message_bytes_paged_out": 0,
+        "message_bytes_persistent": 0,
+        "message_bytes_ram": 0,
+        "message_bytes_ready": 0,
+        "message_bytes_unacknowledged": 0,
+        "message_stats": {
+          "ack": 28,
+          "ack_details": {
+            "rate": 1.0
+          },
+          "deliver": 28,
+          "deliver_details": {
+            "rate": 1.0
+          },
+          "deliver_get": 28,
+          "deliver_get_details": {
+            "rate": 1.0
+          },
+          "deliver_no_ack": 0,
+          "deliver_no_ack_details": {
+            "rate": 0.0
+          },
+          "get": 0,
+          "get_details": {
+            "rate": 0.0
+          },
+          "get_empty": 0,
+          "get_empty_details": {
+            "rate": 0.0
+          },
+          "get_no_ack": 0,
+          "get_no_ack_details": {
+            "rate": 0.0
+          },
+          "publish": 28,
+          "publish_details": {
+            "rate": 1.0
+          },
+          "redeliver": 0,
+          "redeliver_details": {
+            "rate": 0.0
+          }
+        },
+        "messages": 0,
+        "messages_details": {
+          "rate": 0.0
+        },
+        "messages_paged_out": 0,
+        "messages_persistent": 0,
+        "messages_ram": 0,
+        "messages_ready": 0,
+        "messages_ready_details": {
+          "rate": 0.0
+        },
+        "messages_ready_ram": 0,
+        "messages_unacknowledged": 0,
+        "messages_unacknowledged_details": {
+          "rate": 0.0
+        },
+        "messages_unacknowledged_ram": 0,
+        "name": "hmdp.voucher.order.queue",
+        "node": "rabbit@7aca50dfb33c",
+        "operator_policy": null,
+        "policy": null,
+        "reductions": 30005,
+        "reductions_details": {
+          "rate": 0.0
+        },
+        "single_active_consumer_tag": null,
+        "state": "running",
+        "storage_version": 2,
+        "type": "classic",
+        "vhost": "/hmdp-p14-load"
+      }
+    }
+  },
+  "redis": {
+    "blocked_clients": 0,
+    "connected_clients": 32,
+    "instantaneous_ops_per_sec": 1,
+    "keyspace_hits": 49,
+    "keyspace_misses": 239,
+    "rejected_connections": 0,
+    "total_error_replies": 5,
+    "used_memory": 2201904,
+    "used_memory_peak": 3167832
+  },
+  "spring": {
+    "hikaricp.connections.active": {
+      "availableTags": [
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        },
+        {
+          "tag": "pool",
+          "values": [
+            "HikariPool-1"
+          ]
+        }
+      ],
+      "description": "Active connections",
+      "measurements": [
+        {
+          "statistic": "VALUE",
+          "value": 0.0
+        }
+      ],
+      "name": "hikaricp.connections.active"
+    },
+    "hikaricp.connections.pending": {
+      "availableTags": [
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        },
+        {
+          "tag": "pool",
+          "values": [
+            "HikariPool-1"
+          ]
+        }
+      ],
+      "description": "Pending threads",
+      "measurements": [
+        {
+          "statistic": "VALUE",
+          "value": 0.0
+        }
+      ],
+      "name": "hikaricp.connections.pending"
+    },
+    "http.server.requests": {
+      "availableTags": [
+        {
+          "tag": "exception",
+          "values": [
+            "none"
+          ]
+        },
+        {
+          "tag": "method",
+          "values": [
+            "POST",
+            "GET"
+          ]
+        },
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        },
+        {
+          "tag": "error",
+          "values": [
+            "none"
+          ]
+        },
+        {
+          "tag": "uri",
+          "values": [
+            "/internal/agent/tools/shops/search",
+            "/internal/agent/actions/preferences",
+            "/voucher/list/{shopId}",
+            "/voucher-order/seckill/{id}"
+          ]
+        },
+        {
+          "tag": "outcome",
+          "values": [
+            "SUCCESS"
+          ]
+        },
+        {
+          "tag": "status",
+          "values": [
+            "200"
+          ]
+        }
+      ],
+      "baseUnit": "seconds",
+      "measurements": [
+        {
+          "statistic": "COUNT",
+          "value": 357.0
+        },
+        {
+          "statistic": "TOTAL_TIME",
+          "value": 474.814723514
+        },
+        {
+          "statistic": "MAX",
+          "value": 0.020109125
+        }
+      ],
+      "name": "http.server.requests"
+    },
+    "jvm.gc.pause": {
+      "availableTags": [
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        },
+        {
+          "tag": "cause",
+          "values": [
+            "G1 Evacuation Pause"
+          ]
+        },
+        {
+          "tag": "action",
+          "values": [
+            "end of minor GC"
+          ]
+        },
+        {
+          "tag": "gc",
+          "values": [
+            "G1 Young Generation"
+          ]
+        }
+      ],
+      "baseUnit": "seconds",
+      "description": "Time spent in GC pause",
+      "measurements": [
+        {
+          "statistic": "COUNT",
+          "value": 18.0
+        },
+        {
+          "statistic": "TOTAL_TIME",
+          "value": 0.111
+        },
+        {
+          "statistic": "MAX",
+          "value": 0.015
+        }
+      ],
+      "name": "jvm.gc.pause"
+    },
+    "jvm.memory.used": {
+      "availableTags": [
+        {
+          "tag": "area",
+          "values": [
+            "heap",
+            "nonheap"
+          ]
+        },
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        },
+        {
+          "tag": "id",
+          "values": [
+            "CodeHeap 'profiled nmethods'",
+            "G1 Old Gen",
+            "G1 Survivor Space",
+            "CodeHeap 'non-profiled nmethods'",
+            "Compressed Class Space",
+            "Metaspace",
+            "G1 Eden Space",
+            "CodeHeap 'non-nmethods'"
+          ]
+        }
+      ],
+      "baseUnit": "bytes",
+      "description": "The amount of used memory",
+      "measurements": [
+        {
+          "statistic": "VALUE",
+          "value": 215999896.0
+        }
+      ],
+      "name": "jvm.memory.used"
+    },
+    "jvm.threads.live": {
+      "availableTags": [
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        }
+      ],
+      "baseUnit": "threads",
+      "description": "The current number of live threads including both daemon and non-daemon threads",
+      "measurements": [
+        {
+          "statistic": "VALUE",
+          "value": 116.0
+        }
+      ],
+      "name": "jvm.threads.live"
+    },
+    "lettuce.command.completion": {
+      "availableTags": [
+        {
+          "tag": "application",
+          "values": [
+            "hmdp-p14-load"
+          ]
+        },
+        {
+          "tag": "remote",
+          "values": [
+            "redis/172.19.0.2:6379"
+          ]
+        },
+        {
+          "tag": "local",
+          "values": [
+            "local:any"
+          ]
+        },
+        {
+          "tag": "command",
+          "values": [
+            "PEXPIRE",
+            "HELLO",
+            "INCR",
+            "EVALSHA",
+            "ZRANGEBYSCORE",
+            "ZREM",
+            "DEL",
+            "INFO",
+            "EVAL",
+            "CLIENT",
+            "HGETALL"
+          ]
+        }
+      ],
+      "baseUnit": "seconds",
+      "description": "Latency between command send and command completion (complete response received",
+      "measurements": [
+        {
+          "statistic": "COUNT",
+          "value": 1282.0
+        },
+        {
+          "statistic": "TOTAL_TIME",
+          "value": 0.516106452
+        },
+        {
+          "statistic": "MAX",
+          "value": 0.002691375
+        }
+      ],
+      "name": "lettuce.command.completion"
+    },
+    "prometheusLines": 731
+  },
+  "status": "ok"
+}

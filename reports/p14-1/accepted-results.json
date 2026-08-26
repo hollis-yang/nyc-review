@@ -1,0 +1,363 @@
+{
+  "agent": {
+    "accepted": true,
+    "completed": 100,
+    "concurrency": 10,
+    "failed": 0,
+    "fallbackRuns": 0,
+    "meanMs": 650.663,
+    "p95Ms": 1073.22,
+    "runs": 100,
+    "verified": 100
+  },
+  "dataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+  "environment": "hmdp-p14-load",
+  "failureRecovery": {
+    "mysql": true,
+    "rabbitmq": true,
+    "redis": true
+  },
+  "stages": {
+    "duplicate": {
+      "accepted": true,
+      "business": {
+        "accepted": 200,
+        "duplicate": 0,
+        "outOfStock": 800
+      },
+      "consistency": {
+        "acceptedReservations": 200,
+        "environment": {
+          "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+          "database": "hmdp_p14_load",
+          "project": "hmdp-p14-load",
+          "rabbitVersion": "4.1.8",
+          "redisSentinel": "isolated-load-only",
+          "springHealth": "UP"
+        },
+        "initialStock": 200,
+        "invariants": {
+          "databaseStockMatches": true,
+          "errorQueueEmpty": true,
+          "noOversell": true,
+          "oneOrderPerUser": true,
+          "orderQueueDrained": true,
+          "publisherRecoveryDrained": true,
+          "redisAndMySqlAgree": true,
+          "uniqueOrderIds": true
+        },
+        "mysql": {
+          "orders": 200,
+          "stock": 0,
+          "uniqueOrderIds": 200,
+          "uniqueUsers": 200
+        },
+        "rabbitmq": {
+          "errorQueue": 0,
+          "ready": 0,
+          "unacknowledged": 0
+        },
+        "redis": {
+          "pendingPublisherRecords": 0,
+          "stock": 0,
+          "uniqueUsers": 200
+        },
+        "status": "ok"
+      },
+      "droppedIterations": 0,
+      "failedChecks": 0,
+      "httpErrorRate": 0,
+      "latencyMs": {
+        "average": 18.132,
+        "maximum": 71.512,
+        "p95": 51.708,
+        "p99": 60.596
+      },
+      "limitsMs": {
+        "p95": 750,
+        "p99": 1500
+      },
+      "requests": 1000,
+      "requestsPerSecond": 5086.697,
+      "technicalErrorRate": 0
+    },
+    "endurance": {
+      "accepted": true,
+      "business": {
+        "accepted": 1000,
+        "duplicate": 0,
+        "outOfStock": 8001
+      },
+      "consistency": {
+        "acceptedReservations": 1000,
+        "environment": {
+          "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+          "database": "hmdp_p14_load",
+          "project": "hmdp-p14-load",
+          "rabbitVersion": "4.1.8",
+          "redisSentinel": "isolated-load-only",
+          "springHealth": "UP"
+        },
+        "initialStock": 1000,
+        "invariants": {
+          "databaseStockMatches": true,
+          "errorQueueEmpty": true,
+          "noOversell": true,
+          "oneOrderPerUser": true,
+          "orderQueueDrained": true,
+          "publisherRecoveryDrained": true,
+          "redisAndMySqlAgree": true,
+          "uniqueOrderIds": true
+        },
+        "mysql": {
+          "orders": 1000,
+          "stock": 0,
+          "uniqueOrderIds": 1000,
+          "uniqueUsers": 1000
+        },
+        "rabbitmq": {
+          "errorQueue": 0,
+          "ready": 0,
+          "unacknowledged": 0
+        },
+        "redis": {
+          "pendingPublisherRecords": 0,
+          "stock": 0,
+          "uniqueUsers": 1000
+        },
+        "status": "ok"
+      },
+      "droppedIterations": 0,
+      "failedChecks": 0,
+      "httpErrorRate": 0,
+      "latencyMs": {
+        "average": 5.287,
+        "maximum": 240.31,
+        "p95": 16.481,
+        "p99": 21.41
+      },
+      "limitsMs": {
+        "p95": 500,
+        "p99": 1200
+      },
+      "requests": 90001,
+      "requestsPerSecond": 50.0,
+      "technicalErrorRate": 0
+    },
+    "mixed": {
+      "accepted": true,
+      "business": {
+        "accepted": 500,
+        "duplicate": 0,
+        "outOfStock": 2501
+      },
+      "consistency": {
+        "acceptedReservations": 500,
+        "environment": {
+          "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+          "database": "hmdp_p14_load",
+          "project": "hmdp-p14-load",
+          "rabbitVersion": "4.1.8",
+          "redisSentinel": "isolated-load-only",
+          "springHealth": "UP"
+        },
+        "initialStock": 500,
+        "invariants": {
+          "databaseStockMatches": true,
+          "errorQueueEmpty": true,
+          "noOversell": true,
+          "oneOrderPerUser": true,
+          "orderQueueDrained": true,
+          "publisherRecoveryDrained": true,
+          "redisAndMySqlAgree": true,
+          "uniqueOrderIds": true
+        },
+        "mysql": {
+          "orders": 500,
+          "stock": 0,
+          "uniqueOrderIds": 500,
+          "uniqueUsers": 500
+        },
+        "rabbitmq": {
+          "errorQueue": 0,
+          "ready": 0,
+          "unacknowledged": 0
+        },
+        "redis": {
+          "pendingPublisherRecords": 0,
+          "stock": 0,
+          "uniqueUsers": 500
+        },
+        "status": "ok"
+      },
+      "droppedIterations": 0,
+      "failedChecks": 0,
+      "httpErrorRate": 0,
+      "latencyMs": {
+        "average": 5.404,
+        "maximum": 405.37,
+        "p95": 15.905,
+        "p99": 21.281
+      },
+      "limitsMs": {
+        "p95": 500,
+        "p99": 1200
+      },
+      "requests": 30001,
+      "requestsPerSecond": 50.002,
+      "technicalErrorRate": 0
+    },
+    "read": {
+      "accepted": true,
+      "business": {
+        "accepted": 0,
+        "duplicate": 0,
+        "outOfStock": 0
+      },
+      "consistency": null,
+      "droppedIterations": 0,
+      "failedChecks": 0,
+      "httpErrorRate": 0,
+      "latencyMs": {
+        "average": 11.367,
+        "maximum": 81.729,
+        "p95": 70.516,
+        "p99": 71.912
+      },
+      "limitsMs": {
+        "p95": 300,
+        "p99": 800
+      },
+      "requests": 9001,
+      "requestsPerSecond": 50.005,
+      "technicalErrorRate": 0
+    },
+    "seckill": {
+      "accepted": true,
+      "business": {
+        "accepted": 500,
+        "duplicate": 0,
+        "outOfStock": 500
+      },
+      "consistency": {
+        "acceptedReservations": 500,
+        "environment": {
+          "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+          "database": "hmdp_p14_load",
+          "project": "hmdp-p14-load",
+          "rabbitVersion": "4.1.8",
+          "redisSentinel": "isolated-load-only",
+          "springHealth": "UP"
+        },
+        "initialStock": 500,
+        "invariants": {
+          "databaseStockMatches": true,
+          "errorQueueEmpty": true,
+          "noOversell": true,
+          "oneOrderPerUser": true,
+          "orderQueueDrained": true,
+          "publisherRecoveryDrained": true,
+          "redisAndMySqlAgree": true,
+          "uniqueOrderIds": true
+        },
+        "mysql": {
+          "orders": 500,
+          "stock": 0,
+          "uniqueOrderIds": 500,
+          "uniqueUsers": 500
+        },
+        "rabbitmq": {
+          "errorQueue": 0,
+          "ready": 0,
+          "unacknowledged": 0
+        },
+        "redis": {
+          "pendingPublisherRecords": 0,
+          "stock": 0,
+          "uniqueUsers": 500
+        },
+        "status": "ok"
+      },
+      "droppedIterations": 0,
+      "failedChecks": 0,
+      "httpErrorRate": 0,
+      "latencyMs": {
+        "average": 82.22,
+        "maximum": 281.652,
+        "p95": 201.158,
+        "p99": 245.206
+      },
+      "limitsMs": {
+        "p95": 750,
+        "p99": 1500
+      },
+      "requests": 1000,
+      "requestsPerSecond": 2694.798,
+      "technicalErrorRate": 0
+    },
+    "smoke": {
+      "accepted": true,
+      "business": {
+        "accepted": 5,
+        "duplicate": 0,
+        "outOfStock": 5
+      },
+      "consistency": {
+        "acceptedReservations": 5,
+        "environment": {
+          "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+          "database": "hmdp_p14_load",
+          "project": "hmdp-p14-load",
+          "rabbitVersion": "4.1.8",
+          "redisSentinel": "isolated-load-only",
+          "springHealth": "UP"
+        },
+        "initialStock": 5,
+        "invariants": {
+          "databaseStockMatches": true,
+          "errorQueueEmpty": true,
+          "noOversell": true,
+          "oneOrderPerUser": true,
+          "orderQueueDrained": true,
+          "publisherRecoveryDrained": true,
+          "redisAndMySqlAgree": true,
+          "uniqueOrderIds": true
+        },
+        "mysql": {
+          "orders": 5,
+          "stock": 0,
+          "uniqueOrderIds": 5,
+          "uniqueUsers": 5
+        },
+        "rabbitmq": {
+          "errorQueue": 0,
+          "ready": 0,
+          "unacknowledged": 0
+        },
+        "redis": {
+          "pendingPublisherRecords": 0,
+          "stock": 0,
+          "uniqueUsers": 5
+        },
+        "status": "ok"
+      },
+      "droppedIterations": 0,
+      "failedChecks": 0,
+      "httpErrorRate": 0,
+      "latencyMs": {
+        "average": 15.821,
+        "maximum": 21.389,
+        "p95": 21.378,
+        "p99": 21.387
+      },
+      "limitsMs": {
+        "p95": 750,
+        "p99": 1500
+      },
+      "requests": 10,
+      "requestsPerSecond": 430.064,
+      "technicalErrorRate": 0
+    }
+  },
+  "status": "accepted"
+}

@@ -1,0 +1,59 @@
+{
+  "environment": {
+    "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+    "database": "hmdp_p14_load",
+    "project": "hmdp-p14-load",
+    "rabbitVersion": "4.1.8",
+    "redisSentinel": "isolated-load-only",
+    "springHealth": "UP"
+  },
+  "stages": [
+    {
+      "consistency": {
+        "acceptedReservations": 5,
+        "environment": {
+          "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+          "database": "hmdp_p14_load",
+          "project": "hmdp-p14-load",
+          "rabbitVersion": "4.1.8",
+          "redisSentinel": "isolated-load-only",
+          "springHealth": "UP"
+        },
+        "initialStock": 5,
+        "invariants": {
+          "databaseStockMatches": true,
+          "errorQueueEmpty": true,
+          "noOversell": true,
+          "oneOrderPerUser": true,
+          "orderQueueDrained": true,
+          "publisherRecoveryDrained": true,
+          "redisAndMySqlAgree": true,
+          "uniqueOrderIds": true
+        },
+        "mysql": {
+          "orders": 5,
+          "stock": 0,
+          "uniqueOrderIds": 5,
+          "uniqueUsers": 5
+        },
+        "rabbitmq": {
+          "errorQueue": 0,
+          "ready": 0,
+          "unacknowledged": 0
+        },
+        "redis": {
+          "pendingPublisherRecords": 0,
+          "stock": 0,
+          "uniqueUsers": 5
+        },
+        "status": "ok"
+      },
+      "k6Summary": "/Users/hollisyang/Desktop/hm-dianping/reports/p14-1/smoke/k6-summary.json",
+      "name": "smoke",
+      "status": "ok",
+      "stock": 5,
+      "users": 10
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,52 @@
+server:
+  tomcat:
+    threads:
+      max: ${HMDP_LOAD_TOMCAT_MAX_THREADS:200}
+      min-spare: ${HMDP_LOAD_TOMCAT_MIN_SPARE_THREADS:10}
+    accept-count: ${HMDP_LOAD_TOMCAT_ACCEPT_COUNT:200}
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: ${HMDP_LOAD_DB_POOL_SIZE:10}
+      minimum-idle: ${HMDP_LOAD_DB_MIN_IDLE:2}
+      connection-timeout: 3000
+      validation-timeout: 1000
+  data:
+    redis:
+      lettuce:
+        pool:
+          max-active: ${HMDP_LOAD_REDIS_MAX_ACTIVE:10}
+          max-idle: ${HMDP_LOAD_REDIS_MAX_IDLE:10}
+          min-idle: ${HMDP_LOAD_REDIS_MIN_IDLE:2}
+          max-wait: 2s
+  rabbitmq:
+    virtual-host: ${HMDP_RABBITMQ_VHOST:/hmdp-p14-load}
+    listener:
+      simple:
+        concurrency: ${HMDP_LOAD_RABBIT_CONCURRENCY:1}
+        max-concurrency: ${HMDP_LOAD_RABBIT_MAX_CONCURRENCY:1}
+        prefetch: ${HMDP_LOAD_RABBIT_PREFETCH:16}
+
+management:
+  server:
+    port: 9091
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: hmdp-p14-load
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+logging:
+  level:
+    root: INFO
+    com.hmdp: INFO
+

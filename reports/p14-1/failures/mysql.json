@@ -1,0 +1,91 @@
+{
+  "component": "mysql",
+  "consistency": {
+    "acceptedReservations": 5,
+    "environment": {
+      "activeDataset": "nyc-real-v5-8b645404-m20260824|p13-full|5000",
+      "database": "hmdp_p14_load",
+      "project": "hmdp-p14-load",
+      "rabbitVersion": "4.1.8",
+      "redisSentinel": "isolated-load-only",
+      "springHealth": "UP"
+    },
+    "initialStock": 5,
+    "invariants": {
+      "databaseStockMatches": true,
+      "errorQueueEmpty": true,
+      "noOversell": true,
+      "oneOrderPerUser": true,
+      "orderQueueDrained": true,
+      "publisherRecoveryDrained": true,
+      "redisAndMySqlAgree": true,
+      "uniqueOrderIds": true
+    },
+    "mysql": {
+      "orders": 5,
+      "stock": 0,
+      "uniqueOrderIds": 5,
+      "uniqueUsers": 5
+    },
+    "rabbitmq": {
+      "errorQueue": 0,
+      "ready": 0,
+      "unacknowledged": 0
+    },
+    "redis": {
+      "pendingPublisherRecords": 0,
+      "stock": 0,
+      "uniqueUsers": 5
+    },
+    "status": "ok"
+  },
+  "deadLettersBeforeReplay": 1,
+  "replay": {
+    "consumed": 2,
+    "published": 2,
+    "status": "ok"
+  },
+  "responses": [
+    {
+      "body": {
+        "data": 630430310617598364,
+        "success": true
+      },
+      "httpStatus": 200,
+      "index": 0
+    },
+    {
+      "body": {
+        "data": 630430310617598361,
+        "success": true
+      },
+      "httpStatus": 200,
+      "index": 1
+    },
+    {
+      "body": {
+        "data": 630430310617598365,
+        "success": true
+      },
+      "httpStatus": 200,
+      "index": 2
+    },
+    {
+      "body": {
+        "data": 630430310617598363,
+        "success": true
+      },
+      "httpStatus": 200,
+      "index": 3
+    },
+    {
+      "body": {
+        "data": 630430310617598362,
+        "success": true
+      },
+      "httpStatus": 200,
+      "index": 4
+    }
+  ],
+  "status": "ok"
+}

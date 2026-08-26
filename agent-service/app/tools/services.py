@@ -513,6 +513,15 @@ class HttpShopToolService:
 class InMemoryRagService:
     """RAG contract adapter with explicit untrusted citations for workflow tests."""
 
+    def __init__(
+        self,
+        *,
+        data_version: str | None = None,
+        dataset_sha256: str | None = None,
+    ) -> None:
+        self._data_version = data_version
+        self._dataset_sha256 = dataset_sha256
+
     async def rank_candidates(
         self,
         constraints: UserConstraints,
@@ -553,6 +562,8 @@ class InMemoryRagService:
                             source_type="SYNTHETIC",
                             source_name="HMDP in-memory test fixture",
                             synthetic=True,
+                            data_version=self._data_version,
+                            dataset_sha256=self._dataset_sha256,
                         )
                     ],
                 )

@@ -3,7 +3,7 @@
 黑马点评 NYC AI 全栈改造项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
 
 架构边界与不可回退能力见 [目标架构](docs/target-architecture.md) 和 [验收标准](docs/acceptance-criteria.md)。
-当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md) 和 [P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md)。
+当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md)、[P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md) 和 [P14.1 后端压测 Runbook](docs/p14-1-backend-load-runbook.md)。
 
 ## 环境要求
 
@@ -160,6 +160,8 @@ P7 将地图升级为面向大数据量的 viewport 查询：Spring `/shop/map` 
 P8 将活动数据切换为 `nyc-real-v1`：5,000 个商户身份全部取自固定、可校验的 OpenStreetMap 快照，六分类均有覆盖且 `mockShops=0`。P10 增加图片许可、评论线程，以及博客、博客评论和优惠券的内部内容来源字段；这些审计字段不会作为说明性标签显示在产品界面。`real-medium` 生成 100,000 条根评论和 52,500 条回复，评分只由根评论计算；评论会结合具体商户、社区、价格、主题和检索标签生成不同表述，Agent 优先选择不重复的评论线程作为 RAG 证据，并按内容哈希、批次、数据版本和数据集 SHA 增量同步 Qdrant。营业时间优先解析 OSM `opening_hours`，其余时段按类别稳定补全；人均价格按类别、细分类和 Borough 估算，检索标签也会在显式 OSM 属性之外进行稳定补全。
 
 P14 已完成稳定性与性能收尾：保护 Redis Lua 库存原子性和 RabbitMQ ack/nack/重放/幂等语义，增加 Agent 结果数量、Unicode 约束解析、并发取消/恢复与 DeepSeek Trace 观测，并固化地图/列表 P95、双语键和前端回归门禁。P14 不需要数据库导入或 Qdrant 重建；实测结果和复现命令见 [P14 Runbook](docs/p14-stability-performance-runbook.md)。
+
+P14.1 已将 P14 门禁扩展为隔离全栈压测：专用 Compose 项目导入同一 P13 5,000 商户检查点，加入 Actuator/Prometheus、k6 读取/秒杀/重复用户/混合/长稳场景、订单最终一致性校验，以及 RabbitMQ/MySQL/Redis 故障恢复演练。它不会操作日常开发数据库，命令与基线见 [P14.1 Runbook](docs/p14-1-backend-load-runbook.md)。
 
 使用集成 Compose 前先生成 `nyc-real-medium`，并将当前用户登录 token 传给 Agent Service；缺少该变量时 Agent 的 HTTP Adapter 调用 Spring Tool API 会返回 401：
 
