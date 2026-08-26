@@ -7,6 +7,7 @@ import { getShopById, getShopReviews, createShopReview } from '../../api/shop';
 import { getVoucherList, seckillVoucher } from '../../api/voucher';
 import VoucherCard, { type VoucherData } from '../../components/VoucherCard';
 import ReviewThread, { type ReviewData } from '../../components/ReviewThread';
+import MerchantVisual from '../../components/MerchantVisual';
 import styles from './ShopDetail.module.css';
 
 interface ShopImageAsset {
@@ -53,6 +54,8 @@ interface ShopInfo {
   sourceAttribution?: string;
   derivedFields?: string[];
   imageAssets?: ShopImageAsset[];
+  typeId?: number;
+  subcategoryId?: number;
 }
 
 interface ApiEnvelope<T> {
@@ -187,6 +190,7 @@ export default function ShopDetail() {
   const imageAssets: ShopImageAsset[] = shop.imageAssets?.length
     ? [...shop.imageAssets].sort((first, second) => (first.displayOrder ?? first.sortOrder ?? 0) - (second.displayOrder ?? second.sortOrder ?? 0))
     : shop.images.map((displayUrl, index) => ({ displayUrl, sortOrder: index, imageType: 'LEGACY' }));
+  if (imageAssets.length === 0) imageAssets.push({ displayUrl: '', sortOrder: 0 });
   const displayReviewCount = shop.localReviewCount ?? shop.comments;
   const operational = !shop.businessStatus || shop.businessStatus === 'OPERATIONAL';
 
@@ -229,11 +233,13 @@ export default function ShopDetail() {
           <div className={styles.shopImages}>
             {imageAssets.map((asset, index) => (
               <div key={`${asset.displayUrl}-${index}`} className={styles.shopImageAsset}>
-                <img
-                  src={asset.cachedUrl || asset.displayUrl}
+                <MerchantVisual
+                  shopId={shop.id}
+                  name={shop.name}
+                  typeId={shop.typeId}
+                  images={asset.cachedUrl || asset.displayUrl}
                   alt={`${shop.name} ${index + 1}`}
                   loading="lazy"
-                  onError={(event) => { event.currentTarget.src = '/imgs/icons/default-icon.png'; }}
                 />
               </div>
             ))}

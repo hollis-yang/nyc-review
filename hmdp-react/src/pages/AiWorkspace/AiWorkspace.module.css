@@ -456,6 +456,21 @@
 .shopCard {
   margin-top: 8px;
   padding: 14px;
+  overflow: hidden;
+}
+
+.shopVisual {
+  height: 132px;
+  margin: -14px -14px 12px;
+  overflow: hidden;
+  background: #f4eee9;
+}
+
+.shopVisual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .shopTop {

@@ -18,6 +18,7 @@ import {
 } from '../../api/agent';
 import { translateText } from '../../api/translate';
 import FootBar from '../../components/FootBar';
+import MerchantVisual from '../../components/MerchantVisual';
 import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './AiWorkspace.module.css';
 
@@ -397,6 +398,14 @@ export default function AiWorkspace() {
               const stop = itineraryByShop.get(shop.shop_id);
               return (
                 <article className={styles.shopCard} key={shop.shop_id}>
+                  <div className={styles.shopVisual}>
+                    <MerchantVisual
+                      shopId={shop.shop_id}
+                      name={shop.name}
+                      alt={shop.name}
+                      loading="lazy"
+                    />
+                  </div>
                   <div className={styles.shopTop}>
                     <div>
                       <span className={styles.shopCategory}>{t(`shopTypes.${shop.category}`, shop.category)}</span>

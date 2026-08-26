@@ -24,6 +24,7 @@ import {
 import FootBar from '../../components/FootBar';
 import 'leaflet/dist/leaflet.css';
 import styles from './Map.module.css';
+import MerchantVisual from '../../components/MerchantVisual';
 
 interface ShopType {
   id: number;
@@ -334,10 +335,6 @@ function MapLayers({
         const score = shop.score == null
           ? null
           : (shop.score > 5 ? shop.score / 10 : shop.score);
-        const image = shop.thumbnailUrl
-          || shop.images?.split(',')[0]
-          || '/imgs/icons/default-icon.png';
-
         return (
           <Marker
             key={`shop:${shop.id}`}
@@ -349,12 +346,14 @@ function MapLayers({
             <Popup>
               <div className={styles.popupContent}>
                 <div className={styles.popupSummary}>
-                  <img
-                    src={image}
+                  <MerchantVisual
+                    shopId={shop.id}
+                    name={shop.name}
+                    typeId={shop.typeId}
+                    images={shop.thumbnailUrl || shop.images}
                     alt={shop.name}
                     className={styles.popupImage}
                     loading="lazy"
-                    onError={(event) => { event.currentTarget.src = '/imgs/icons/default-icon.png'; }}
                   />
                   <div className={styles.popupText}>
                     <div className={styles.popupName}>{shop.name}</div>

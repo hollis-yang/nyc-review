@@ -551,6 +551,16 @@
   color: #fff;
 }
 
+.creditsLink {
+  flex: none;
+  align-self: center;
+  margin: 2px 0 72px;
+  border: 0;
+  background: transparent;
+  color: #9b8f8a;
+  font-size: 10px;
+}
+
 @media (min-width: 720px) {
   .profileCard,
   .content {

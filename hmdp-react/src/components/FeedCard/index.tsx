@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import LikeButton from '../LikeButton';
+import { NoteVisual } from '../MerchantVisual';
 import type { BlogData } from '../BlogCard';
 import styles from './FeedCard.module.css';
 
@@ -10,15 +11,20 @@ interface FeedCardProps {
 
 export default function FeedCard({ blog, onLikeUpdate }: FeedCardProps) {
   const navigate = useNavigate();
-  const imgSrc = blog.img || (blog.images ? blog.images.split(',')[0] : '');
-
   return (
     <div className={styles.card} onClick={() => navigate(`/blog-detail/${blog.id}`)}>
-      {imgSrc && (
-        <div className={styles.cover}>
-          <img src={imgSrc} alt="" />
-        </div>
-      )}
+      <div className={styles.cover}>
+        <NoteVisual
+          blogId={blog.id}
+          shopId={blog.shopId}
+          shopName={blog.shopName}
+          typeId={blog.typeId}
+          images={blog.img || blog.images}
+          sourceType={blog.sourceType}
+          alt={blog.title}
+          loading="lazy"
+        />
+      </div>
       <div className={styles.body}>
         <div className={styles.title}>{blog.title}</div>
         <div className={styles.meta}>

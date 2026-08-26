@@ -7,6 +7,7 @@ import { getBlogsOfUser } from '../../api/blog';
 import { isFollowed, follow, getCommonFollows } from '../../api/follow';
 import FootBar from '../../components/FootBar';
 import { useTranslation } from 'react-i18next';
+import { NoteVisual } from '../../components/MerchantVisual';
 import styles from './OtherProfile.module.css';
 
 interface UserInfo {
@@ -141,9 +142,14 @@ export default function OtherProfile() {
                       onClick={() => navigate(`/blog-detail/${b.id}`)}
                     >
                       <div className={styles.blogItemImg}>
-                        <img
-                          src={b.images ? b.images.split(',')[0] : ''}
-                          alt=""
+                        <NoteVisual
+                          blogId={b.id}
+                          shopId={b.shopId}
+                          typeId={b.typeId}
+                          images={b.images}
+                          sourceType={b.sourceType}
+                          alt={b.title}
+                          loading="lazy"
                         />
                       </div>
                       <div className={styles.blogItemInfo}>

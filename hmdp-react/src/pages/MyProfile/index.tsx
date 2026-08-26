@@ -15,6 +15,7 @@ import {
 import FeedCard from '../../components/FeedCard';
 import FootBar from '../../components/FootBar';
 import type { BlogData } from '../../components/BlogCard';
+import MerchantVisual, { NoteVisual } from '../../components/MerchantVisual';
 import styles from './MyProfile.module.css';
 
 export default function MyProfile() {
@@ -190,9 +191,6 @@ export default function MyProfile() {
     }).format(new Date(value))
     : '';
 
-  const firstImage = (images?: string) =>
-    images?.split(',').find(Boolean) || '/imgs/icons/default-icon.png';
-
   const empty = (label: string) => (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}>◇</div>
@@ -275,11 +273,20 @@ export default function MyProfile() {
                 <button key={blog.id} className={styles.blogItem}
                   onClick={() => navigate(`/blog-detail/${blog.id}`)}>
                   <span className={styles.blogItemImg}>
-                    <img src={blog.images ? blog.images.split(',')[0] : ''} alt="" />
+                    <NoteVisual
+                      blogId={blog.id}
+                      shopId={blog.shopId}
+                      shopName={blog.shopName}
+                      typeId={blog.typeId}
+                      images={blog.images}
+                      sourceType={blog.sourceType}
+                      alt={blog.title}
+                      loading="lazy"
+                    />
                   </span>
                   <span className={styles.blogItemInfo}>
                     <span className={styles.blogItemTitle}>{blog.title}</span>
-                    <span className={styles.blogItemMeta}>👍 {blog.liked}　💬 {blog.comments ?? 0}</span>
+                    <span className={styles.blogItemMeta}>👍 {blog.liked} · 💬 {blog.comments ?? 0}</span>
                   </span>
                 </button>
               )) : empty(t('profile.noNotes'))}
@@ -292,7 +299,14 @@ export default function MyProfile() {
                 assets?.favorites.length ? assets.favorites.map((favorite) => (
                   <button className={styles.assetCard} key={favorite.id}
                     onClick={() => navigate(`/shop-detail/${favorite.shopId}`)}>
-                    <img className={styles.assetImage} src={firstImage(favorite.images)} alt="" />
+                    <MerchantVisual
+                      className={styles.assetImage}
+                      shopId={favorite.shopId}
+                      name={favorite.name}
+                      images={favorite.images}
+                      alt={favorite.name}
+                      loading="lazy"
+                    />
                     <span className={styles.assetBody}>
                       <strong>{favorite.name}</strong>
                       <small>{[favorite.neighborhood, favorite.borough].filter(Boolean).join(', ')}</small>
@@ -401,6 +415,10 @@ export default function MyProfile() {
           </Tabs.Tab>
         </Tabs>
       </div>
+
+      <button className={styles.creditsLink} onClick={() => navigate('/image-credits')}>
+        {t('imageCredits.profileLink')} ›
+      </button>
 
       <FootBar activeBtn={4} />
     </div>

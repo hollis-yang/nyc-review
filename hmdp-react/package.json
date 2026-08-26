@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "visual:audit": "node scripts/audit_p13_5_visuals.mjs",
+    "visual:generate": "python3 scripts/p13_5_visual_assets.py",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -443,6 +443,13 @@
       "actionRejected": "你已拒绝操作，没有执行写入。"
     }
   },
+  "imageCredits": {
+    "title": "图片署名",
+    "intro": "当商户专属图片不可用时，将使用 {{count}} 张按类别匹配的场景图片；这些图片不代表具体商户实景。",
+    "source": "来源",
+    "license": "许可",
+    "profileLink": "图片署名"
+  },
   "agentActions": {
     "favorite_shop": {
       "title": "收藏 {{shop}}",

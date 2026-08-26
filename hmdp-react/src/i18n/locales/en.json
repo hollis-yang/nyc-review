@@ -443,6 +443,13 @@
       "actionRejected": "You rejected an action; no write was performed."
     }
   },
+  "imageCredits": {
+    "title": "Image credits",
+    "intro": "{{count}} contextual images are used when a merchant-specific photo is unavailable. They are category-matched visuals, not claims about a specific storefront.",
+    "source": "Source",
+    "license": "License",
+    "profileLink": "Image credits"
+  },
   "agentActions": {
     "favorite_shop": {
       "title": "Favorite {{shop}}",

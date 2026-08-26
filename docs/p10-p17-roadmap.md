@@ -14,6 +14,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 | P11.5 | Complete; checkpoint ready | Improve images and per-person prices without a paid Places API | Bounded same-site gallery/menu/location/service crawl; sitemap, `srcset`, CSS and PDF support; official menu/service price distribution and deterministic category estimate | 1,871 merchant-image shops (37.42%); external price 918; official-menu average price 844; 5,000/5,000 map projection; v4 full-bundle gates pass |
 | P12 | Complete; isolated checkpoint accepted | Upgrade RAG retrieval quality | Separate fact/evidence types; hybrid lexical/vector recall; bilingual query expansion; metadata filters; broad candidate pool; reranking; evidence deduplication; merchant diversity; Verifier improvements; frozen/current/stress eval layers | 145,000-point/72-case gate passed: Recall@10 99.54%; evidence and constraint satisfaction 100%; duplicate/security/version failures 0; local P95 5.20 s |
 | P13 | Complete; checkpoint ready | Improve the depth and realism of the 5,000-shop corpus | Separated local browsable reviews from external rating metadata; generated diverse category-aware review threads, notes and comments; deepened bounded official-site/Wikimedia/NYC enrichment; rebuilt the full corpus after a balanced 600-shop Pilot | 5,000 stable real-source identities; 100,000 roots plus 63,500 replies; local review/API counts agree; exact duplicates 0 and near duplicates 0.294%; merchant images 38.12% (50% remains a stretch target); current-corpus RAG Recall@10 99.54%, evidence/constraints 100%, local P95 3.90 s |
+| P13.5 | Complete; frontend-only | Raise merchant and note visual coverage without changing the P13 corpus | Added one frontend visual resolver; retained exact merchant images first; pinned 218 licensed contextual photos; added deterministic category/shop covers; replaced note defaults; added broken-image fallback, credits and visual audits across every React entry point | 5,000/5,000 photo-backed and non-default shop visuals; 10,000 generated notes with 0% default-image rate; exact merchant-image count remains 1,906; max contextual reuse 15; no backend/RAG identity change; build and audit pass |
 | P14 | Pending | Stability, performance and bug closeout | RabbitMQ/Redis Lua load tests; idempotency and dead-letter tests; Agent concurrency, timeout, cancel and recovery; map/list performance; bilingual and UI regression | No oversell; zero duplicate orders; Agent recovery works; map/list stay responsive at target scale; core regression suite passes |
 | P15 | Final-stage | Move Qdrant to server mode | Replace local-path storage; payload indexes; collection aliases; multiple Agent instances; backup and health checks | No local file lock or 20,000-point warning; concurrent Agent instances work; index versions switch without downtime |
 | P16 | Final-stage | Final release-candidate alignment and rollback rehearsal | Freeze the latest accepted checkpoint; repeat MySQL/Redis/map/Qdrant identity audit; verify backup restoration and collection switch; cut the release candidate | MySQL, Redis, map, Agent and RAG share the same `dataVersion`, `datasetSha256` and `shopIdsSha256`; rollback is rehearsed |
@@ -27,6 +28,7 @@ P9/P9.1 complete
   → P11.5 checkpoint import and visual acceptance (`nyc-real-v4-0f51676d-m20260824`)
   → P12 RAG quality (complete; `p12-rag-v1` / `hmdp_content_v2`)
   → P13 5,000-shop depth and content realism (complete; `nyc-real-v5-8b645404-m20260824`)
+  → P13.5 frontend merchant/note visual coverage (complete; no data checkpoint change)
   → P14 stability and performance
   → P15 Qdrant server mode
   → P16 final release-candidate alignment
@@ -65,6 +67,10 @@ P9/P9.1 complete
   evidence distribution. P13 keeps the 5,000 merchant identities and IDs
   stable, and evaluates the refreshed corpus in a separate Qdrant path before
   checkpoint promotion.
+- P13.5 consumes the accepted P13 frontend contract but changes only React
+  assets, image resolution and fallback behavior. It does not alter MySQL,
+  Redis, Spring, Agent Service, Qdrant, `dataVersion` or RAG evaluation inputs,
+  so it neither requires a checkpoint import nor blocks independent P14 work.
 - P14 establishes load limits before P15 enables multiple Agent instances.
 - P15 must finish before the P16 production-style Qdrant alias switch.
 - P17 documents only commands and metrics reproduced by P14–P16.

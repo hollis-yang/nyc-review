@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import LikeButton from '../LikeButton';
+import { NoteVisual } from '../MerchantVisual';
 import styles from './BlogCard.module.css';
 
 export interface BlogData {
@@ -13,6 +14,9 @@ export interface BlogData {
   comments?: number;
   img?: string;
   sourceType?: string;
+  shopId?: number;
+  typeId?: number;
+  shopName?: string;
 }
 
 interface BlogCardProps {
@@ -22,8 +26,6 @@ interface BlogCardProps {
 
 export default function BlogCard({ blog, onLikeUpdate }: BlogCardProps) {
   const navigate = useNavigate();
-  const imgSrc = blog.img || (blog.images ? blog.images.split(',')[0] : '');
-
   const handleLikeUpdate = (liked: number, isLike: boolean) => {
     if (onLikeUpdate) {
       onLikeUpdate(blog.id, liked, isLike);
@@ -33,7 +35,16 @@ export default function BlogCard({ blog, onLikeUpdate }: BlogCardProps) {
   return (
     <div className={styles.box} onClick={() => navigate(`/blog-detail/${blog.id}`)}>
       <div className={styles.img}>
-        <img src={imgSrc} alt="" />
+        <NoteVisual
+          blogId={blog.id}
+          shopId={blog.shopId}
+          shopName={blog.shopName}
+          typeId={blog.typeId}
+          images={blog.img || blog.images}
+          sourceType={blog.sourceType}
+          alt={blog.title}
+          loading="lazy"
+        />
       </div>
       <div className={styles.title}>
         <div className={styles.titleText}>{blog.title}</div>

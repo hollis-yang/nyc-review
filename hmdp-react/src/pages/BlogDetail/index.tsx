@@ -9,6 +9,7 @@ import { getShopById } from '../../api/shop';
 import { getMeOptional } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
 import ImageSwiper from '../../components/ImageSwiper';
+import MerchantVisual from '../../components/MerchantVisual';
 import { normalizeBlogContent } from '../../utils/blogContent';
 import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './BlogDetail.module.css';
@@ -32,9 +33,11 @@ interface BlogInfo {
 interface ShopInfo {
   id: number;
   image: string;
+  images?: string;
   name: string;
   score: number;
   avgPrice: number;
+  typeId?: number;
 }
 
 interface CommentInfo {
@@ -424,7 +427,14 @@ export default function BlogDetail() {
       <div className={styles.scroll}>
         {/* 图片卡片：Swiper + 作者信息 */}
         <div className={styles.imageCard}>
-          <ImageSwiper images={blog.images} />
+          <ImageSwiper
+            images={blog.images}
+            blogId={blog.id}
+            shopId={blog.shopId}
+            shopName={shop?.name}
+            typeId={shop?.typeId}
+            sourceType={blog.sourceType}
+          />
           <div className={styles.basic}>
             <div className={styles.basicIcon} onClick={handleAuthorClick}>
               <img src={blog.icon || '/imgs/icons/default-icon.png'} alt="" />
@@ -474,7 +484,14 @@ export default function BlogDetail() {
         {shop && (
           <div className={styles.shopBasic} onClick={() => navigate(`/shop-detail/${shop.id}`)}>
             <div className={styles.shopIcon}>
-              <img src={shop.image} alt="" />
+              <MerchantVisual
+                shopId={shop.id}
+                name={shop.name}
+                typeId={shop.typeId}
+                images={shop.images || shop.image}
+                alt={shop.name}
+                loading="lazy"
+              />
             </div>
             <div className={styles.shopInfo}>
               <div className={styles.shopName}>{shop.name}</div>

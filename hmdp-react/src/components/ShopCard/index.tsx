@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Rate } from 'antd-mobile';
 import { EnvironmentOutline } from 'antd-mobile-icons';
+import MerchantVisual from '../MerchantVisual';
 import styles from './ShopCard.module.css';
 
 export interface ShopData {
@@ -21,6 +22,8 @@ export interface ShopData {
   address: string;
   sourceType?: string;
   syntheticFields?: string[];
+  typeId?: number;
+  subcategoryId?: number;
 }
 
 interface ShopCardProps {
@@ -30,7 +33,6 @@ interface ShopCardProps {
 export default function ShopCard({ shop }: ShopCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const imgSrc = shop.images ? shop.images.split(',')[0] : '';
   const displayReviewCount = shop.localReviewCount ?? shop.comments;
 
   const formatDistance = (d: number) => {
@@ -41,11 +43,13 @@ export default function ShopCard({ shop }: ShopCardProps) {
   return (
     <div className={styles.box} onClick={() => navigate(`/shop-detail/${shop.id}`)}>
       <div className={styles.img}>
-        <img
-          src={imgSrc || '/imgs/icons/default-icon.png'}
+        <MerchantVisual
+          shopId={shop.id}
+          name={shop.name}
+          typeId={shop.typeId}
+          images={shop.images}
           alt={shop.name}
           loading="lazy"
-          onError={(event) => { event.currentTarget.src = '/imgs/icons/default-icon.png'; }}
         />
       </div>
       <div className={styles.info}>
