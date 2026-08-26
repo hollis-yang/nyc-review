@@ -7,9 +7,12 @@ from app.domain.models import (
     ShopCandidate,
     VerificationIssue,
     VerificationReport,
+    VerificationSeverity,
 )
 from app.graph.state import AgentState
 from app.tools.services import ItineraryService, RagService, ShopToolService, neighborhood_matches
+
+HARD_DESIRED_TAGS = {"wheelchair_accessible"}
 
 
 class SupervisorAgent:
@@ -47,7 +50,7 @@ class DiscoveryAgent:
             self._rag,
             state["constraints"],
             candidate_pool,
-            limit=self._final_limit,
+            limit=min(self._final_limit, state["constraints"].result_limit),
         )
         return {
             "candidates": candidates,
@@ -100,7 +103,7 @@ class SingleAgent:
             self._rag,
             constraints,
             candidate_pool,
-            limit=self._final_limit,
+            limit=min(self._final_limit, constraints.result_limit),
         )
         evidence = await self._rag.retrieve(constraints, candidates)
         itinerary = await self._itinerary.plan(constraints, candidates)
@@ -127,6 +130,14 @@ class VerifierAgent:
         }
         itinerary_ids = {stop.shop_id for stop in state["itinerary"].stops}
         issues: list[VerificationIssue] = []
+
+        if not candidate_ids:
+            issues.append(
+                VerificationIssue(
+                    code="NO_CANDIDATES",
+                    message="No merchant satisfied the required constraints.",
+                )
+            )
 
         if len(candidate_ids) != len(candidate_rows):
             issues.append(
@@ -235,6 +246,7 @@ class VerifierAgent:
                             code="COST_UNAVAILABLE",
                             message="No price is available for budget verification.",
                             shop_id=stop.shop_id,
+                            severity=VerificationSeverity.WARNING,
                         )
                     )
                 elif stop.estimated_cost_cents > budget:
@@ -243,6 +255,7 @@ class VerifierAgent:
                             code="BUDGET_EXCEEDED",
                             message="Estimated cost exceeds the user's total budget.",
                             shop_id=stop.shop_id,
+                            severity=VerificationSeverity.WARNING,
                         )
                     )
 
@@ -255,11 +268,11 @@ class VerifierAgent:
                             code="CLOSED_AT_VISIT_TIME",
                             message="Published business hours do not include the requested visit time.",
                             shop_id=candidate.shop_id,
+                            severity=VerificationSeverity.WARNING,
                         )
                     )
 
         desired_tags = set(state["constraints"].desired_tags)
-        tags_relaxed = "desired_tags" in state["candidates"].relaxed_constraints
         for candidate in state["candidates"].candidates:
             if candidate.business_status != "OPERATIONAL":
                 issues.append(
@@ -270,25 +283,39 @@ class VerifierAgent:
                     )
                 )
             missing_tags = sorted(desired_tags - set(candidate.tags))
-            if missing_tags and not tags_relaxed:
+            missing_hard_tags = sorted(set(missing_tags) & HARD_DESIRED_TAGS)
+            missing_soft_tags = sorted(set(missing_tags) - HARD_DESIRED_TAGS)
+            if missing_hard_tags:
                 issues.append(
                     VerificationIssue(
                         code="MISSING_DESIRED_TAGS",
-                        message="Candidate is missing requested tags: " + ", ".join(missing_tags),
+                        message="Candidate is missing required tags: "
+                        + ", ".join(missing_hard_tags),
                         shop_id=candidate.shop_id,
+                    )
+                )
+            if missing_soft_tags:
+                issues.append(
+                    VerificationIssue(
+                        code="MISSING_DESIRED_TAGS",
+                        message="Candidate is missing preferred tags: "
+                        + ", ".join(missing_soft_tags),
+                        shop_id=candidate.shop_id,
+                        severity=VerificationSeverity.WARNING,
                     )
                 )
             evidence = evidence_by_shop.get(candidate.shop_id)
             unsupported_tags = sorted(
                 desired_tags - set(evidence.supported_tags if evidence is not None else [])
             )
-            if unsupported_tags and not tags_relaxed:
+            if unsupported_tags:
                 issues.append(
                     VerificationIssue(
                         code="UNSUPPORTED_DESIRED_TAGS",
                         message="Retrieved evidence does not support requested tags: "
                         + ", ".join(unsupported_tags),
                         shop_id=candidate.shop_id,
+                        severity=VerificationSeverity.WARNING,
                     )
                 )
 
@@ -315,10 +342,11 @@ class VerifierAgent:
                     )
                 )
 
+        has_errors = any(issue.severity is VerificationSeverity.ERROR for issue in issues)
         report = VerificationReport(
-            valid=not issues and bool(candidate_ids),
+            valid=not has_errors and bool(candidate_ids),
             issues=issues,
-            verified_shop_ids=sorted(candidate_ids) if not issues else [],
+            verified_shop_ids=sorted(candidate_ids) if not has_errors else [],
         )
         return {"verification": report, "events": ["verifier:checks_completed"]}
 
@@ -339,6 +367,7 @@ async def _rank_candidates(
         update={
             "candidates": candidate_pool.candidates[:limit],
             "retrieval_metadata": {
+                **candidate_pool.retrieval_metadata,
                 "retrievalVersion": "legacy-adapter",
                 "candidatePool": len(candidate_pool.candidates),
                 "finalCandidates": min(limit, len(candidate_pool.candidates)),

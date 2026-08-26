@@ -39,7 +39,9 @@ class Settings(BaseSettings):
     )
     model_fallback_to_heuristic: bool = True
     run_store_path: str = DEFAULT_RUN_STORE_PATH
-    max_candidates: int = Field(default=5, ge=1, le=20)
+    # The natural-language request defaults to five results and can explicitly
+    # request up to ten. This setting is only the server-side safety ceiling.
+    max_candidates: int = Field(default=10, ge=1, le=20)
     discovery_pool_size: int = Field(default=50, ge=5, le=100)
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)

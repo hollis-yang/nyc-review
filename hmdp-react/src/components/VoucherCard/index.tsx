@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { formatPrice } from '../../utils';
 import { purchaseVoucher } from '../../api/voucher';
 import { useAuth } from '../../hooks/useAuth';
+import type { TFunction } from 'i18next';
 import styles from './VoucherCard.module.css';
 
 export interface VoucherData {
@@ -23,7 +24,7 @@ interface VoucherCardProps {
   onSeckill: (id: number) => void;
 }
 
-function formatTime(v: VoucherData, t: (k: string, opts?: any) => string): string {
+function formatTime(v: VoucherData, t: TFunction): string {
   const b = new Date(v.beginTime);
   const e = new Date(v.endTime);
   const pad = (m: number) => (m < 10 ? '0' + m : String(m));
@@ -79,7 +80,7 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
       try {
         const res = await purchaseVoucher(v.id);
         Toast.show({ icon: 'success', content: t('voucher.purchaseSuccess', { id: res.data ?? res }) });
-      } catch (err: any) {
+      } catch (err: unknown) {
         Toast.show({ icon: 'fail', content: String(err) });
       }
     }

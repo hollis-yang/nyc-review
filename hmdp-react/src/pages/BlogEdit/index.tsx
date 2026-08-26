@@ -37,7 +37,7 @@ export default function BlogEdit() {
       Toast.show({ icon: 'fail', content: t('blogEdit.loginRequired') });
       setTimeout(() => navigate('/login'), 200);
     });
-  }, [navigate]);
+  }, [navigate, t]);
 
   const queryShops = async () => {
     try {
@@ -55,7 +55,7 @@ export default function BlogEdit() {
       const res = await uploadBlogImage(file);
       const path = String(res.data ?? res);
       setFileList((prev) => [...prev, path]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -66,7 +66,7 @@ export default function BlogEdit() {
     try {
       await deleteBlogImage(filePath);
       setFileList((prev) => prev.filter((_, i) => i !== index));
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
@@ -84,7 +84,7 @@ export default function BlogEdit() {
         shopId: selectedShop.id,
       });
       navigate('/profile');
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };

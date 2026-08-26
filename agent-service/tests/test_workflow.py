@@ -46,7 +46,7 @@ async def test_multi_agent_graph_runs_parallel_branches_and_verifies_results():
     )
 
 
-async def test_verifier_rejects_candidates_that_exceed_total_budget():
+async def test_verifier_warns_when_candidates_exceed_total_budget():
     class OverBudgetShopService:
         async def search(self, constraints: UserConstraints) -> CandidateSet:
             return CandidateSet(
@@ -82,8 +82,11 @@ async def test_verifier_rejects_candidates_that_exceed_total_budget():
 
     state = await workflow.ainvoke({"request": request, "events": []})
 
-    assert state["verification"].valid is False
-    assert any(issue.code == "BUDGET_EXCEEDED" for issue in state["verification"].issues)
+    assert state["verification"].valid is True
+    budget_issue = next(
+        issue for issue in state["verification"].issues if issue.code == "BUDGET_EXCEEDED"
+    )
+    assert budget_issue.severity.value == "warning"
 
 
 async def test_verifier_accepts_explicitly_relaxed_unknown_price_without_treating_it_as_zero():
@@ -167,8 +170,12 @@ async def test_verifier_does_not_repeat_tag_failures_after_discovery_relaxes_tag
     )
 
     assert state["verification"].valid is True
-    assert not any(
-        issue.code == "MISSING_DESIRED_TAGS" for issue in state["verification"].issues
+    missing_issues = [
+        issue for issue in state["verification"].issues if issue.code == "MISSING_DESIRED_TAGS"
+    ]
+    assert missing_issues
+    assert all(
+        issue.severity.value == "warning" for issue in missing_issues
     )
 
 

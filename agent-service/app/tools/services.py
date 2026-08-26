@@ -21,6 +21,8 @@ from app.domain.models import (
 )
 from app.request_context import request_authorization
 
+HARD_DESIRED_TAGS = {"wheelchair_accessible"}
+
 
 class ShopToolService(Protocol):
     async def search(self, constraints: UserConstraints) -> CandidateSet: ...
@@ -196,11 +198,16 @@ class GeneratedNycShopToolService:
         strict_rows = [row for row in rows if row[4]]
         relaxed_constraints: list[str] = []
         warnings: list[str] = []
-        if required_tags and not strict_rows and rows:
-            selected_rows = rows
+        target_count = min(constraints.result_limit, self._max_candidates)
+        hard_tags = required_tags & HARD_DESIRED_TAGS
+        relaxed_rows = [row for row in rows if hard_tags <= set(row[0].get("tags") or [])]
+        if required_tags and len(strict_rows) < target_count and relaxed_rows:
+            strict_ids = {row[0]["id"] for row in strict_rows}
+            selected_rows = strict_rows + [row for row in relaxed_rows if row[0]["id"] not in strict_ids]
             relaxed_constraints = ["desired_tags"]
             warnings = [
-                "No shop matched every requested tag. Showing the closest alternatives for review."
+                "Fewer shops matched every preferred tag. Required accessibility constraints "
+                "were retained while adding the closest alternatives."
             ]
         else:
             selected_rows = strict_rows if required_tags else rows
@@ -215,6 +222,7 @@ class GeneratedNycShopToolService:
             self._to_candidate(shop, category, distance)
             for shop, category, distance, _, _ in selected_rows[: self._max_candidates]
         ]
+        strict_ids = {row[0]["id"] for row in strict_rows}
         if per_person_budget is not None and any(
             candidate.avg_price_cents is None for candidate in candidates
         ):
@@ -240,6 +248,14 @@ class GeneratedNycShopToolService:
                 if warnings
                 else ([] if candidates else ["No generated NYC shops matched every hard constraint."])
             ),
+            retrieval_metadata={
+                "exactCandidateIds": [
+                    candidate.shop_id for candidate in candidates if candidate.shop_id in strict_ids
+                ],
+                "requestedResultLimit": constraints.result_limit,
+                "hardDesiredTags": sorted(hard_tags),
+                "softDesiredTags": sorted(required_tags - hard_tags),
+            },
         )
 
     async def detail(self, shop_id: int) -> ShopCandidate | None:
@@ -279,10 +295,20 @@ class GeneratedNycShopToolService:
             price_level=shop.get("priceLevel"),
             comments=shop.get("comments"),
             local_review_count=shop.get("localReviewCount", shop.get("comments")),
-            local_score=(shop.get("localScore") / 10 if isinstance(shop.get("localScore"), (int, float)) and shop.get("localScore") > 5 else shop.get("localScore")),
+            local_score=(
+                shop.get("localScore") / 10
+                if isinstance(shop.get("localScore"), (int, float))
+                and shop.get("localScore") > 5
+                else shop.get("localScore")
+            ),
             rating_count=shop.get("ratingCount"),
             external_rating_count=shop.get("externalRatingCount", shop.get("ratingCount")),
-            external_score=(shop.get("externalScore") / 10 if isinstance(shop.get("externalScore"), (int, float)) and shop.get("externalScore") > 5 else shop.get("externalScore")),
+            external_score=(
+                shop.get("externalScore") / 10
+                if isinstance(shop.get("externalScore"), (int, float))
+                and shop.get("externalScore") > 5
+                else shop.get("externalScore")
+            ),
             price_range_text=shop.get("priceRangeText"),
             phone=shop.get("phone"),
             website=shop.get("website"),
@@ -347,16 +373,27 @@ class HttpShopToolService:
         }
         body = await self._post_search(payload, headers)
         candidates = [self._to_candidate(item) for item in body.get("data") or []]
+        exact_candidate_ids = [candidate.shop_id for candidate in candidates]
         relaxed_constraints: list[str] = []
         warnings = list(body.get("warnings") or [])
-        if not candidates and constraints.desired_tags:
-            relaxed_payload = {**payload, "requiredTags": []}
+        desired_tags = set(constraints.desired_tags)
+        hard_tags = desired_tags & HARD_DESIRED_TAGS
+        target_count = min(constraints.result_limit, self._max_candidates)
+        if len(candidates) < target_count and desired_tags - hard_tags:
+            relaxed_payload = {**payload, "requiredTags": sorted(hard_tags)}
             relaxed_body = await self._post_search(relaxed_payload, headers)
-            candidates = [self._to_candidate(item) for item in relaxed_body.get("data") or []]
-            if candidates:
+            seen_ids = {candidate.shop_id for candidate in candidates}
+            relaxed_candidates = [
+                self._to_candidate(item) for item in relaxed_body.get("data") or []
+            ]
+            candidates.extend(
+                candidate for candidate in relaxed_candidates if candidate.shop_id not in seen_ids
+            )
+            if len(candidates) > len(exact_candidate_ids):
                 relaxed_constraints.append("desired_tags")
                 warnings.append(
-                    "No shop matched every requested tag. Showing the closest alternatives for review."
+                    "Fewer shops matched every preferred tag. Required accessibility constraints "
+                    "were retained while adding the closest alternatives."
                 )
         if constraints.budget_cents is not None and any(
             candidate.avg_price_cents is None for candidate in candidates
@@ -379,6 +416,12 @@ class HttpShopToolService:
             applied_constraints=applied,
             relaxed_constraints=relaxed_constraints,
             warnings=warnings,
+            retrieval_metadata={
+                "exactCandidateIds": exact_candidate_ids,
+                "requestedResultLimit": constraints.result_limit,
+                "hardDesiredTags": sorted(hard_tags),
+                "softDesiredTags": sorted(desired_tags - hard_tags),
+            },
         )
 
     async def detail(self, shop_id: int) -> ShopCandidate | None:
@@ -481,6 +524,7 @@ class InMemoryRagService:
             update={
                 "candidates": candidates.candidates[:limit],
                 "retrieval_metadata": {
+                    **candidates.retrieval_metadata,
                     "retrievalVersion": "p12-rag-v1",
                     "candidatePool": len(candidates.candidates),
                     "finalCandidates": min(limit, len(candidates.candidates)),

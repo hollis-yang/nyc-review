@@ -63,7 +63,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
     }
     try {
       await sendCode(phone);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
       return;
     }
@@ -101,7 +101,7 @@ export default function Login({ mode = 'sms' }: LoginProps) {
         const redirect = searchParams.get('redirect') || '/';
         navigate(redirect, { replace: true });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };

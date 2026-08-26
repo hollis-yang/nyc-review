@@ -23,8 +23,8 @@ import static com.hmdp.utils.RedisConstants.SECKILL_PENDING_ORDER_KEY;
 @Component
 public class VoucherOrderPublisher {
 
-    private final RabbitTemplate rabbitTemplate;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final OrderMessageSender messageSender;
+    private final PendingOrderStore pendingOrderStore;
     private final Duration confirmTimeout;
     private final int replayBatchSize;
 
@@ -34,25 +34,42 @@ public class VoucherOrderPublisher {
             @Value("${hmdp.rabbitmq.confirm-timeout:5s}") Duration confirmTimeout,
             @Value("${hmdp.rabbitmq.replay-batch-size:50}") int replayBatchSize
     ) {
-        this.rabbitTemplate = rabbitTemplate;
-        this.stringRedisTemplate = stringRedisTemplate;
+        this(
+                order -> {
+                    CorrelationData correlation = new CorrelationData(order.id().toString());
+                    rabbitTemplate.convertAndSend(
+                            RabbitMqConfig.ORDER_EXCHANGE,
+                            RabbitMqConfig.ORDER_ROUTING_KEY,
+                            order,
+                            message -> {
+                                message.getMessageProperties().setMessageId(order.id().toString());
+                                message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+                                return message;
+                            },
+                            correlation
+                    );
+                    return correlation;
+                },
+                new RedisPendingOrderStore(stringRedisTemplate),
+                confirmTimeout,
+                replayBatchSize
+        );
+    }
+
+    VoucherOrderPublisher(
+            OrderMessageSender messageSender,
+            PendingOrderStore pendingOrderStore,
+            Duration confirmTimeout,
+            int replayBatchSize
+    ) {
+        this.messageSender = messageSender;
+        this.pendingOrderStore = pendingOrderStore;
         this.confirmTimeout = confirmTimeout;
         this.replayBatchSize = Math.max(1, Math.min(replayBatchSize, 500));
     }
 
     public void publish(VoucherOrderMessage order) {
-        CorrelationData correlation = new CorrelationData(order.id().toString());
-        rabbitTemplate.convertAndSend(
-                RabbitMqConfig.ORDER_EXCHANGE,
-                RabbitMqConfig.ORDER_ROUTING_KEY,
-                order,
-                message -> {
-                    message.getMessageProperties().setMessageId(order.id().toString());
-                    message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
-                    return message;
-                },
-                correlation
-        );
+        CorrelationData correlation = messageSender.send(order);
         try {
             CorrelationData.Confirm confirm = correlation.getFuture()
                     .get(confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -76,21 +93,16 @@ public class VoucherOrderPublisher {
 
     @Scheduled(fixedDelayString = "${hmdp.rabbitmq.replay-interval-ms:5000}")
     public void replayPendingOrders() {
-        Set<String> orderIds = stringRedisTemplate.opsForZSet().rangeByScore(
-                SECKILL_PENDING_ORDER_INDEX_KEY,
-                0,
-                System.currentTimeMillis(),
-                0,
-                replayBatchSize
+        Set<String> orderIds = pendingOrderStore.dueOrderIds(
+                System.currentTimeMillis(), replayBatchSize
         );
         if (orderIds == null || orderIds.isEmpty()) {
             return;
         }
         for (String orderId : orderIds) {
-            Map<Object, Object> values = stringRedisTemplate.opsForHash()
-                    .entries(SECKILL_PENDING_ORDER_KEY + orderId);
+            Map<Object, Object> values = pendingOrderStore.values(orderId);
             if (values.isEmpty()) {
-                stringRedisTemplate.opsForZSet().remove(SECKILL_PENDING_ORDER_INDEX_KEY, orderId);
+                pendingOrderStore.remove(orderId);
                 continue;
             }
             try {
@@ -119,7 +131,48 @@ public class VoucherOrderPublisher {
     }
 
     private void removePending(Long orderId) {
-        stringRedisTemplate.delete(SECKILL_PENDING_ORDER_KEY + orderId);
-        stringRedisTemplate.opsForZSet().remove(SECKILL_PENDING_ORDER_INDEX_KEY, orderId.toString());
+        pendingOrderStore.remove(orderId.toString());
+    }
+
+    interface OrderMessageSender {
+        CorrelationData send(VoucherOrderMessage order);
+    }
+
+    interface PendingOrderStore {
+        Set<String> dueOrderIds(long now, int limit);
+
+        Map<Object, Object> values(String orderId);
+
+        void remove(String orderId);
+    }
+
+    private static final class RedisPendingOrderStore implements PendingOrderStore {
+        private final StringRedisTemplate redisTemplate;
+
+        private RedisPendingOrderStore(StringRedisTemplate redisTemplate) {
+            this.redisTemplate = redisTemplate;
+        }
+
+        @Override
+        public Set<String> dueOrderIds(long now, int limit) {
+            return redisTemplate.opsForZSet().rangeByScore(
+                    SECKILL_PENDING_ORDER_INDEX_KEY,
+                    0,
+                    now,
+                    0,
+                    limit
+            );
+        }
+
+        @Override
+        public Map<Object, Object> values(String orderId) {
+            return redisTemplate.opsForHash().entries(SECKILL_PENDING_ORDER_KEY + orderId);
+        }
+
+        @Override
+        public void remove(String orderId) {
+            redisTemplate.delete(SECKILL_PENDING_ORDER_KEY + orderId);
+            redisTemplate.opsForZSet().remove(SECKILL_PENDING_ORDER_INDEX_KEY, orderId);
+        }
     }
 }

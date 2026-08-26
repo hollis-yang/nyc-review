@@ -4,6 +4,8 @@ import pytest
 
 from app.config import Settings
 from app.domain.models import AgentMode, AgentRunCreateRequest, RunStatus
+from app.model_gateway import HeuristicModelGateway
+from app.runs.store import SQLiteRunStore
 from app.runtime import AgentRuntime
 
 
@@ -47,6 +49,14 @@ async def test_run_manager_persists_multi_agent_result_and_events():
         assert sum(
             action.action_type.value == "save_itinerary" for action in snapshot.actions
         ) == 1
+        model_span = next(
+            span
+            for span in await runtime.run_manager.trace(created.run_id, "")
+            if span.operation == "model.extract_constraints"
+        )
+        assert model_span.attributes["requestedProvider"] == "heuristic"
+        assert model_span.attributes["effectiveProvider"] == "heuristic"
+        assert model_span.attributes["fallbackUsed"] is False
     finally:
         await runtime.close()
 
@@ -191,5 +201,142 @@ async def test_single_agent_baseline_uses_same_response_contract():
         assert snapshot.result.mode is AgentMode.SINGLE
         assert any(event.agent == "Single Agent" for event in snapshot.events)
         assert snapshot.result.evidence.evidence
+    finally:
+        await runtime.close()
+
+
+async def test_requested_result_limit_controls_candidates_and_actions():
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    try:
+        created = await runtime.run_manager.create(
+            AgentRunCreateRequest(query="Show the top 2 dinner places in Midtown")
+        )
+        snapshot = await wait_for_terminal(runtime, created.run_id)
+
+        assert snapshot.result.metadata["constraints"]["result_limit"] == 2
+        assert len(snapshot.result.candidates.candidates) == 2
+        assert sum(action.action_type.value == "favorite_shop" for action in snapshot.actions) == 2
+        assert sum(action.action_type.value == "save_itinerary" for action in snapshot.actions) == 1
+    finally:
+        await runtime.close()
+
+
+async def test_cancel_propagates_to_a_model_call_without_waiting_for_a_deadline():
+    class BlockingGateway:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.cancelled = asyncio.Event()
+            self.never = asyncio.Event()
+
+        async def extract_constraints(self, request):
+            self.started.set()
+            try:
+                await self.never.wait()
+            finally:
+                self.cancelled.set()
+
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    gateway = BlockingGateway()
+    runtime.run_manager._model_gateway = gateway
+    try:
+        created = await runtime.run_manager.create(
+            AgentRunCreateRequest(query="A request that waits for the model"),
+            "cancel-owner",
+        )
+        await asyncio.wait_for(gateway.started.wait(), timeout=1)
+        cancelled = await runtime.run_manager.cancel(created.run_id, "cancel-owner")
+        await asyncio.wait_for(gateway.cancelled.wait(), timeout=2)
+
+        assert cancelled.status is RunStatus.CANCELLED
+        assert cancelled.actions == []
+        assert any(event.event == "run.cancelled" for event in cancelled.events)
+    finally:
+        await runtime.close()
+
+
+async def test_runtime_close_cancels_active_runs_without_orphan_tasks():
+    class BlockingGateway:
+        def __init__(self):
+            self.started = asyncio.Event()
+            self.cancelled = asyncio.Event()
+
+        async def extract_constraints(self, request):
+            self.started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.cancelled.set()
+
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    gateway = BlockingGateway()
+    runtime.run_manager._model_gateway = gateway
+    await runtime.run_manager.create(AgentRunCreateRequest(query="Wait until shutdown"))
+    await asyncio.wait_for(gateway.started.wait(), timeout=1)
+
+    await runtime.close()
+
+    await asyncio.wait_for(gateway.cancelled.wait(), timeout=2)
+    assert runtime.run_manager._tasks == {}
+
+
+async def test_multiple_runs_execute_concurrently_and_remain_owner_isolated():
+    class ConcurrentGateway:
+        def __init__(self, expected: int):
+            self.expected = expected
+            self.active = 0
+            self.maximum_active = 0
+            self.gate = asyncio.Event()
+            self.delegate = HeuristicModelGateway()
+
+        async def extract_constraints(self, request):
+            self.active += 1
+            self.maximum_active = max(self.maximum_active, self.active)
+            if self.active == self.expected:
+                self.gate.set()
+            try:
+                await asyncio.wait_for(self.gate.wait(), timeout=1)
+                return await self.delegate.extract_constraints(request)
+            finally:
+                self.active -= 1
+
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    gateway = ConcurrentGateway(expected=3)
+    runtime.run_manager._model_gateway = gateway
+    try:
+        created = [
+            await runtime.run_manager.create(
+                AgentRunCreateRequest(query=f"Top 2 dinner choices in Midtown request {index}"),
+                f"owner-{index}",
+            )
+            for index in range(3)
+        ]
+        snapshots = await asyncio.gather(
+            *(wait_for_terminal(runtime, item.run_id) for item in created)
+        )
+
+        assert gateway.maximum_active == 3
+        assert all(snapshot.status is RunStatus.WAITING_CONFIRMATION for snapshot in snapshots)
+        for index, item in enumerate(created):
+            assert await runtime.run_manager.get_owned(item.run_id, f"owner-{index}") is not None
+            assert await runtime.run_manager.get_owned(item.run_id, "another-owner") is None
+    finally:
+        await runtime.close()
+
+
+async def test_restart_recovers_only_unfinished_read_only_run(tmp_path):
+    run_store_path = tmp_path / "p14-recovery.sqlite3"
+    store = SQLiteRunStore(str(run_store_path))
+    request = AgentRunCreateRequest(query="Top 2 cafes in Astoria")
+    run_id = "p14-recoverable-run"
+    await store.create(run_id, request)
+    await store.close()
+
+    runtime = await AgentRuntime.create(Settings(run_store_path=str(run_store_path)))
+    try:
+        snapshot = await wait_for_terminal(runtime, run_id)
+
+        assert snapshot.status is RunStatus.WAITING_CONFIRMATION
+        assert any(event.event == "run.recovered" for event in snapshot.events)
+        assert snapshot.actions
     finally:
         await runtime.close()

@@ -382,11 +382,17 @@ class AgentRunManager:
             model_started_at,
             model_duration,
             {
+                "requestedProvider": extraction.requested_provider or extraction.provider,
+                "effectiveProvider": extraction.provider,
                 "provider": extraction.provider,
                 "model": extraction.model,
                 "fallbackUsed": extraction.fallback_used,
+                "fallbackReason": extraction.fallback_reason,
+                "finishReason": extraction.finish_reason,
                 "inputTokens": extraction.input_tokens,
                 "outputTokens": extraction.output_tokens,
+                "reasoningTokens": extraction.reasoning_tokens,
+                "responseContentLength": extraction.response_content_length,
             },
         )
 
@@ -421,12 +427,18 @@ class AgentRunManager:
             status="completed",
             message="Structured constraints are ready.",
             details={
+                "requestedProvider": extraction.requested_provider or extraction.provider,
+                "effectiveProvider": extraction.provider,
                 "provider": extraction.provider,
                 "model": extraction.model,
                 "fallbackUsed": extraction.fallback_used,
+                "fallbackReason": extraction.fallback_reason,
+                "finishReason": extraction.finish_reason,
                 "durationMs": model_duration,
                 "inputTokens": extraction.input_tokens,
                 "outputTokens": extraction.output_tokens,
+                "reasoningTokens": extraction.reasoning_tokens,
+                "responseContentLength": extraction.response_content_length,
                 "constraints": extraction.constraints.model_dump(mode="json"),
                 "personalization": personalization,
             },
@@ -476,7 +488,11 @@ class AgentRunManager:
         result = self._response(create_request.mode, accumulated, extraction, personalization)
         action_started_at = datetime.now(UTC)
         action_started = time.perf_counter()
-        actions = await self._runtime.action_service.propose(run_id, result, authorization)
+        actions = (
+            await self._runtime.action_service.propose(run_id, result, authorization)
+            if result.verification.valid
+            else []
+        )
         action_duration = round((time.perf_counter() - action_started) * 1_000, 3)
         await self._record_span(
             run_id,
@@ -505,7 +521,11 @@ class AgentRunManager:
                 run_id,
                 event="run.completed",
                 status="completed",
-                message="Verified recommendation is ready.",
+                message=(
+                    "Verified recommendation is ready."
+                    if result.verification.valid
+                    else "The run completed without proposing write actions because required checks failed."
+                ),
                 details={"valid": result.verification.valid},
             )
 
@@ -617,12 +637,17 @@ class AgentRunManager:
                     "evidence": state["evidence"].retrieval_metadata,
                 },
                 "modelProvider": extraction.provider,
+                "modelRequestedProvider": extraction.requested_provider or extraction.provider,
                 "model": extraction.model,
                 "promptVersion": extraction.prompt_version,
                 "modelFallbackUsed": extraction.fallback_used,
+                "modelFallbackReason": extraction.fallback_reason,
+                "modelFinishReason": extraction.finish_reason,
+                "modelResponseContentLength": extraction.response_content_length,
                 "tokenUsage": {
                     "input": extraction.input_tokens,
                     "output": extraction.output_tokens,
+                    "reasoning": extraction.reasoning_tokens,
                 },
                 "constraints": extraction.constraints.model_dump(mode="json"),
                 "personalization": personalization or {},

@@ -1,0 +1,54 @@
+{
+  "baseUrl": "http://127.0.0.1:8081",
+  "scenarios": {
+    "map_borough_clusters": {
+      "concurrency": 8,
+      "errors": [],
+      "itemLimit": 500,
+      "maxItems": 5,
+      "meanMs": 4.299,
+      "p50Ms": 2.843,
+      "p95Ms": 12.439,
+      "passed": true,
+      "requests": 40,
+      "thresholdMs": 300
+    },
+    "map_neighborhood_clusters": {
+      "concurrency": 8,
+      "errors": [],
+      "itemLimit": 500,
+      "maxItems": 107,
+      "meanMs": 13.645,
+      "p50Ms": 11.84,
+      "p95Ms": 23.849,
+      "passed": true,
+      "requests": 40,
+      "thresholdMs": 300
+    },
+    "map_shop_markers": {
+      "concurrency": 8,
+      "errors": [],
+      "itemLimit": 500,
+      "maxItems": 209,
+      "meanMs": 20.119,
+      "p50Ms": 20.265,
+      "p95Ms": 24.666,
+      "passed": true,
+      "requests": 40,
+      "thresholdMs": 500
+    },
+    "shop_list": {
+      "concurrency": 8,
+      "errors": [],
+      "itemLimit": 50,
+      "maxItems": 10,
+      "meanMs": 11.485,
+      "p50Ms": 11.031,
+      "p95Ms": 14.296,
+      "passed": true,
+      "requests": 40,
+      "thresholdMs": 500
+    }
+  },
+  "status": "ok"
+}

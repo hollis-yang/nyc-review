@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LeftOutline, RightOutline } from 'antd-mobile-icons';
 import { Picker, DatePicker, Toast, Input, TextArea, Button, Popup, CascadePicker } from 'antd-mobile';
+import type { PickerValue } from 'antd-mobile/es/components/picker';
 import { useTranslation } from 'react-i18next';
 import { getMe, getUserInfo, updateUser, updateUserInfo } from '../../api/user';
 import { uploadBlogImage } from '../../api/upload';
@@ -11,12 +12,19 @@ import styles from './ProfileEdit.module.css';
 
 type EditField = 'nickname' | 'introduce' | null;
 
+interface ProfileInfo {
+  introduce?: string;
+  gender?: boolean | string;
+  city?: string;
+  birthday?: string;
+}
+
 export default function ProfileEdit() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
-  const [info, setInfo] = useState<Record<string, any>>({});
+  const [info, setInfo] = useState<ProfileInfo>({});
   const [genderVisible, setGenderVisible] = useState(false);
   const [dateVisible, setDateVisible] = useState(false);
   const [editField, setEditField] = useState<EditField>(null);
@@ -62,7 +70,7 @@ export default function ProfileEdit() {
       await updateUser({ icon: String(iconPath) });
       setUser((prev) => (prev ? { ...prev, icon: String(iconPath) } : prev));
       Toast.show({ icon: 'success', content: t('profileEdit.avatarUpdated') });
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
     e.target.value = '';
@@ -87,7 +95,7 @@ export default function ProfileEdit() {
       }
       Toast.show({ icon: 'success', content: t('profileEdit.updated') });
       setEditField(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     } finally {
       setSaving(false);
@@ -109,7 +117,7 @@ export default function ProfileEdit() {
     { label: t('profileEdit.chinese'), value: 'zh-CN' },
   ];
 
-  const handleLanguageConfirm = async (value: any[]) => {
+  const handleLanguageConfirm = async (value: PickerValue[]) => {
     setLanguagePickerVisible(false);
     const language = value[0] === 'zh-CN' ? 'zh-CN' : 'en';
     localStorage.setItem('appLanguage', language);
@@ -118,7 +126,7 @@ export default function ProfileEdit() {
     Toast.show({ icon: 'success', content: t('profileEdit.languageUpdated') });
   };
 
-  const handleGenderConfirm = async (value: any[]) => {
+  const handleGenderConfirm = async (value: PickerValue[]) => {
     setGenderVisible(false);
     const gender = value[0];
     if (!gender) return;
@@ -126,7 +134,7 @@ export default function ProfileEdit() {
       await updateUserInfo({ gender: gender === 'true' });
       setInfo((prev) => ({ ...prev, gender: gender === 'true' }));
       Toast.show({ icon: 'success', content: t('profileEdit.genderUpdated') });
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
@@ -140,7 +148,7 @@ export default function ProfileEdit() {
       await updateUserInfo({ birthday });
       setInfo((prev) => ({ ...prev, birthday }));
       Toast.show({ icon: 'success', content: t('profileEdit.birthdayUpdated') });
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
@@ -306,7 +314,7 @@ export default function ProfileEdit() {
           options={getCommunityOptions(i18n.resolvedLanguage || i18n.language)}
           visible={communityPickerVisible}
           onClose={() => setCommunityPickerVisible(false)}
-          onConfirm={async (value: any[]) => {
+          onConfirm={async (value: PickerValue[]) => {
             setCommunityPickerVisible(false);
             const community = value.filter(Boolean).join(' ');
             if (!community) return;
@@ -314,7 +322,7 @@ export default function ProfileEdit() {
               await updateUserInfo({ city: community });
               setInfo((prev) => ({ ...prev, city: community }));
               Toast.show({ icon: 'success', content: t('profileEdit.communityUpdated') });
-            } catch (err: any) {
+            } catch (err: unknown) {
               Toast.show({ icon: 'fail', content: String(err) });
             }
           }}

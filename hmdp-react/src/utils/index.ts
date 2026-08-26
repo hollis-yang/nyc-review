@@ -12,7 +12,7 @@ export function formatPrice(val: string | number): number | null {
   if (typeof val === 'string') {
     if (isNaN(Number(val))) return null;
     const index = val.lastIndexOf('.');
-    let p = '';
+    let p: string;
     if (index < 0) {
       p = val + '00';
     } else if (index === val.length - 2) {

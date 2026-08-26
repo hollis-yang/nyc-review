@@ -21,6 +21,7 @@ export interface AgentRunCreateRequest {
   budget_cents?: number;
   desired_tags?: string[];
   visit_time?: string;
+  result_limit?: number;
 }
 
 export interface AgentRunCreated {
@@ -103,7 +104,12 @@ export interface AgentRunResponse {
   };
   verification: {
     valid: boolean;
-    issues: Array<{ code: string; message: string; shop_id?: number }>;
+    issues: Array<{
+      code: string;
+      message: string;
+      shop_id?: number;
+      severity?: 'error' | 'warning' | 'info';
+    }>;
   };
   metadata: {
     events?: string[];
@@ -120,10 +126,14 @@ export interface AgentRunResponse {
       deleted: number;
     };
     modelProvider?: string;
+    modelRequestedProvider?: string;
     model?: string;
     modelFallbackUsed?: boolean;
+    modelFallbackReason?: string | null;
+    modelFinishReason?: string | null;
+    modelResponseContentLength?: number;
     traceId?: string;
-    tokenUsage?: { input: number; output: number };
+    tokenUsage?: { input: number; output: number; reasoning?: number };
     constraints?: Record<string, unknown>;
     personalization?: {
       category?: string;
@@ -179,7 +189,6 @@ const AGENT_BASE_URL = import.meta.env.VITE_AGENT_API_BASE_URL || '/agent-api';
 
 const agentClient = axios.create({
   baseURL: AGENT_BASE_URL,
-  timeout: 30000,
 });
 
 agentClient.interceptors.request.use((config) => {

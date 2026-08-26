@@ -4,6 +4,7 @@ import hmac
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import Settings as FastMcpSettings
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.domain.models import ToolRisk
@@ -14,6 +15,11 @@ from app.tools.catalog import TOOL_POLICIES
 READ_ONLY_MCP_TOOL_NAMES = frozenset(
     name for name, policy in TOOL_POLICIES.items() if policy.risk == ToolRisk.READ_ONLY
 )
+
+# mcp 1.27 leaves the generic lifespan annotation unresolved on Python 3.13.
+# Rebuilding once before FastMCP constructs its settings removes the startup
+# warning and lets pydantic-settings validate environment sources normally.
+FastMcpSettings.model_rebuild()
 
 mcp = FastMCP(
     name="HMDP NYC Read-Only",

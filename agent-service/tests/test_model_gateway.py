@@ -21,6 +21,38 @@ async def test_heuristic_gateway_extracts_natural_language_constraints():
     assert extraction.provider == "heuristic"
 
 
+async def test_heuristic_gateway_handles_accents_and_respects_word_boundaries():
+    extraction = await HeuristicModelGateway().extract_constraints(
+        AgentRunCreateRequest(
+            query=(
+                "Recommend wheelchair-accessible cafés in Astoria with outdoor seating. "
+                "Give me the five best matches."
+            )
+        )
+    )
+
+    assert extraction.constraints.category == "Cafes & Desserts"
+    assert extraction.constraints.category != "Beauty & Personal Care"
+    assert extraction.constraints.neighborhood == "Astoria"
+    assert extraction.constraints.result_limit == 5
+    assert extraction.constraints.desired_tags == [
+        "outdoor_seating",
+        "wheelchair_accessible",
+    ]
+
+
+async def test_heuristic_gateway_extracts_english_and_chinese_result_limits():
+    english = await HeuristicModelGateway().extract_constraints(
+        AgentRunCreateRequest(query="Show the top 3 coffee shops in Chelsea")
+    )
+    chinese = await HeuristicModelGateway().extract_constraints(
+        AgentRunCreateRequest(query="推荐五个适合约会的地方")
+    )
+
+    assert english.constraints.result_limit == 3
+    assert chinese.constraints.result_limit == 5
+
+
 async def test_model_gateway_uses_controlled_fallback_when_api_is_unavailable(monkeypatch):
     async def fail_post(*args, **kwargs):
         raise httpx.ConnectError("offline")
@@ -39,6 +71,8 @@ async def test_model_gateway_uses_controlled_fallback_when_api_is_unavailable(mo
     )
 
     assert extraction.fallback_used is True
+    assert extraction.requested_provider == "deepseek"
+    assert extraction.fallback_reason == "offline"
     assert extraction.provider == "heuristic"
     assert extraction.constraints.category == "Cafes & Desserts"
     assert extraction.constraints.neighborhood == "Chelsea"
@@ -53,6 +87,7 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
         json={
             "choices": [
                 {
+                    "finish_reason": "stop",
                     "message": {
                         "content": json.dumps(
                             {
@@ -64,7 +99,12 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
                         )
                     }
                 }
-            ]
+            ],
+            "usage": {
+                "prompt_tokens": 17,
+                "completion_tokens": 9,
+                "completion_tokens_details": {"reasoning_tokens": 3},
+            },
         },
     )
 
@@ -93,6 +133,12 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
     assert extraction.constraints.category == "Bars & Nightlife"
     assert extraction.constraints.party_size == 4
     assert extraction.constraints.desired_tags == ["late_night", "quiet"]
+    assert extraction.requested_provider == "deepseek"
+    assert extraction.finish_reason == "stop"
+    assert extraction.input_tokens == 17
+    assert extraction.output_tokens == 9
+    assert extraction.reasoning_tokens == 3
+    assert extraction.response_content_length > 0
 
 
 async def test_model_gateway_normalizes_model_tag_aliases(monkeypatch):

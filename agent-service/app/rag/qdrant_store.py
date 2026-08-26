@@ -291,7 +291,11 @@ class QdrantRagService:
             hit_documents[shop_id] = hit_documents.get(shop_id, 0) + 1
         maximum_hybrid = max(best_by_shop.values(), default=0.0)
 
-        def score(candidate) -> tuple[float, float, float, int]:
+        exact_candidate_ids = {
+            int(shop_id) for shop_id in candidates.retrieval_metadata.get("exactCandidateIds", [])
+        }
+
+        def score(candidate) -> tuple[int, float, float, float, int]:
             hybrid = best_by_shop.get(candidate.shop_id, 0.0)
             normalized_hybrid = hybrid / maximum_hybrid if maximum_hybrid else 0.0
             desired = set(plan.semantic_tags)
@@ -308,7 +312,8 @@ class QdrantRagService:
                 + distance_score * 0.10
                 + rating_score * 0.10
             )
-            return combined, normalized_hybrid, rating_score, -candidate.shop_id
+            exact_match = 1 if not exact_candidate_ids or candidate.shop_id in exact_candidate_ids else 0
+            return exact_match, combined, normalized_hybrid, rating_score, -candidate.shop_id
 
         ordered = sorted(candidates.candidates, key=score, reverse=True)
         selected = []
@@ -337,6 +342,7 @@ class QdrantRagService:
             update={
                 "candidates": selected,
                 "retrieval_metadata": {
+                    **candidates.retrieval_metadata,
                     "retrievalVersion": self._retrieval_version,
                     "candidatePool": len(candidate_ids),
                     "hybridDocuments": len(points),

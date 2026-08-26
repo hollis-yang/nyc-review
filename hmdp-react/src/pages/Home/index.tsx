@@ -89,7 +89,8 @@ export default function Home() {
   }, [current, hasMore]);
 
   useEffect(() => {
-    loadBlogs();
+    const timer = window.setTimeout(() => void loadBlogs(), 0);
+    return () => window.clearTimeout(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleScroll = useCallback(() => {

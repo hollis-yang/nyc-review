@@ -401,6 +401,7 @@ class SQLiteRunStore:
         operations: dict[str, dict[str, int | float]] = {}
         input_tokens = 0
         output_tokens = 0
+        reasoning_tokens = 0
         for row in span_rows:
             operation = operations.setdefault(
                 row["operation"], {"count": 0, "failures": 0, "totalDurationMs": 0.0}
@@ -413,6 +414,7 @@ class SQLiteRunStore:
             attributes = json.loads(row["attributes_json"])
             input_tokens += int(attributes.get("inputTokens") or 0)
             output_tokens += int(attributes.get("outputTokens") or 0)
+            reasoning_tokens += int(attributes.get("reasoningTokens") or 0)
         return {
             "runs": {row["status"]: row["count"] for row in run_rows},
             "actions": action_counts,
@@ -424,7 +426,11 @@ class SQLiteRunStore:
                 "p95DurationMs": percentile(durations, 0.95),
                 "operations": operations,
             },
-            "tokens": {"input": input_tokens, "output": output_tokens},
+            "tokens": {
+                "input": input_tokens,
+                "output": output_tokens,
+                "reasoning": reasoning_tokens,
+            },
         }
 
     async def close(self) -> None:

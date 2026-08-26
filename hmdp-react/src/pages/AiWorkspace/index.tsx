@@ -85,6 +85,7 @@ export default function AiWorkspace() {
     const relaxed = new Set(result?.candidates.relaxed_constraints ?? []);
     const seen = new Set<string>();
     return (result?.verification.issues ?? []).filter((issue) => {
+      if (issue.severity && issue.severity !== 'error') return false;
       if (issue.code === 'MISSING_DESIRED_TAGS' && relaxed.has('desired_tags')) return false;
       if (issue.code === 'COST_UNAVAILABLE' && relaxed.has('budget')) return false;
       const key = `${issue.code}:${issue.message}`;

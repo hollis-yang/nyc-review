@@ -108,7 +108,7 @@ export default function BlogDetail() {
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg || t('blogDetail.notFound'));
       });
-  }, [id]);
+  }, [id, t]);
 
   const handleLike = async () => {
     if (!blog) return;
@@ -120,7 +120,7 @@ export default function BlogDetail() {
       setBlog(data);
       const likesRes = await getBlogLikes(blog.id);
       setLikes(likesRes.data ?? likesRes);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
@@ -131,7 +131,7 @@ export default function BlogDetail() {
       await follow(blog.userId, !followed);
       Toast.show({ icon: 'success', content: followed ? t('blogDetail.unfollowed') : t('blogDetail.followed') });
       setFollowed(!followed);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
@@ -170,7 +170,7 @@ export default function BlogDetail() {
         blogData.images = blogData.images ? blogData.images.split(',') : [];
         setBlog(blogData);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     } finally {
       setSubmitting(false);
@@ -199,7 +199,7 @@ export default function BlogDetail() {
         blogData.images = blogData.images ? blogData.images.split(',') : [];
         setBlog(blogData);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };
@@ -232,7 +232,7 @@ export default function BlogDetail() {
           await deleteBlog(blog.id);
           Toast.show({ icon: 'success', content: t('blogDetail.deleted') });
           navigate(-1);
-        } catch (err: any) {
+        } catch (err: unknown) {
           Toast.show({ icon: 'fail', content: String(err) });
         }
       },
@@ -366,7 +366,7 @@ export default function BlogDetail() {
                       try {
                         await deleteBlogComment(c.id);
                         await refreshComments();
-                      } catch (err: any) {
+                      } catch (err: unknown) {
                         Toast.show({ icon: 'fail', content: String(err) });
                       }
                     },

@@ -159,6 +159,8 @@ P7 将地图升级为面向大数据量的 viewport 查询：Spring `/shop/map` 
 
 P8 将活动数据切换为 `nyc-real-v1`：5,000 个商户身份全部取自固定、可校验的 OpenStreetMap 快照，六分类均有覆盖且 `mockShops=0`。P10 增加图片许可、评论线程，以及博客、博客评论和优惠券的内部内容来源字段；这些审计字段不会作为说明性标签显示在产品界面。`real-medium` 生成 100,000 条根评论和 52,500 条回复，评分只由根评论计算；评论会结合具体商户、社区、价格、主题和检索标签生成不同表述，Agent 优先选择不重复的评论线程作为 RAG 证据，并按内容哈希、批次、数据版本和数据集 SHA 增量同步 Qdrant。营业时间优先解析 OSM `opening_hours`，其余时段按类别稳定补全；人均价格按类别、细分类和 Borough 估算，检索标签也会在显式 OSM 属性之外进行稳定补全。
 
+P14 已完成稳定性与性能收尾：保护 Redis Lua 库存原子性和 RabbitMQ ack/nack/重放/幂等语义，增加 Agent 结果数量、Unicode 约束解析、并发取消/恢复与 DeepSeek Trace 观测，并固化地图/列表 P95、双语键和前端回归门禁。P14 不需要数据库导入或 Qdrant 重建；实测结果和复现命令见 [P14 Runbook](docs/p14-stability-performance-runbook.md)。
+
 使用集成 Compose 前先生成 `nyc-real-medium`，并将当前用户登录 token 传给 Agent Service；缺少该变量时 Agent 的 HTTP Adapter 调用 Spring Tool API 会返回 401：
 
 ```bash
@@ -208,7 +210,8 @@ npm run build
 npm run lint
 ```
 
-后端测试类目前包含数据构造和 Redis 回填方法，在完成测试隔离前，不要对包含真实数据的数据库直接执行完整 `mvn test`。
+安全的后端回归命令是 `mvn -Dtest='!HmDianPingApplicationTests' test`。
+`HmDianPingApplicationTests` 包含数据构造和 Redis 回填方法；在完成容器化隔离前，不要在承载有效数据的环境执行它。
 
 ## 安全说明
 

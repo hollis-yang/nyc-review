@@ -151,3 +151,55 @@ async def test_generated_adapter_marks_tag_relaxation_instead_of_returning_empty
     assert len(result.candidates) == 2
     assert result.relaxed_constraints == ["desired_tags"]
     assert "closest alternatives" in result.warnings[0]
+
+
+async def test_generated_adapter_never_relaxes_wheelchair_accessibility(tmp_path):
+    shops = [
+        {
+            "id": 1,
+            "name": "Accessible Indoor Cafe",
+            "typeId": 2,
+            "subcategoryId": 1,
+            "neighborhood": "Astoria",
+            "borough": "Queens",
+            "address": "1 Test Avenue",
+            "description": "Fixture",
+            "x": -73.92,
+            "y": 40.76,
+            "score": 45,
+            "timezone": "America/New_York",
+            "dataVersion": "test-v1",
+            "tags": ["wheelchair_accessible"],
+        },
+        {
+            "id": 2,
+            "name": "Outdoor Stairs Cafe",
+            "typeId": 2,
+            "subcategoryId": 1,
+            "neighborhood": "Astoria",
+            "borough": "Queens",
+            "address": "2 Test Avenue",
+            "description": "Fixture",
+            "x": -73.91,
+            "y": 40.77,
+            "score": 48,
+            "timezone": "America/New_York",
+            "dataVersion": "test-v1",
+            "tags": ["outdoor_seating"],
+        },
+    ]
+    (tmp_path / "shops.json").write_text(json.dumps(shops), encoding="utf-8")
+    service = GeneratedNycShopToolService(tmp_path, max_candidates=10)
+
+    result = await service.search(
+        UserConstraints(
+            query="Wheelchair-accessible cafes in Astoria with outdoor seating",
+            category="Cafes & Desserts",
+            neighborhood="Astoria",
+            desired_tags=["wheelchair_accessible", "outdoor_seating"],
+        )
+    )
+
+    assert [candidate.shop_id for candidate in result.candidates] == [1]
+    assert result.relaxed_constraints == ["desired_tags"]
+    assert result.retrieval_metadata["hardDesiredTags"] == ["wheelchair_accessible"]

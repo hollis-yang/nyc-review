@@ -23,27 +23,46 @@ interface DetailInfo {
   birthday?: string;
 }
 
+interface ProfileBlog {
+  id: number;
+  shopId?: number;
+  typeId?: number;
+  images?: string;
+  sourceType?: string;
+  title: string;
+  liked: number;
+  comments?: number;
+}
+
+interface CommonFollow {
+  id: number;
+  nickName: string;
+  icon?: string;
+}
+
 export default function OtherProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [info, setInfo] = useState<DetailInfo>({});
-  const [blogs, setBlogs] = useState<any[]>([]);
+  const [blogs, setBlogs] = useState<ProfileBlog[]>([]);
   const [followed, setFollowed] = useState(false);
-  const [commonFollows, setCommonFollows] = useState<any[]>([]);
+  const [commonFollows, setCommonFollows] = useState<CommonFollow[]>([]);
   const [activeTab, setActiveTab] = useState('1');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    setUser(null);
-    setInfo({});
-    setBlogs([]);
-    setFollowed(false);
-    setCommonFollows([]);
-    setActiveTab('1');
-    setError(null);
+    const resetTimer = window.setTimeout(() => {
+      setUser(null);
+      setInfo({});
+      setBlogs([]);
+      setFollowed(false);
+      setCommonFollows([]);
+      setActiveTab('1');
+      setError(null);
+    }, 0);
     Promise.all([
       getUserById(id).then((res) => {
         const u = res.data ?? res;
@@ -63,7 +82,8 @@ export default function OtherProfile() {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg || t('otherProfile.notFound'));
     });
-  }, [id]);
+    return () => window.clearTimeout(resetTimer);
+  }, [id, t]);
 
   const handleFollow = async () => {
     if (!user) return;
@@ -71,7 +91,7 @@ export default function OtherProfile() {
       await follow(user.id, !followed);
       Toast.show({ icon: 'success', content: followed ? t('otherProfile.unfollowedToast') : t('otherProfile.followedToast') });
       setFollowed(!followed);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
   };

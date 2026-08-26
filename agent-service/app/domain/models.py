@@ -29,6 +29,12 @@ class ToolRisk(StrEnum):
     MANUAL_ONLY = "manual_only"
 
 
+class VerificationSeverity(StrEnum):
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
 class AgentActionType(StrEnum):
     FAVORITE_SHOP = "favorite_shop"
     SAVE_ITINERARY = "save_itinerary"
@@ -57,6 +63,7 @@ class UserConstraints(BaseModel):
     budget_cents: int | None = Field(default=None, ge=0, le=10_000_000)
     desired_tags: list[str] = Field(default_factory=list, max_length=20)
     visit_time: str | None = None
+    result_limit: int = Field(default=5, ge=1, le=10)
 
 
 class BusinessHours(BaseModel):
@@ -168,6 +175,7 @@ class VerificationIssue(BaseModel):
     code: str
     message: str
     shop_id: int | None = None
+    severity: VerificationSeverity = VerificationSeverity.ERROR
 
 
 class VerificationReport(BaseModel):
@@ -201,6 +209,7 @@ class AgentRunCreateRequest(BaseModel):
     budget_cents: int | None = Field(default=None, ge=0, le=10_000_000)
     desired_tags: list[str] = Field(default_factory=list, max_length=20)
     visit_time: str | None = None
+    result_limit: int | None = Field(default=None, ge=1, le=10)
 
 
 class AgentRunResponse(BaseModel):
