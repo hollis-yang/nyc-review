@@ -116,7 +116,6 @@ class AgentRuntime:
             action_service=AgentActionService(
                 HttpActionGateway(
                     settings.backend_base_url,
-                    timeout_seconds=settings.request_timeout_seconds,
                     fallback_authorization=settings.backend_auth_token,
                 )
                 if settings.adapter == "http"
@@ -134,7 +133,6 @@ class AgentRuntime:
             runtime,
             SQLiteRunStore(settings.run_store_path),
             model_gateway,
-            run_timeout_seconds=settings.run_timeout_seconds,
             max_recovery_attempts=settings.max_recovery_attempts,
         )
         await runtime.run_manager.recover()
@@ -151,7 +149,6 @@ def _build_shop_service(settings: Settings):
     if settings.adapter == "http":
         return HttpShopToolService(
             base_url=settings.backend_base_url,
-            timeout_seconds=settings.request_timeout_seconds,
             auth_token=settings.backend_auth_token,
             max_candidates=settings.discovery_pool_size,
         )
@@ -190,7 +187,6 @@ def _build_model_gateway(settings: Settings):
         base_url=settings.model_base_url,
         api_key=settings.model_api_key,
         model=settings.model_name,
-        timeout_seconds=settings.model_timeout_seconds,
         fallback=heuristic if settings.model_fallback_to_heuristic else None,
     )
 

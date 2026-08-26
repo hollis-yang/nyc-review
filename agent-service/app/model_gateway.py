@@ -178,14 +178,12 @@ class OpenAICompatibleModelGateway:
         base_url: str,
         api_key: str,
         model: str,
-        timeout_seconds: float,
         fallback: ModelGateway | None = None,
     ):
         self._provider = provider
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._model = model
-        self._timeout_seconds = timeout_seconds
         self._fallback = fallback
 
     async def extract_constraints(self, request: AgentRunCreateRequest) -> ConstraintExtraction:
@@ -218,10 +216,9 @@ class OpenAICompatibleModelGateway:
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0,
-            "max_tokens": 900,
         }
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=None) as client:
                 response = await client.post(
                     f"{self._base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {self._api_key}"},

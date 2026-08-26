@@ -76,7 +76,7 @@ curl -H 'x-metrics-token: <metrics-token>' \
 
 Trace 覆盖约束模型、用户偏好工具、每个 Agent Node、Action Planner、批准执行和 Run 总耗时。Metrics 聚合次数、失败、P50/P95 延迟和模型 Token。
 
-Run Store 保存完整请求和尝试次数。Agent Service 重启时，只恢复尚未创建 Action 的只读阶段 Run；已经进入人工审批的操作不会自动执行。每个 Run 还有总超时，避免后台任务无限占用资源。
+Run Store 保存完整请求和尝试次数。Agent Service 重启时，只恢复尚未创建 Action 的只读阶段 Run；已经进入人工审批的操作不会自动执行。模型、Embedding、后端工具和 Run 不设置客户端执行超时；运行中的任务只能由用户取消、服务关闭或外部服务返回错误来终止。
 
 Run、SSE、Trace、取消和 Action API 均验证 owner key；owner key 是登录 token 的 SHA-256，不保存原始 token。创建接口有滑动窗口限流和 Prompt Guard；写工具仍由固定 Tool Catalog 与人工确认双重限制。
 

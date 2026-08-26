@@ -432,7 +432,18 @@
   font-weight: 700;
 }
 
-.reviewNeeded { color: #c14432; }
+.reviewNeeded { color: #a5652e; }
+
+.reviewIcon {
+  width: 15px;
+  height: 15px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+}
 
 .relaxationNote {
   margin-top: 10px;
@@ -452,6 +463,24 @@
 .relaxationNote strong,
 .relaxationNote span { display: block; }
 .relaxationNote span { margin-top: 2px; }
+
+.verificationNote {
+  margin-top: 10px;
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  color: #725a46;
+  background: #fff8ee;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.verificationNote strong,
+.verificationNote span { display: block; }
+
+.verificationNote span {
+  margin-top: 2px;
+  color: #8a7564;
+}
 
 .shopCard {
   margin-top: 8px;
@@ -566,19 +595,6 @@
   font-size: 11px;
   font-weight: 650;
 }
-
-.issue {
-  margin-top: 7px;
-  border-radius: var(--radius-sm);
-  padding: 9px 10px;
-  color: #8f3c2f;
-  background: #fff0ec;
-}
-
-.issue strong,
-.issue span { display: block; }
-.issue strong { font-size: 10px; }
-.issue span { margin-top: 2px; color: #765c57; font-size: 10px; }
 
 .approvals {
   margin-top: 8px;

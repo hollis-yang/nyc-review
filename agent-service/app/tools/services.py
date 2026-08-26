@@ -320,12 +320,10 @@ class HttpShopToolService:
     def __init__(
         self,
         base_url: str,
-        timeout_seconds: float = 8.0,
         auth_token: str = "",
         max_candidates: int = 5,
     ):
         self._base_url = base_url.rstrip("/")
-        self._timeout_seconds = timeout_seconds
         self._auth_token = auth_token
         self._max_candidates = max_candidates
 
@@ -386,7 +384,7 @@ class HttpShopToolService:
     async def detail(self, shop_id: int) -> ShopCandidate | None:
         authorization = request_authorization.get() or self._auth_token
         headers = {"authorization": authorization} if authorization else {}
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(
                 f"{self._base_url}/internal/agent/tools/shops/{shop_id}",
                 headers=headers,
@@ -398,7 +396,7 @@ class HttpShopToolService:
         return self._to_candidate(item) if isinstance(item, dict) else None
 
     async def _post_search(self, payload: dict, headers: dict[str, str]) -> dict:
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = None
             for attempt in range(2):
                 try:

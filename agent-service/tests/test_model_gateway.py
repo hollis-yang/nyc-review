@@ -31,7 +31,6 @@ async def test_model_gateway_uses_controlled_fallback_when_api_is_unavailable(mo
         base_url="https://api.deepseek.com/v1",
         api_key="test-key",
         model="deepseek-chat",
-        timeout_seconds=1,
         fallback=HeuristicModelGateway(),
     )
 
@@ -47,6 +46,7 @@ async def test_model_gateway_uses_controlled_fallback_when_api_is_unavailable(mo
 
 
 async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
+    captured_request_body = {}
     response = httpx.Response(
         200,
         request=httpx.Request("POST", "https://api.deepseek.com/v1/chat/completions"),
@@ -69,6 +69,7 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
     )
 
     async def fake_post(*args, **kwargs):
+        captured_request_body.update(kwargs["json"])
         return response
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
@@ -77,7 +78,6 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
         base_url="https://api.deepseek.com/v1",
         api_key="test-key",
         model="deepseek-chat",
-        timeout_seconds=1,
     ).extract_constraints(
         AgentRunCreateRequest(
             query="Find somewhere for us",
@@ -88,6 +88,7 @@ async def test_model_gateway_preserves_explicit_user_hints(monkeypatch):
     )
 
     assert extraction.provider == "deepseek"
+    assert "max_tokens" not in captured_request_body
     assert extraction.constraints.query == "Find somewhere for us"
     assert extraction.constraints.category == "Bars & Nightlife"
     assert extraction.constraints.party_size == 4
@@ -124,7 +125,6 @@ async def test_model_gateway_normalizes_model_tag_aliases(monkeypatch):
         base_url="https://api.deepseek.com/v1",
         api_key="test-key",
         model="deepseek-chat",
-        timeout_seconds=1,
     ).extract_constraints(AgentRunCreateRequest(query="Vegan and accessible outdoor dinner"))
 
     assert extraction.constraints.desired_tags == [

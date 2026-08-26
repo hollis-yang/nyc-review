@@ -55,7 +55,7 @@ curl /v1/agent/metrics
 
 - 每个 Run 持久化 model、tool、agent node、action 和 total span；`GET /v1/agent/runs/{id}/trace` 返回完整 Trace。
 - `/v1/agent/metrics` 聚合操作次数、失败数、P50/P95 延迟和模型 Token；配置 `HMDP_AGENT_METRICS_TOKEN` 后需传 `x-metrics-token`。
-- Agent 启动时会恢复未完成且尚未产生写操作的 Run；单次执行受 `HMDP_AGENT_RUN_TIMEOUT_SECONDS` 限制。
+- Agent 启动时会恢复未完成且尚未产生写操作的 Run；模型、Embedding、后端工具和 Run 不设置客户端执行超时，运行中的任务只能由用户取消、服务关闭或外部服务返回错误来终止。
 - Run Snapshot、SSE、Trace、取消和 Action 均校验创建者 token 的 SHA-256 owner key；不保存原始 token。
 - Prompt Guard 拒绝显式系统提示词窃取与绕过审批指令，创建 Run 还受按 owner/IP 的滑动窗口限流。
 

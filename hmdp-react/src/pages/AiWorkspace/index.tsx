@@ -97,6 +97,10 @@ export default function AiWorkspace() {
     () => Boolean(result && (result.verification.valid || visibleIssues.length === 0)),
     [result, visibleIssues],
   );
+  const hasGeneralVerificationCaveat = useMemo(
+    () => visibleIssues.some((issue) => issue.code !== 'UNSUPPORTED_DESIRED_TAGS'),
+    [visibleIssues],
+  );
 
   const agentStatus = (agent: string) => {
     const matching = events.filter((event) => event.agent === agent);
@@ -371,12 +375,11 @@ export default function AiWorkspace() {
           <section className={styles.results}>
             <div className={styles.resultSummary}>
               <div className={displayVerified ? styles.verified : styles.reviewNeeded}>
-                {displayVerified ? <CheckCircleFill /> : <CloseCircleFill />}
+                {displayVerified ? <CheckCircleFill /> : <span className={styles.reviewIcon}>i</span>}
                 {displayVerified ? t('aiGuide.verified') : t('aiGuide.reviewNeeded')}
               </div>
               <h2>{t('aiGuide.resultSummary', {
                 candidates: result.candidates.candidates.length,
-                issues: visibleIssues.length,
               })}</h2>
               {(result.metadata.personalization?.favoriteCount ?? 0) > 0 && (
                 <div className={styles.personalizedNote}>
@@ -389,6 +392,14 @@ export default function AiWorkspace() {
                 <div className={styles.relaxationNote}>
                   <strong>{t('aiGuide.closestMatches')}</strong>
                   <span>{t('aiGuide.relaxedTags')}</span>
+                </div>
+              )}
+              {!displayVerified && (
+                <div className={styles.verificationNote}>
+                  <strong>{t('aiGuide.verificationNoteTitle')}</strong>
+                  <span>{t(hasGeneralVerificationCaveat
+                    ? 'aiGuide.verificationNoteGeneral'
+                    : 'aiGuide.verificationNoteEvidence')}</span>
                 </div>
               )}
             </div>
@@ -444,12 +455,6 @@ export default function AiWorkspace() {
               );
             })}
 
-            {!displayVerified && visibleIssues.map((issue) => (
-              <div className={styles.issue} key={`${issue.code}-${issue.message}`}>
-                <strong>{issue.code.replaceAll('_', ' ')}</strong>
-                <span>{issue.message}</span>
-              </div>
-            ))}
           </section>
         )}
 

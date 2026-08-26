@@ -53,11 +53,9 @@ class HttpActionGateway:
         self,
         base_url: str,
         *,
-        timeout_seconds: float = 8.0,
         fallback_authorization: str = "",
     ):
         self._base_url = base_url.rstrip("/")
-        self._timeout_seconds = timeout_seconds
         self._fallback_authorization = fallback_authorization
 
     def _headers(self, authorization: str) -> dict[str, str]:
@@ -65,7 +63,7 @@ class HttpActionGateway:
         return {"authorization": value} if value else {}
 
     async def available_vouchers(self, shop_id: int, authorization: str) -> list[dict]:
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(
                 f"{self._base_url}/voucher/list/{shop_id}",
                 headers=self._headers(authorization),
@@ -75,7 +73,7 @@ class HttpActionGateway:
         return list(body.get("data") or []) if body.get("success", True) else []
 
     async def preferences(self, authorization: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(
                 f"{self._base_url}/internal/agent/actions/preferences",
                 headers=self._headers(authorization),
@@ -91,7 +89,7 @@ class HttpActionGateway:
         action: AgentActionProposal,
         authorization: str,
     ) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.post(
                 f"{self._base_url}/internal/agent/actions/execute",
                 headers=self._headers(authorization),

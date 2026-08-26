@@ -49,13 +49,11 @@ class AgentRunManager:
         store: SQLiteRunStore,
         model_gateway: ModelGateway,
         *,
-        run_timeout_seconds: float = 45.0,
         max_recovery_attempts: int = 2,
     ):
         self._runtime = runtime
         self._store = store
         self._model_gateway = model_gateway
-        self._run_timeout_seconds = run_timeout_seconds
         self._max_recovery_attempts = max_recovery_attempts
         self._tasks: dict[str, asyncio.Task] = {}
 
@@ -334,15 +332,10 @@ class AgentRunManager:
         error: str | None = None
         try:
             await self._store.increment_attempt(run_id)
-            async with asyncio.timeout(self._run_timeout_seconds):
-                await self._execute_pipeline(run_id, create_request, authorization)
+            await self._execute_pipeline(run_id, create_request, authorization)
         except asyncio.CancelledError:
             status = "cancelled"
             raise
-        except TimeoutError:
-            status = "failed"
-            error = f"Agent run exceeded the {self._run_timeout_seconds:g}s execution limit."
-            await self._fail_run(run_id, error)
         except Exception as exc:  # noqa: BLE001 - converts boundary errors into durable state
             status = "failed"
             error = str(exc) or exc.__class__.__name__
