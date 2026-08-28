@@ -1,0 +1,320 @@
+name: nyc-review-production
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  logging: *default-logging
+
+services:
+  gateway:
+    <<: *service-defaults
+    image: caddy:2.10.2-alpine
+    environment:
+      APP_SITE_ADDRESS: "${APP_SITE_ADDRESS:?APP_SITE_ADDRESS is required}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/production/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - frontend
+    mem_limit: 96m
+    pids_limit: 128
+
+  web:
+    <<: *service-defaults
+    image: "${WEB_IMAGE:?WEB_IMAGE is required}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    pull_policy: always
+    expose:
+      - "80"
+    volumes:
+      - uploads:/usr/share/nginx/html/imgs:ro
+    depends_on:
+      spring:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    networks:
+      - frontend
+      - backend
+    mem_limit: 96m
+    pids_limit: 128
+
+  spring:
+    <<: *service-defaults
+    image: "${SPRING_IMAGE:?SPRING_IMAGE is required}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    pull_policy: always
+    init: true
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      JAVA_TOOL_OPTIONS: "-XX:InitialRAMPercentage=20.0 -XX:MaxRAMPercentage=65.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/urandom"
+      NYC_REVIEW_DB_URL: "jdbc:mysql://mysql:3306/nyc_review?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      NYC_REVIEW_DB_USERNAME: nyc_review
+      NYC_REVIEW_DB_PASSWORD: "${NYC_REVIEW_DB_PASSWORD:?NYC_REVIEW_DB_PASSWORD is required}"
+      NYC_REVIEW_REDIS_HOST: redis
+      NYC_REVIEW_REDIS_PORT: "6379"
+      NYC_REVIEW_REDIS_PASSWORD: "${NYC_REVIEW_REDIS_PASSWORD:?NYC_REVIEW_REDIS_PASSWORD is required}"
+      NYC_REVIEW_RABBITMQ_HOST: rabbitmq
+      NYC_REVIEW_RABBITMQ_PORT: "5672"
+      NYC_REVIEW_RABBITMQ_USERNAME: "${NYC_REVIEW_RABBITMQ_USERNAME:?NYC_REVIEW_RABBITMQ_USERNAME is required}"
+      NYC_REVIEW_RABBITMQ_PASSWORD: "${NYC_REVIEW_RABBITMQ_PASSWORD:?NYC_REVIEW_RABBITMQ_PASSWORD is required}"
+      NYC_REVIEW_RABBITMQ_VHOST: "${NYC_REVIEW_RABBITMQ_VHOST:?NYC_REVIEW_RABBITMQ_VHOST is required}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}"
+      DEEPSEEK_MODEL: "${DEEPSEEK_MODEL:-deepseek-chat}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}"
+      NYC_REVIEW_IMAGE_UPLOAD_DIR: /data/uploads
+    expose:
+      - "8081"
+      - "9091"
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-seed:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:8081/shop-type/list >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+    networks:
+      - backend
+    mem_limit: 640m
+    pids_limit: 256
+    stop_grace_period: 30s
+
+  agent-service:
+    <<: *service-defaults
+    image: "${AGENT_IMAGE:?AGENT_IMAGE is required}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    pull_policy: always
+    init: true
+    environment:
+      PYTHONUNBUFFERED: "1"
+      NYC_REVIEW_AGENT_ENVIRONMENT: production
+      NYC_REVIEW_AGENT_ADAPTER: http
+      NYC_REVIEW_AGENT_BACKEND_BASE_URL: http://spring:8081
+      NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN: "${NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN:-}"
+      NYC_REVIEW_AGENT_RAG_ADAPTER: qdrant
+      NYC_REVIEW_AGENT_QDRANT_LOCATION: http://qdrant:6333
+      NYC_REVIEW_AGENT_QDRANT_COLLECTION: "${NYC_REVIEW_AGENT_QDRANT_COLLECTION:-nyc_review_content_v2}"
+      NYC_REVIEW_AGENT_RETRIEVAL_VERSION: "${NYC_REVIEW_AGENT_RETRIEVAL_VERSION:-p12-rag-v1}"
+      NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY: /data/nyc-real-p13-full
+      NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE: "${NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE:-64}"
+      NYC_REVIEW_AGENT_EMBEDDING_PROVIDER: "${NYC_REVIEW_AGENT_EMBEDDING_PROVIDER:-hash}"
+      NYC_REVIEW_AGENT_EMBEDDING_DIMENSIONS: "${NYC_REVIEW_AGENT_EMBEDDING_DIMENSIONS:-64}"
+      NYC_REVIEW_AGENT_MODEL_PROVIDER: "${NYC_REVIEW_AGENT_MODEL_PROVIDER:-deepseek}"
+      NYC_REVIEW_AGENT_MODEL_BASE_URL: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}"
+      NYC_REVIEW_AGENT_MODEL_API_KEY: "${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}"
+      NYC_REVIEW_AGENT_MODEL_NAME: "${DEEPSEEK_MODEL:-deepseek-chat}"
+      NYC_REVIEW_AGENT_MODEL_FALLBACK_TO_HEURISTIC: "true"
+      NYC_REVIEW_AGENT_MAX_PARALLEL_AGENTS: "1"
+      NYC_REVIEW_AGENT_RUNS_PER_MINUTE: "${NYC_REVIEW_AGENT_RUNS_PER_MINUTE:-10}"
+      NYC_REVIEW_AGENT_RUN_STORE_PATH: /data/runs/agent-runs.sqlite3
+      NYC_REVIEW_AGENT_METRICS_TOKEN: "${NYC_REVIEW_AGENT_METRICS_TOKEN:?NYC_REVIEW_AGENT_METRICS_TOKEN is required}"
+      NYC_REVIEW_AGENT_MCP_ENABLED: "true"
+      NYC_REVIEW_AGENT_MCP_API_KEY: "${NYC_REVIEW_AGENT_MCP_API_KEY:?NYC_REVIEW_AGENT_MCP_API_KEY is required}"
+    expose:
+      - "8090"
+    volumes:
+      - type: bind
+        source: "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}"
+        target: /data/nyc-real-p13-full
+        read_only: true
+      - agent-runs:/data/runs
+    depends_on:
+      spring:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 90
+      start_period: 30s
+    networks:
+      - backend
+    mem_limit: 640m
+    pids_limit: 256
+    stop_grace_period: 30s
+
+  mysql:
+    <<: *service-defaults
+    image: mysql:8.4.11
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}"
+      MYSQL_DATABASE: nyc_review
+      MYSQL_USER: nyc_review
+      MYSQL_PASSWORD: "${NYC_REVIEW_DB_PASSWORD:?NYC_REVIEW_DB_PASSWORD is required}"
+      TZ: UTC
+    command:
+      - --default-time-zone=+00:00
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      - --innodb-buffer-pool-size=256M
+      - --max-connections=80
+      - --performance-schema=OFF
+    expose:
+      - "3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./src/main/resources/db/nyc_review.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
+      - ./src/main/resources/db/p2_redis_stream_order.sql:/docker-entrypoint-initdb.d/02-order-unique-index.sql:ro
+      - ./src/main/resources/db/p3_nyc_compatibility.sql:/docker-entrypoint-initdb.d/03-nyc-compatibility.sql:ro
+      - ./src/main/resources/db/p4_nyc_domain.sql:/docker-entrypoint-initdb.d/04-nyc-domain.sql:ro
+      - ./src/main/resources/db/p5_agent_actions.sql:/docker-entrypoint-initdb.d/05-agent-actions.sql:ro
+      - ./src/main/resources/db/p6_rabbitmq_profile_memory.sql:/docker-entrypoint-initdb.d/06-agent-memory.sql:ro
+      - ./src/main/resources/db/p7_p5_mcp_ui.sql:/docker-entrypoint-initdb.d/07-p5-ui.sql:ro
+      - ./src/main/resources/db/p8_p6_data_provenance.sql:/docker-entrypoint-initdb.d/08-p6-provenance.sql:ro
+      - ./src/main/resources/db/p9_p7_map_geospatial.sql:/docker-entrypoint-initdb.d/09-p7-map-schema.sql:ro
+      - ./src/main/resources/db/p10_p8_real_content.sql:/docker-entrypoint-initdb.d/10-p8-real-content.sql:ro
+      - ./src/main/resources/db/p11_p2_p3_shop_enrichment.sql:/docker-entrypoint-initdb.d/11-shop-enrichment.sql:ro
+      - ./src/main/resources/db/p12_p13_data_quality.sql:/docker-entrypoint-initdb.d/12-data-quality.sql:ro
+      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/mysql_import.sql:/docker-entrypoint-initdb.d/13-p13-data.sql:ro"
+      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/14-map-data.sql:ro"
+      - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/15-cleanup.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_ROOT_PASSWORD}\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 120
+      start_period: 60s
+    networks:
+      - backend
+    mem_limit: 704m
+    pids_limit: 256
+    stop_grace_period: 60s
+
+  redis:
+    <<: *service-defaults
+    image: redis:7.4.11-alpine
+    environment:
+      REDISCLI_AUTH: "${NYC_REVIEW_REDIS_PASSWORD:?NYC_REVIEW_REDIS_PASSWORD is required}"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --requirepass
+      - "${NYC_REVIEW_REDIS_PASSWORD:?NYC_REVIEW_REDIS_PASSWORD is required}"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - noeviction
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - backend
+    mem_limit: 192m
+    pids_limit: 128
+
+  redis-seed:
+    image: redis:7.4.11-alpine
+    environment:
+      REDISCLI_AUTH: "${NYC_REVIEW_REDIS_PASSWORD:?NYC_REVIEW_REDIS_PASSWORD is required}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/redis_seed.resp:/seed/redis_seed.resp:ro"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        redis-cli -h redis --no-auth-warning --pipe < /seed/redis_seed.resp
+        redis-cli -h redis --no-auth-warning DEL cache:shopType:list
+    restart: "no"
+    logging: *default-logging
+    networks:
+      - backend
+    mem_limit: 64m
+    pids_limit: 64
+
+  rabbitmq:
+    <<: *service-defaults
+    image: rabbitmq:4.1.8-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: "${NYC_REVIEW_RABBITMQ_USERNAME:?NYC_REVIEW_RABBITMQ_USERNAME is required}"
+      RABBITMQ_DEFAULT_PASS: "${NYC_REVIEW_RABBITMQ_PASSWORD:?NYC_REVIEW_RABBITMQ_PASSWORD is required}"
+      RABBITMQ_DEFAULT_VHOST: "${NYC_REVIEW_RABBITMQ_VHOST:?NYC_REVIEW_RABBITMQ_VHOST is required}"
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.65"
+    expose:
+      - "5672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - backend
+    mem_limit: 384m
+    pids_limit: 256
+    stop_grace_period: 60s
+
+  qdrant:
+    <<: *service-defaults
+    image: qdrant/qdrant:v1.15.3
+    environment:
+      QDRANT__LOG_LEVEL: WARN
+      QDRANT__TELEMETRY_DISABLED: "true"
+    expose:
+      - "6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec ':> /dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - backend
+    mem_limit: 768m
+    pids_limit: 256
+    stop_grace_period: 60s
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  caddy-data:
+  caddy-config:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:
+  qdrant-data:
+  uploads:
+  agent-runs:

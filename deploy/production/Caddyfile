@@ -1,0 +1,22 @@
+{
+	admin off
+}
+
+{$APP_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
+	}
+
+	reverse_proxy web:80
+
+	log {
+		output stdout
+		format json
+	}
+}

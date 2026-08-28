@@ -8,6 +8,7 @@ from app.mcp.server import McpApiKeyMiddleware, bind_runtime, mcp, unbind_runtim
 from app.runtime import AgentRuntime
 
 settings = get_settings()
+is_production = settings.environment.casefold() == "production"
 
 
 @asynccontextmanager
@@ -26,7 +27,14 @@ async def lifespan(application: FastAPI):
         await runtime.close()
 
 
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if is_production else "/docs",
+    redoc_url=None if is_production else "/redoc",
+    openapi_url=None if is_production else "/openapi.json",
+)
 app.include_router(router)
 
 

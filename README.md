@@ -6,6 +6,11 @@ NYC Review（纽约点评）是面向纽约本地生活的 AI 全栈项目。Spr
 当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md)、[P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md) 和 [P14.1 后端压测 Runbook](docs/p14-1-backend-load-runbook.md)。
 工程重命名后的本地迁移步骤见 [NYC Review 重命名迁移指南](docs/nyc-review-rename-guide.md)。
 
+面向 4 GB AWS Lightsail 的单机生产部署使用预构建 GHCR 镜像、单 Agent、
+仅 80/443 公网入口和服务器外置 P13 数据包。完整步骤见
+[生产部署 Runbook](deploy/production/README.md)，不要在服务器上运行开发用的
+`docker-compose.p4.yml`。
+
 ## 环境要求
 
 - Java 17
