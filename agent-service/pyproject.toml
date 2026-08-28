@@ -1,5 +1,5 @@
 [project]
-name = "hmdp-agent-service"
+name = "nyc-review-agent-service"
 version = "0.1.0"
 description = "NYC local-life multi-agent, RAG, and evaluation service"
 requires-python = ">=3.11"

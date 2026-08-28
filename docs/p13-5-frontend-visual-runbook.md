@@ -49,7 +49,7 @@ License attribution is available from Profile → Image credits and directly at
 No database or RAG command is required. From the repository root:
 
 ```bash
-cd hmdp-react
+cd nyc-review-web
 npm run visual:audit
 npm run build
 ```
@@ -79,7 +79,7 @@ Catalog generation is intentionally not part of `npm run build`. A refresh
 requires network access and rewrites only frontend assets and reports:
 
 ```bash
-cd hmdp-react
+cd nyc-review-web
 npm run visual:generate
 npm run visual:audit
 npm run build

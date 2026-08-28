@@ -132,17 +132,17 @@ corpus so an old scope cannot silently double point count and distort latency.
 ## Import into the development checkpoint
 
 This is a full development-data replacement. Drain RabbitMQ and the Redis
-pending-order index, stop Spring Boot and Agent Service, and back up `hmdp_new`
+pending-order index, stop Spring Boot and Agent Service, and back up `nyc_review`
 before running these commands from the repository root:
 
 ```bash
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < src/main/resources/db/p12_p13_data_quality.sql
 
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-real-p13-full/mysql_import.sql
 
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-real-p13-full/p7_neighborhood_import.sql
 
 redis-cli --pipe \
@@ -191,16 +191,16 @@ After Spring Boot has restarted with the imported dataset, start Agent Service
 from `agent-service` with the new isolated path:
 
 ```bash
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant-p13-v5-8b645404 \
-HMDP_AGENT_QDRANT_COLLECTION=hmdp_content_v2 \
-HMDP_AGENT_RETRIEVAL_VERSION=p12-rag-v1 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p13-full \
-HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
-HMDP_AGENT_MODEL_PROVIDER=deepseek \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant-p13-v5-8b645404 \
+NYC_REVIEW_AGENT_QDRANT_COLLECTION=nyc_review_content_v2 \
+NYC_REVIEW_AGENT_RETRIEVAL_VERSION=p12-rag-v1 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p13-full \
+NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --port 8090
 ```
 

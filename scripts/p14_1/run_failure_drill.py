@@ -105,7 +105,7 @@ def mysql_drill() -> dict:
         error_messages = 0
         while time.monotonic() < deadline and error_messages < 5:
             error_messages = int(
-                rabbit_queue("hmdp.voucher.order.error.queue").get("messages") or 0
+                rabbit_queue("nyc-review.voucher.order.error.queue").get("messages") or 0
             )
             if error_messages < 5:
                 time.sleep(1)

@@ -14,7 +14,7 @@ from .providers import FsqOsProvider, NycDohmhProvider, OfficialSiteProvider, Os
 from .schemas import FieldObservation
 from .snapshots import dataset_sha256, load_json, sha256_file, write_json_atomic
 
-GENERATED_PROVIDER = "HMDP_GENERATED"
+GENERATED_PROVIDER = "NYC_REVIEW_GENERATED"
 REAL_PROVIDERS = {"OPENSTREETMAP", "OFFICIAL_SITE", "FSQ_OS_PLACES", "NYC_DOHMH"}
 PHASE_CONFIG = {
     "p10-p11": {

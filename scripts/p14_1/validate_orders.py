@@ -18,8 +18,8 @@ from common import (
     write_json,
 )
 
-ORDER_QUEUE = "hmdp.voucher.order.queue"
-ERROR_QUEUE = "hmdp.voucher.order.error.queue"
+ORDER_QUEUE = "nyc-review.voucher.order.queue"
+ERROR_QUEUE = "nyc-review.voucher.order.error.queue"
 
 
 def integer(value: str) -> int:

@@ -158,8 +158,9 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertEqual({"MOCK": 36}, import_manifest["provenance"]["sourceCounts"])
 
             self.assertIn("NYC_IMPORT_BUNDLE_V1", mysql_sql)
-            self.assertIn("legacy_hangzhou_tb_shop", mysql_sql)
-            self.assertIn("tb_legacy_archive_state", mysql_sql)
+            self.assertNotIn("legacy_hangzhou_", mysql_sql)
+            self.assertNotIn("tb_legacy_archive_state", mysql_sql)
+            self.assertNotIn("tb_sign", mysql_sql)
             self.assertIn("INSERT INTO `tb_shop_tag`", mysql_sql)
             self.assertIn("INSERT INTO `tb_shop_business_hours`", mysql_sql)
             self.assertIn("INSERT INTO `tb_data_import`", mysql_sql)
@@ -172,7 +173,7 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertIn("America/New_York", mysql_sql)
             pin_utc = mysql_sql.index("SET SESSION time_zone = '+00:00'")
             first_shop_insert = mysql_sql.index("INSERT INTO `tb_shop`")
-            restore_time_zone = mysql_sql.rindex("SET SESSION time_zone = @HMDP_OLD_TIME_ZONE")
+            restore_time_zone = mysql_sql.rindex("SET SESSION time_zone = @NYC_REVIEW_OLD_TIME_ZONE")
             self.assertLess(pin_utc, first_shop_insert)
             self.assertGreater(restore_time_zone, first_shop_insert)
             self.assertIn(b"GEOADD", redis_resp)
@@ -347,10 +348,7 @@ class GenerateDatasetTest(unittest.TestCase):
                 self.assertIn(optional_delete, mysql_sql)
                 self.assertLess(mysql_sql.index(optional_delete), mysql_sql.index("DELETE FROM `tb_user`;"))
             self.assertIn("`root_id`", mysql_sql)
-            self.assertIn(
-                "INSERT INTO `legacy_hangzhou_tb_shop_review` (`id`, `shop_id`, `user_id`, `rating`",
-                mysql_sql,
-            )
+            self.assertNotIn("legacy_hangzhou_", mysql_sql)
             report = VALIDATOR.validate_dataset(output)
             self.assertEqual("REAL_ONLY", report["merchantIdentityMode"])
             self.assertEqual(1.0, report["publicSourceRatio"])
@@ -597,7 +595,7 @@ class GenerateDatasetTest(unittest.TestCase):
                 {"assigned": 1, "unassigned": 0},
                 report["coverageBySource"]["NYC_OPEN_DATA"],
             )
-            self.assertIn("HMDP_P7_NEIGHBORHOOD_IMPORT_V1", sql)
+            self.assertIn("NYC_REVIEW_P7_NEIGHBORHOOD_IMPORT_V1", sql)
             self.assertIn(
                 "SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;",
                 sql,
@@ -608,12 +606,12 @@ class GenerateDatasetTest(unittest.TestCase):
             )
             self.assertIn("ST_GeomFromGeoJSON", sql)
             self.assertIn("axis-order=long-lat", sql)
-            self.assertIn("CREATE TEMPORARY TABLE `hmdp_p7_expected_shop`", sql)
+            self.assertIn("CREATE TEMPORARY TABLE `nyc_review_p7_expected_shop`", sql)
             self.assertIn("CHECK (`ok` = 1)", sql)
             self.assertIn("`dataset_sha256`='" + "d" * 64 + "'", sql)
             self.assertIn("ABS(actual.`x` - expected.`longitude`)", sql)
             self.assertLess(
-                sql.index("CREATE TEMPORARY TABLE `hmdp_p7_dataset_guard`"),
+                sql.index("CREATE TEMPORARY TABLE `nyc_review_p7_dataset_guard`"),
                 sql.index("START TRANSACTION;"),
             )
             self.assertLess(

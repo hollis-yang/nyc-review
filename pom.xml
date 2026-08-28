@@ -8,13 +8,15 @@
         <version>3.3.7</version>
         <relativePath/>
     </parent>
-    <groupId>com.hmdp</groupId>
-    <artifactId>hm-dianping</artifactId>
+    <groupId>com.nycreview</groupId>
+    <artifactId>nyc-review</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>hm-dianping</name>
-    <description>Demo project for Spring Boot</description>
+    <name>nyc-review</name>
+    <description>NYC local discovery platform with multi-agent planning and RAG</description>
     <properties>
         <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
     <dependencies>
         <dependency>

@@ -2,7 +2,7 @@
 .idea
 .DS_Store
 target
-hmdp-react
+nyc-review-web
 agent-service
 data
 docs

@@ -10,8 +10,8 @@ import urllib.parse
 
 from common import RABBIT_VHOST, rabbit_request, validate_isolated_environment
 
-ERROR_QUEUE = "hmdp.voucher.order.error.queue"
-ORDER_EXCHANGE = "hmdp.voucher.order.exchange"
+ERROR_QUEUE = "nyc-review.voucher.order.error.queue"
+ORDER_EXCHANGE = "nyc-review.voucher.order.exchange"
 ORDER_ROUTING_KEY = "voucher.order.accepted"
 
 

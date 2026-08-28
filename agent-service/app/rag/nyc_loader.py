@@ -65,9 +65,9 @@ def iter_generated_documents(data_directory: Path) -> Iterator[RagDocument]:
                 else "MIXED" if attribute_synthetic else (shop.get("sourceType") or "PUBLIC_SOURCE")
             ),
             content_source_name=(
-                "HMDP deterministic NYC generator"
+                "NYC Review deterministic NYC generator"
                 if shop.get("sourceType") in (None, "MOCK", "LEGACY")
-                else "HMDP resolved merchant catalog"
+                else "NYC Review resolved merchant catalog"
             ),
             synthetic=attribute_synthetic,
             **common,
@@ -175,7 +175,7 @@ def _flat_review_document(review: dict, shops_by_id: dict[int, dict]) -> RagDocu
         untrusted_content=True,
         content_source_type=source_type,
         content_source_name=(
-            "HMDP synthetic review generator" if synthetic else "HMDP user-submitted review"
+            "NYC Review synthetic review generator" if synthetic else "NYC Review user-submitted review"
         ),
         synthetic=synthetic,
         root_id=review.get("rootId") or review["id"],
@@ -278,7 +278,9 @@ def _review_thread_document(
         data_version=shop.get("dataVersion"),
         untrusted_content=True,
         content_source_type="SYNTHETIC" if fully_synthetic else "MIXED",
-        content_source_name="HMDP synthetic review generator" if fully_synthetic else "HMDP reviews",
+        content_source_name=(
+            "NYC Review synthetic review generator" if fully_synthetic else "NYC Review reviews"
+        ),
         synthetic=fully_synthetic,
         root_id=root_id,
         max_depth=max(row["depth"] for row in ordered),
@@ -412,7 +414,7 @@ def _content_provenance(shop: dict, field_name: str) -> dict:
         shop.get("sourceType") in (None, "MOCK", "LEGACY")
     )
     if synthetic:
-        return _synthetic_content_provenance("HMDP deterministic NYC generator")
+        return _synthetic_content_provenance("NYC Review deterministic NYC generator")
     return {
         "content_source_type": shop.get("sourceType") or "PUBLIC_SOURCE",
         "content_source_name": shop.get("sourceName"),
@@ -423,7 +425,7 @@ def _content_provenance(shop: dict, field_name: str) -> dict:
 
 def _identity_fact_provenance(shop: dict) -> dict:
     if shop.get("sourceType") in (None, "MOCK", "LEGACY"):
-        return _synthetic_content_provenance("HMDP deterministic NYC generator")
+        return _synthetic_content_provenance("NYC Review deterministic NYC generator")
     return {
         "content_source_type": shop.get("sourceType") or "PUBLIC_SOURCE",
         "content_source_name": shop.get("sourceName"),
@@ -464,17 +466,17 @@ def _record_content_provenance(record: dict, shop: dict, *, content_kind: str) -
 
     source_type = str(raw_source_type or "SYNTHETIC").upper()
     if source_type == "SYNTHETIC":
-        return _synthetic_content_provenance(f"HMDP synthetic {content_kind} generator")
+        return _synthetic_content_provenance(f"NYC Review synthetic {content_kind} generator")
     if source_type == "USER_SUBMITTED":
         return {
             "content_source_type": source_type,
-            "content_source_name": "HMDP user-submitted content",
+            "content_source_name": "NYC Review user-submitted content",
             "content_source_url": None,
             "synthetic": False,
         }
     return {
         "content_source_type": source_type,
-        "content_source_name": f"HMDP {content_kind}",
+        "content_source_name": f"NYC Review {content_kind}",
         "content_source_url": None,
         "synthetic": False,
     }

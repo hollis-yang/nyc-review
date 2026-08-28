@@ -2,15 +2,15 @@ services:
   mysql:
     image: mysql:8.4
     environment:
-      MYSQL_ROOT_PASSWORD: ${HMDP_DB_PASSWORD:-hmdp-local}
-      MYSQL_DATABASE: hmdp_new
+      MYSQL_ROOT_PASSWORD: ${NYC_REVIEW_DB_PASSWORD:-nyc-review-local}
+      MYSQL_DATABASE: nyc_review
       TZ: America/New_York
     command: ["--default-time-zone=+00:00", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_general_ci"]
     ports:
       - "3306:3306"
     volumes:
-      - hmdp-mysql:/var/lib/mysql
-      - ./src/main/resources/db/hmdp_new.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
+      - nyc-review-mysql:/var/lib/mysql
+      - ./src/main/resources/db/nyc_review.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
       - ./src/main/resources/db/p2_redis_stream_order.sql:/docker-entrypoint-initdb.d/02-order-unique-index.sql:ro
       - ./src/main/resources/db/p3_nyc_compatibility.sql:/docker-entrypoint-initdb.d/03-nyc-compatibility.sql:ro
       - ./src/main/resources/db/p4_nyc_domain.sql:/docker-entrypoint-initdb.d/04-nyc-domain.sql:ro
@@ -22,6 +22,7 @@ services:
       - ./src/main/resources/db/p10_p8_real_content.sql:/docker-entrypoint-initdb.d/10-p8-real-content.sql:ro
       - ./data/generated/nyc-real-medium/mysql_import.sql:/docker-entrypoint-initdb.d/11-nyc-data.sql:ro
       - ./data/generated/nyc-real-medium/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/12-nyc-map-data.sql:ro
+      - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/13-cleanup.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -33,7 +34,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - hmdp-redis:/data
+      - nyc-review-redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -53,13 +54,13 @@ services:
   rabbitmq:
     image: rabbitmq:4.1-management
     environment:
-      RABBITMQ_DEFAULT_USER: ${HMDP_RABBITMQ_USERNAME:-hmdp}
-      RABBITMQ_DEFAULT_PASS: ${HMDP_RABBITMQ_PASSWORD:-hmdp-local}
+      RABBITMQ_DEFAULT_USER: ${NYC_REVIEW_RABBITMQ_USERNAME:-nyc-review}
+      RABBITMQ_DEFAULT_PASS: ${NYC_REVIEW_RABBITMQ_PASSWORD:-nyc-review-local}
     ports:
       - "5672:5672"
       - "15672:15672"
     volumes:
-      - hmdp-rabbitmq:/var/lib/rabbitmq
+      - nyc-review-rabbitmq:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
@@ -71,26 +72,26 @@ services:
     ports:
       - "6333:6333"
     volumes:
-      - hmdp-qdrant:/qdrant/storage
+      - nyc-review-qdrant:/qdrant/storage
 
   spring:
     build:
       context: .
       dockerfile: Dockerfile
     environment:
-      HMDP_DB_URL: "jdbc:mysql://mysql:3306/hmdp_new?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
-      HMDP_DB_USERNAME: root
-      HMDP_DB_PASSWORD: ${HMDP_DB_PASSWORD:-hmdp-local}
-      HMDP_REDIS_HOST: redis
-      HMDP_REDIS_PORT: 6379
-      HMDP_RABBITMQ_HOST: rabbitmq
-      HMDP_RABBITMQ_PORT: 5672
-      HMDP_RABBITMQ_USERNAME: ${HMDP_RABBITMQ_USERNAME:-hmdp}
-      HMDP_RABBITMQ_PASSWORD: ${HMDP_RABBITMQ_PASSWORD:-hmdp-local}
+      NYC_REVIEW_DB_URL: "jdbc:mysql://mysql:3306/nyc_review?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      NYC_REVIEW_DB_USERNAME: root
+      NYC_REVIEW_DB_PASSWORD: ${NYC_REVIEW_DB_PASSWORD:-nyc-review-local}
+      NYC_REVIEW_REDIS_HOST: redis
+      NYC_REVIEW_REDIS_PORT: 6379
+      NYC_REVIEW_RABBITMQ_HOST: rabbitmq
+      NYC_REVIEW_RABBITMQ_PORT: 5672
+      NYC_REVIEW_RABBITMQ_USERNAME: ${NYC_REVIEW_RABBITMQ_USERNAME:-nyc-review}
+      NYC_REVIEW_RABBITMQ_PASSWORD: ${NYC_REVIEW_RABBITMQ_PASSWORD:-nyc-review-local}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-      HMDP_IMAGE_UPLOAD_DIR: /data/uploads
+      NYC_REVIEW_IMAGE_UPLOAD_DIR: /data/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -101,26 +102,26 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - hmdp-uploads:/data/uploads
+      - nyc-review-uploads:/data/uploads
 
   agent-service:
     build:
       context: ./agent-service
     environment:
-      HMDP_AGENT_ADAPTER: http
-      HMDP_AGENT_BACKEND_BASE_URL: http://spring:8081
-      HMDP_AGENT_BACKEND_AUTH_TOKEN: ${HMDP_AGENT_BACKEND_AUTH_TOKEN:-}
-      HMDP_AGENT_RAG_ADAPTER: qdrant
-      HMDP_AGENT_QDRANT_LOCATION: http://qdrant:6333
-      HMDP_AGENT_RAG_DATA_DIRECTORY: /data/nyc-real-medium
-      HMDP_AGENT_RAG_INDEX_BATCH_SIZE: ${HMDP_AGENT_RAG_INDEX_BATCH_SIZE:-128}
-      HMDP_AGENT_MODEL_PROVIDER: ${HMDP_AGENT_MODEL_PROVIDER:-deepseek}
-      HMDP_AGENT_MODEL_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      NYC_REVIEW_AGENT_ADAPTER: http
+      NYC_REVIEW_AGENT_BACKEND_BASE_URL: http://spring:8081
+      NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN: ${NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN:-}
+      NYC_REVIEW_AGENT_RAG_ADAPTER: qdrant
+      NYC_REVIEW_AGENT_QDRANT_LOCATION: http://qdrant:6333
+      NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY: /data/nyc-real-medium
+      NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE: ${NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE:-128}
+      NYC_REVIEW_AGENT_MODEL_PROVIDER: ${NYC_REVIEW_AGENT_MODEL_PROVIDER:-deepseek}
+      NYC_REVIEW_AGENT_MODEL_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
-      HMDP_AGENT_RUN_STORE_PATH: ${HMDP_AGENT_RUN_STORE_PATH:-/data/runs/agent-runs.sqlite3}
-      HMDP_AGENT_METRICS_TOKEN: ${HMDP_AGENT_METRICS_TOKEN:-}
-      HMDP_AGENT_MCP_API_KEY: ${HMDP_AGENT_MCP_API_KEY:-}
+      NYC_REVIEW_AGENT_RUN_STORE_PATH: ${NYC_REVIEW_AGENT_RUN_STORE_PATH:-/data/runs/agent-runs.sqlite3}
+      NYC_REVIEW_AGENT_METRICS_TOKEN: ${NYC_REVIEW_AGENT_METRICS_TOKEN:-}
+      NYC_REVIEW_AGENT_MCP_API_KEY: ${NYC_REVIEW_AGENT_MCP_API_KEY:-}
     depends_on:
       - spring
       - qdrant
@@ -128,11 +129,11 @@ services:
       - "8090:8090"
     volumes:
       - ./data/generated/nyc-real-medium:/data/nyc-real-medium:ro
-      - hmdp-agent-runs:/data/runs
+      - nyc-review-agent-runs:/data/runs
 
   web:
     build:
-      context: ./hmdp-react
+      context: ./nyc-review-web
     depends_on:
       - spring
       - agent-service
@@ -140,9 +141,9 @@ services:
       - "8080:80"
 
 volumes:
-  hmdp-mysql:
-  hmdp-redis:
-  hmdp-rabbitmq:
-  hmdp-qdrant:
-  hmdp-uploads:
-  hmdp-agent-runs:
+  nyc-review-mysql:
+  nyc-review-redis:
+  nyc-review-rabbitmq:
+  nyc-review-qdrant:
+  nyc-review-uploads:
+  nyc-review-agent-runs:

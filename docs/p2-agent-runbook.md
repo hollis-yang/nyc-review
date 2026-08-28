@@ -18,13 +18,13 @@ Spring 保留 `/translate/blog`、`/translate/comment`、`/translate/shop`，并
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN=<current-user-token> \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
-HMDP_AGENT_MODEL_PROVIDER=deepseek \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN=<current-user-token> \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek \
 DEEPSEEK_API_KEY=<your-key> \
 uv run uvicorn app.main:app --port 8090
 ```
@@ -66,8 +66,8 @@ React AI Guide 中的 “Translate to English with DeepSeek” 调用同一接�
 uv run --project agent-service ruff check agent-service/app agent-service/tests
 uv run --project agent-service pytest agent-service/tests -q
 uv run --project agent-service python -m evals.run_eval
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
 最后打开 `http://127.0.0.1:3000/ai`，分别运行 Single Agent 与 Multi Agent，确认橙色移动端设计、实时节点状态、引用卡片、DeepSeek 翻译和底部 AI Guide 导航均可用。手动秒杀仍只存在于商户详情页，不进入模型工具。

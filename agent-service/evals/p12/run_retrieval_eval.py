@@ -345,7 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=repository / "agent-service" / ".local" / "qdrant-p12",
     )
-    parser.add_argument("--collection", default="hmdp_content_v2")
+    parser.add_argument("--collection", default="nyc_review_content_v2")
     parser.add_argument("--index-batch-size", type=int, default=128)
     parser.add_argument(
         "--reuse-index",

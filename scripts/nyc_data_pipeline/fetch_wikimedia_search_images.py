@@ -63,7 +63,7 @@ def _query(shop: dict[str, Any]) -> dict[str, Any] | None:
     }
     request = urllib.request.Request(
         f"{COMMONS_API}?{urllib.parse.urlencode(params)}",
-        headers={"User-Agent": "hm-dianping-p13-commons-search/1.0", "Accept": "application/json"},
+        headers={"User-Agent": "nyc-review-p13-commons-search/1.0", "Accept": "application/json"},
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:

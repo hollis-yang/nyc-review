@@ -27,7 +27,7 @@ backup, import, cross-system identity checks and UI acceptance all pass.
 P9/P9.1 complete
   → P10/P11 checkpoint import and visual acceptance (`nyc-real-v3-7577e407-m20260824`)
   → P11.5 checkpoint import and visual acceptance (`nyc-real-v4-0f51676d-m20260824`)
-  → P12 RAG quality (complete; `p12-rag-v1` / `hmdp_content_v2`)
+  → P12 RAG quality (complete; `p12-rag-v1` / `nyc_review_content_v2`)
   → P13 5,000-shop depth and content realism (complete; `nyc-real-v5-8b645404-m20260824`)
   → P13.5 frontend merchant/note visual coverage (complete; no data checkpoint change)
   → P14 stability and performance (complete; no data checkpoint change)

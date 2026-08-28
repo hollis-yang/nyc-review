@@ -56,7 +56,7 @@ P8 Qdrant 同步必须按批次流式处理并使用稳定文档 ID、内容哈�
 
 本地 coding agent harness 通过 Streamable HTTP MCP 复用相同的 Shop、RAG、Route 与 Verifier 服务。工具清单只能包含 `search_shops`、`get_shop_detail`、`get_shop_evidence`、`get_available_vouchers`、`calculate_route` 和 `validate_itinerary`。
 
-MCP 不得发布收藏、保存行程、领券、提醒或秒杀写操作；秒杀仍只能由用户在传统 UI 手动发起。配置 `HMDP_AGENT_MCP_API_KEY` 时，无正确 Bearer key 的 MCP 请求必须返回 401。
+MCP 不得发布收藏、保存行程、领券、提醒或秒杀写操作；秒杀仍只能由用户在传统 UI 手动发起。配置 `NYC_REVIEW_AGENT_MCP_API_KEY` 时，无正确 Bearer key 的 MCP 请求必须返回 401。
 
 ## 6. 数据来源透明度
 

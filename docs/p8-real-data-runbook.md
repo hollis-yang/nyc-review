@@ -9,7 +9,7 @@ The checked P8 bundle contains 5,000 real merchant identities, 5,000 attributed 
 - Merchant identity: OpenStreetMap contributors, queried through Overpass API and used under ODbL 1.0. The raw dated snapshot is intentionally gitignored; its small `.manifest.json` sidecar records queries, filters, timestamp, counts, license and SHA-256.
 - Neighborhood assignment: pinned NYC 2020 NTA `26b` polygons. P7 still performs the map projection and hash checks.
 - Images: the pinned `data/sources/wikimedia-illustrative-images-v1.json` catalog retains each Commons file page, author and license URL. These are approximate category illustrations, not merchant images.
-- Reviews: deterministic HMDP test data with `sourceType=SYNTHETIC`. Only depth-0 reviews have ratings; replies have no rating.
+- Reviews: deterministic NYC Review test data with `sourceType=SYNTHETIC`. Only depth-0 reviews have ratings; replies have no rating.
 
 P8's “real-only” guarantee applies to merchant identity. Provenance and derived-field metadata remain available to the backend, Agent trace and import validator, but the product UI renders only the merchant, image, score, price, hours and content themselves. Seeded blogs, blog comments and vouchers still carry `sourceType=SYNTHETIC` internally; content created through the online API is assigned `USER_SUBMITTED` by the server, regardless of any client-supplied source field.
 
@@ -86,18 +86,18 @@ Do not purge a non-empty queue as part of the migration. Let the order queue dra
 If this database has already completed P6 and P7, do **not** rerun `p8_p6_data_provenance.sql`: that historical migration uses direct `ADD COLUMN` statements and is not idempotent. For the user's current P6/P7 database, apply only P10 before the replacement bundle, then rebuild the matching P7 projection:
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-medium/mysql_import.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-medium/p7_neighborhood_import.sql
+mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-medium/mysql_import.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-medium/p7_neighborhood_import.sql
 redis-cli --pipe < data/generated/nyc-real-medium/redis_seed.resp
 ```
 
 For a fresh database initialized only from the base/P1-P5 migrations, apply the remaining schemas once in this order before the generated import:
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p8_p6_data_provenance.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p9_p7_map_geospatial.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
+mysql -u root -p nyc_review < src/main/resources/db/p8_p6_data_provenance.sql
+mysql -u root -p nyc_review < src/main/resources/db/p9_p7_map_geospatial.sql
+mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
 ```
 
 P9 and P10 are safe to rerun; P8 is not. In either path, the generated `mysql_import.sql` replaces the active dataset and the generated P7 SQL rebuilds its map projection.
@@ -114,7 +114,7 @@ Users must sign in again and use the new token for Spring, Agent runs and Profil
 Existing Agent run history may be retained for audit, but an action proposed by a
 different `dataVersion` or `datasetSha256` is rejected before any Spring write tool
 is called. To keep P8 history visually separate without deleting the old SQLite
-store, set `HMDP_AGENT_RUN_STORE_PATH=/data/runs/agent-runs-p8.sqlite3` when using
+store, set `NYC_REVIEW_AGENT_RUN_STORE_PATH=/data/runs/agent-runs-p8.sqlite3` when using
 Docker Compose.
 
 ## 5. Read-only database acceptance
@@ -200,13 +200,13 @@ Start Spring normally, then point Agent Service at the exact directory whose SQL
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=http://127.0.0.1:6333 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-medium \
-HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=http://127.0.0.1:6333 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-medium \
+NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
 uv run uvicorn app.main:app --port 8090
 ```
 
@@ -253,8 +253,8 @@ python3 -m unittest scripts/mock-data-generator/test_generate.py
 python3 scripts/mock-data-generator/validate_dataset.py data/generated/nyc-real-medium
 uv run --project agent-service pytest agent-service/tests -q
 uv run --project agent-service ruff check agent-service/app agent-service/tests
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
-`HmDianPingApplicationTests` still constructs database and Redis data and should not run against an environment carrying valuable state. Docker init scripts run only for a new MySQL volume; never delete an existing volume merely to trigger P8 initialization.
+`NycReviewApplicationTests` still constructs database and Redis data and should not run against an environment carrying valuable state. Docker init scripts run only for a new MySQL volume; never delete an existing volume merely to trigger P8 initialization.

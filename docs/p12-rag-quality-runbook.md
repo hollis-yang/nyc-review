@@ -5,7 +5,7 @@ checkpoint. The frozen corpus remains
 `nyc-real-v4-0f51676d-m20260824` with dataset SHA-256
 `3eb30998c46f493fd0528cfea8788188ab3e4d30821f1324f7e7d3b8a03d3234`.
 P12 adds an independent retrieval identity, `p12-rag-v1`, and uses collection
-`hmdp_content_v2` in a new Qdrant directory.
+`nyc_review_content_v2` in a new Qdrant directory.
 
 ## What changed
 
@@ -30,7 +30,7 @@ From the repository root:
 
 ```bash
 uv run --project agent-service pytest agent-service/tests -q
-mvn -Dtest='!HmDianPingApplicationTests' test
+mvn -Dtest='!NycReviewApplicationTests' test
 ```
 
 These commands do not import or modify MySQL/Redis. The Python suite uses only
@@ -118,17 +118,17 @@ is intentionally not committed.
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant-p12 \
-HMDP_AGENT_QDRANT_COLLECTION=hmdp_content_v2 \
-HMDP_AGENT_RETRIEVAL_VERSION=p12-rag-v1 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p11-5-full \
-HMDP_AGENT_DISCOVERY_POOL_SIZE=50 \
-HMDP_AGENT_MAX_CANDIDATES=5 \
-HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant-p12 \
+NYC_REVIEW_AGENT_QDRANT_COLLECTION=nyc_review_content_v2 \
+NYC_REVIEW_AGENT_RETRIEVAL_VERSION=p12-rag-v1 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p11-5-full \
+NYC_REVIEW_AGENT_DISCOVERY_POOL_SIZE=50 \
+NYC_REVIEW_AGENT_MAX_CANDIDATES=5 \
+NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
 uv run uvicorn app.main:app --port 8090
 ```
 

@@ -30,7 +30,7 @@ python3 scripts/mock-data-generator/nyc_nta.py validate \
 先应用幂等迁移：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p9_p7_map_geospatial.sql
+mysql -u root -p nyc_review < src/main/resources/db/p9_p7_map_geospatial.sql
 ```
 
 迁移只增加数据结构，不分配、删除或覆盖商户：
@@ -77,7 +77,7 @@ MOCK              = 1795 assigned / 145 unassigned
 确认目标为可替换的本地开发库并停止 Spring/Agent 后，再执行派生导入包：
 
 ```bash
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-medium-hybrid/p7_neighborhood_import.sql
 ```
 
@@ -95,7 +95,7 @@ mysql -u root -p hmdp_new \
 docker compose -f docker-compose.p4.yml up -d --wait mysql redis redis-seed rabbitmq qdrant
 
 docker compose -f docker-compose.p4.yml exec -T mysql \
-  sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" hmdp_new' \
+  sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" nyc_review' \
   < data/generated/nyc-medium-hybrid/p7_neighborhood_import.sql
 
 docker compose -f docker-compose.p4.yml up -d spring agent-service web
@@ -194,7 +194,7 @@ curl -sS -G http://127.0.0.1:8081/shop/map \
 ## 7. 前端验收
 
 ```bash
-cd hmdp-react
+cd nyc-review-web
 npm run dev
 ```
 
@@ -212,8 +212,8 @@ npm run dev
 ```bash
 python3 -m unittest scripts/mock-data-generator/test_generate.py
 uv run --project agent-service pytest agent-service/tests -q
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
-`HmDianPingApplicationTests` 仍包含数据库与 Redis 数据构造逻辑，不要在承载有效数据的环境执行。真实 MySQL 验收后，可对 detail 查询执行 `EXPLAIN`，应看到 `tb_shop_map_location.idx_shop_map_location` 被 `MBRIntersects` 纳入候选索引；具体执行计划会随数据分布变化。
+`NycReviewApplicationTests` 仍包含数据库与 Redis 数据构造逻辑，不要在承载有效数据的环境执行。真实 MySQL 验收后，可对 detail 查询执行 `EXPLAIN`，应看到 `tb_shop_map_location.idx_shop_map_location` 被 `MBRIntersects` 纳入候选索引；具体执行计划会随数据分布变化。

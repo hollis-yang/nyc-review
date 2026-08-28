@@ -1,6 +1,6 @@
 # P6 Scaled Mock + NYC Open Data Runbook
 
-P6 将可复现 Mock 扩展到中等规模，并接入一小部分真实商户身份数据。这里的“真实”只指纽约市公开数据中的名称、地址、行政区、坐标和菜系；HMDP 的评论、博客、价格、评分、标签、营业时间、图片和优惠仍是合成演示内容，不代表真实顾客或商户声明。
+P6 将可复现 Mock 扩展到中等规模，并接入一小部分真实商户身份数据。这里的“真实”只指纽约市公开数据中的名称、地址、行政区、坐标和菜系；NYC Review 的评论、博客、价格、评分、标签、营业时间、图片和优惠仍是合成演示内容，不代表真实顾客或商户声明。
 
 ## 1. 数据源与本地快照
 
@@ -42,8 +42,8 @@ python3 scripts/mock-data-generator/validate_dataset.py \
 停止 Spring Boot 与 Agent Service，并确认目标是可替换数据的本地开发库。先执行一次 P6 迁移，再导入新数据：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p8_p6_data_provenance.sql
-mysql -u root -p hmdp_new < data/generated/nyc-medium-hybrid/mysql_import.sql
+mysql -u root -p nyc_review < src/main/resources/db/p8_p6_data_provenance.sql
+mysql -u root -p nyc_review < data/generated/nyc-medium-hybrid/mysql_import.sql
 redis-cli --pipe < data/generated/nyc-medium-hybrid/redis_seed.resp
 redis-cli DEL cache:shopType:list
 ```
@@ -70,12 +70,12 @@ Agent Service 必须指向与 MySQL 同一个生成目录。更换目录后重�
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='0b74cb58d8464601b024811f91b0fbcc' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant-p6 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-medium-hybrid \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='0b74cb58d8464601b024811f91b0fbcc' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant-p6 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-medium-hybrid \
 uv run uvicorn app.main:app --port 8090
 ```
 
@@ -94,8 +94,8 @@ Spring 受限工具与 Agent 候选中的公开来源商户应包含 `sourceType
 ```bash
 python3 -m unittest scripts/mock-data-generator/test_generate.py
 uv run --project agent-service pytest agent-service/tests -q
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
-`HmDianPingApplicationTests` 仍包含数据库与 Redis 数据构造逻辑，不要在承载有效数据的环境执行。
+`NycReviewApplicationTests` 仍包含数据库与 Redis 数据构造逻辑，不要在承载有效数据的环境执行。

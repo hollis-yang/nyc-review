@@ -1,11 +1,11 @@
-name: hmdp-p14-load
+name: nyc-review-p14-load
 
 services:
   mysql:
     image: mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: p14-load-only
-      MYSQL_DATABASE: hmdp_p14_load
+      MYSQL_DATABASE: nyc_review_p14_load
       TZ: UTC
     command:
       - --default-time-zone=+00:00
@@ -16,7 +16,7 @@ services:
       - "13306:3306"
     volumes:
       - p14-mysql:/var/lib/mysql
-      - ./src/main/resources/db/hmdp_new.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
+      - ./src/main/resources/db/nyc_review.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
       - ./src/main/resources/db/p2_redis_stream_order.sql:/docker-entrypoint-initdb.d/02-order-unique-index.sql:ro
       - ./src/main/resources/db/p3_nyc_compatibility.sql:/docker-entrypoint-initdb.d/03-nyc-compatibility.sql:ro
       - ./src/main/resources/db/p4_nyc_domain.sql:/docker-entrypoint-initdb.d/04-nyc-domain.sql:ro
@@ -30,6 +30,7 @@ services:
       - ./src/main/resources/db/p12_p13_data_quality.sql:/docker-entrypoint-initdb.d/12-data-quality.sql:ro
       - ./data/generated/nyc-real-p13-full/mysql_import.sql:/docker-entrypoint-initdb.d/13-p13-data.sql:ro
       - ./data/generated/nyc-real-p13-full/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/14-map-data.sql:ro
+      - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/15-cleanup.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -pp14-load-only --silent"]
       interval: 5s
@@ -55,7 +56,7 @@ services:
         condition: service_healthy
     volumes:
       - ./data/generated/nyc-real-p13-full/redis_seed.resp:/seed/redis_seed.resp:ro
-    command: ["sh", "-c", "redis-cli -h redis --pipe < /seed/redis_seed.resp && redis-cli -h redis SET hmdp:p14:environment isolated-load-only"]
+    command: ["sh", "-c", "redis-cli -h redis --pipe < /seed/redis_seed.resp && redis-cli -h redis SET nyc-review:p14:environment isolated-load-only"]
     restart: "no"
 
   rabbitmq:
@@ -63,7 +64,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: p14-load
       RABBITMQ_DEFAULT_PASS: p14-load-only
-      RABBITMQ_DEFAULT_VHOST: /hmdp-p14-load
+      RABBITMQ_DEFAULT_VHOST: /nyc-review-p14-load
     ports:
       - "15673:5672"
       - "15683:15672"
@@ -81,25 +82,25 @@ services:
       dockerfile: Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: p14-load
-      HMDP_DB_URL: jdbc:mysql://mysql:3306/hmdp_p14_load?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-      HMDP_DB_USERNAME: root
-      HMDP_DB_PASSWORD: p14-load-only
-      HMDP_REDIS_HOST: redis
-      HMDP_REDIS_PORT: 6379
-      HMDP_RABBITMQ_HOST: rabbitmq
-      HMDP_RABBITMQ_PORT: 5672
-      HMDP_RABBITMQ_USERNAME: p14-load
-      HMDP_RABBITMQ_PASSWORD: p14-load-only
-      HMDP_RABBITMQ_VHOST: /hmdp-p14-load
-      HMDP_LOAD_DB_POOL_SIZE: ${HMDP_LOAD_DB_POOL_SIZE:-10}
-      HMDP_LOAD_REDIS_MAX_ACTIVE: ${HMDP_LOAD_REDIS_MAX_ACTIVE:-10}
-      HMDP_LOAD_RABBIT_CONCURRENCY: ${HMDP_LOAD_RABBIT_CONCURRENCY:-1}
-      HMDP_LOAD_RABBIT_MAX_CONCURRENCY: ${HMDP_LOAD_RABBIT_MAX_CONCURRENCY:-1}
-      HMDP_LOAD_RABBIT_PREFETCH: ${HMDP_LOAD_RABBIT_PREFETCH:-16}
-      HMDP_RABBITMQ_REPLAY_INTERVAL_MS: 1000
+      NYC_REVIEW_DB_URL: jdbc:mysql://mysql:3306/nyc_review_p14_load?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      NYC_REVIEW_DB_USERNAME: root
+      NYC_REVIEW_DB_PASSWORD: p14-load-only
+      NYC_REVIEW_REDIS_HOST: redis
+      NYC_REVIEW_REDIS_PORT: 6379
+      NYC_REVIEW_RABBITMQ_HOST: rabbitmq
+      NYC_REVIEW_RABBITMQ_PORT: 5672
+      NYC_REVIEW_RABBITMQ_USERNAME: p14-load
+      NYC_REVIEW_RABBITMQ_PASSWORD: p14-load-only
+      NYC_REVIEW_RABBITMQ_VHOST: /nyc-review-p14-load
+      NYC_REVIEW_LOAD_DB_POOL_SIZE: ${NYC_REVIEW_LOAD_DB_POOL_SIZE:-10}
+      NYC_REVIEW_LOAD_REDIS_MAX_ACTIVE: ${NYC_REVIEW_LOAD_REDIS_MAX_ACTIVE:-10}
+      NYC_REVIEW_LOAD_RABBIT_CONCURRENCY: ${NYC_REVIEW_LOAD_RABBIT_CONCURRENCY:-1}
+      NYC_REVIEW_LOAD_RABBIT_MAX_CONCURRENCY: ${NYC_REVIEW_LOAD_RABBIT_MAX_CONCURRENCY:-1}
+      NYC_REVIEW_LOAD_RABBIT_PREFETCH: ${NYC_REVIEW_LOAD_RABBIT_PREFETCH:-16}
+      NYC_REVIEW_RABBITMQ_REPLAY_INTERVAL_MS: 1000
       DEEPSEEK_API_KEY: disabled-in-p14-load
       DEEPSEEK_MODEL: deepseek-chat
-      HMDP_IMAGE_UPLOAD_DIR: /tmp/p14-load-uploads
+      NYC_REVIEW_IMAGE_UPLOAD_DIR: /tmp/p14-load-uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -114,15 +115,15 @@ services:
     build:
       context: ./agent-service
     environment:
-      HMDP_AGENT_ADAPTER: http
-      HMDP_AGENT_BACKEND_BASE_URL: http://spring:8081
-      HMDP_AGENT_BACKEND_AUTH_TOKEN: p14-load-000001
-      HMDP_AGENT_RAG_ADAPTER: memory
-      HMDP_AGENT_RAG_DATA_DIRECTORY: /rag
-      HMDP_AGENT_MODEL_PROVIDER: heuristic
-      HMDP_AGENT_RUNS_PER_MINUTE: 120
-      HMDP_AGENT_RUN_STORE_PATH: /data/agent-runs.sqlite3
-      HMDP_AGENT_MCP_ENABLED: "false"
+      NYC_REVIEW_AGENT_ADAPTER: http
+      NYC_REVIEW_AGENT_BACKEND_BASE_URL: http://spring:8081
+      NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN: p14-load-000001
+      NYC_REVIEW_AGENT_RAG_ADAPTER: memory
+      NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY: /rag
+      NYC_REVIEW_AGENT_MODEL_PROVIDER: heuristic
+      NYC_REVIEW_AGENT_RUNS_PER_MINUTE: 120
+      NYC_REVIEW_AGENT_RUN_STORE_PATH: /data/agent-runs.sqlite3
+      NYC_REVIEW_AGENT_MCP_ENABLED: "false"
     depends_on:
       spring:
         condition: service_started

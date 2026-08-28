@@ -1,0 +1,29 @@
+package com.nycreview.controller;
+
+
+import com.nycreview.dto.Result;
+import com.nycreview.service.IVoucherOrderService;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.annotation.Resource;
+
+@RestController
+@RequestMapping("/voucher-order")
+public class VoucherOrderController {
+
+    @Resource
+    private IVoucherOrderService voucherOrderService;
+
+    @PostMapping("seckill/{id}")
+    public Result seckillVoucher(@PathVariable("id") Long voucherId) {
+        return voucherOrderService.seckillVoucher(voucherId);
+    }
+
+    @PostMapping("purchase/{id}")
+    public Result purchaseVoucher(@PathVariable("id") Long voucherId) {
+        return voucherOrderService.purchaseVoucher(voucherId);
+    }
+}

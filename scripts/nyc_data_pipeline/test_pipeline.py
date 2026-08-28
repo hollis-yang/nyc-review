@@ -219,7 +219,7 @@ class ResolverTest(unittest.TestCase):
 
     def test_resolves_higher_priority_observation(self) -> None:
         observations = [
-            FieldObservation(1, "rating", 3.8, "HMDP_GENERATED", None, "2026-08-24T00:00:00Z", None, 1, 10, "v1").as_dict(),
+            FieldObservation(1, "rating", 3.8, "NYC_REVIEW_GENERATED", None, "2026-08-24T00:00:00Z", None, 1, 10, "v1").as_dict(),
             FieldObservation(1, "rating", 4.7, "OFFICIAL_SITE", "site:1", "2026-08-24T00:00:00Z", None, .91, 100, "v2").as_dict(),
             FieldObservation(1, "ratingCount", 214, "OFFICIAL_SITE", "site:1", "2026-08-24T00:00:00Z", None, .91, 100, "v2").as_dict(),
         ]

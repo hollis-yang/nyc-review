@@ -89,7 +89,7 @@ Agent 之间只交换结构化对象：`UserConstraints`、`CandidateSet`、`Evi
 - `nyc-real-medium`：当前活动 Profile；5,000 家公开来源商户、100,000 条合成根评论及 52,500 条分层回复。
 - `nyc-real-large`：10,000 家公开来源商户与 200,000 条合成根评论，用于扩展验证。
 - `nyc-real-load`：15,000 家公开来源商户与 300,000 条合成根评论，用于按需压测。
-- 杭州数据保留为 legacy 数据集，迁移过程不覆盖或删除。
+- 活动数据库仅保留 NYC 数据；历史杭州快照不再由导入器创建，也不参与运行时或验收。
 
 Mock 数据使用固定随机种子生成。`nyc-hybrid-v1` 作为历史兼容数据保留；当前 `nyc-real-v1` 从固定 OpenStreetMap/Overpass 快照选择全部商户身份，任何 Mock 身份都会被数据验证器和 Agent 启动门禁拒绝。`dataVersion` 绑定 real-data Profile、OSM 快照 SHA-256 与随机种子，`manifest.json` 和 `import_manifest.json` 再固定每个文件、shopId 和导入包哈希。
 

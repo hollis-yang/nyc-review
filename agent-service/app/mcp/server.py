@@ -22,7 +22,7 @@ READ_ONLY_MCP_TOOL_NAMES = frozenset(
 FastMcpSettings.model_rebuild()
 
 mcp = FastMCP(
-    name="HMDP NYC Read-Only",
+    name="NYC Review Read-Only",
     instructions=(
         "Read-only NYC local-life tools backed by the same Spring, RAG, route and verification "
         "services as AI Guide. Merchant identities carry traceable real-data provenance; seeded "
@@ -101,7 +101,7 @@ async def get_shop_evidence(
 
 @mcp.tool(name="get_available_vouchers")
 async def get_available_vouchers(shop_id: int) -> dict[str, Any]:
-    """List HMDP demo vouchers without claiming or purchasing any voucher."""
+    """List NYC Review demo vouchers without claiming or purchasing any voucher."""
     return await _service().get_available_vouchers(shop_id)
 
 

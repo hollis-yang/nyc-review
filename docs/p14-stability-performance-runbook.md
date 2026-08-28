@@ -65,7 +65,7 @@ required.
 
 ## 2. Automated verification
 
-Run these from the repository root. `HmDianPingApplicationTests` is excluded
+Run these from the repository root. `NycReviewApplicationTests` is excluded
 because it builds database and Redis fixtures and must not be run against an
 environment carrying useful data.
 
@@ -73,16 +73,16 @@ environment carrying useful data.
 uv run --project agent-service pytest agent-service/tests -q
 uv run --project agent-service ruff check agent-service/app agent-service/tests scripts/p14
 
-mvn -Dtest='!HmDianPingApplicationTests' test
+mvn -Dtest='!NycReviewApplicationTests' test
 
-cd hmdp-react
+cd nyc-review-web
 npm run lint
 npm run build
 npm run visual:audit
 cd ..
 
 python3 scripts/p14/audit_frontend.py
-PYTHONPYCACHEPREFIX=/private/tmp/hmdp-p14-pycache \
+PYTHONPYCACHEPREFIX=/private/tmp/nyc-review-p14-pycache \
   python3 -m py_compile scripts/p14/*.py
 ```
 
@@ -103,7 +103,7 @@ during P14 can run the same command:
 
 ```bash
 '/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn' \
-  -Dtest='!HmDianPingApplicationTests' test
+  -Dtest='!NycReviewApplicationTests' test
 ```
 
 ## 3. Live Redis Lua concurrency tests
@@ -168,11 +168,11 @@ API behavior without DeepSeek or Qdrant network variance:
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=mock \
-HMDP_AGENT_RAG_ADAPTER=memory \
-HMDP_AGENT_MODEL_PROVIDER=heuristic \
-HMDP_AGENT_RUNS_PER_MINUTE=120 \
-HMDP_AGENT_RUN_STORE_PATH=/private/tmp/hmdp-p14-soak.sqlite3 \
+NYC_REVIEW_AGENT_ADAPTER=mock \
+NYC_REVIEW_AGENT_RAG_ADAPTER=memory \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=heuristic \
+NYC_REVIEW_AGENT_RUNS_PER_MINUTE=120 \
+NYC_REVIEW_AGENT_RUN_STORE_PATH=/private/tmp/nyc-review-p14-soak.sqlite3 \
 uv run uvicorn app.main:app --host 127.0.0.1 --port 8091
 ```
 
@@ -208,8 +208,8 @@ The automated tests cover ack, nack, replay, duplicate delivery, retry topology
 and the independent error queue without modifying a real broker. To demonstrate
 the same behavior in a local full stack:
 
-1. Confirm `hmdp.voucher.order.queue` and
-   `hmdp.voucher.order.error.queue` are empty, then use a development voucher
+1. Confirm `nyc-review.voucher.order.queue` and
+   `nyc-review.voucher.order.error.queue` are empty, then use a development voucher
    and user only.
 2. Stop RabbitMQ, perform one manual flash sale, and verify the matching member
    remains in `seckill:pending:orders`.
@@ -217,7 +217,7 @@ the same behavior in a local full stack:
    member disappears and exactly one `(user_id, voucher_id)` row exists.
 4. Publish a deliberately invalid development message to the order exchange.
    After the configured retry attempts, verify one message reaches
-   `hmdp.voucher.order.error.queue` and no order row is created.
+   `nyc-review.voucher.order.error.queue` and no order row is created.
 5. Inspect and acknowledge the error message. Do not purge non-empty production
    or shared queues.
 

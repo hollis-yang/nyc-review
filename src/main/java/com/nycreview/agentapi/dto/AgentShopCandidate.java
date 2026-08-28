@@ -1,0 +1,45 @@
+package com.nycreview.agentapi.dto;
+
+import java.util.List;
+
+public record AgentShopCandidate(
+        Long shopId,
+        String name,
+        Long typeId,
+        String category,
+        Long subcategoryId,
+        String subcategory,
+        String borough,
+        String neighborhood,
+        String address,
+        String description,
+        Double latitude,
+        Double longitude,
+        Long avgPriceCents,
+        Integer priceLevel,
+        Double score,
+        Integer comments,
+        Integer localReviewCount,
+        Double localScore,
+        Integer ratingCount,
+        Integer externalRatingCount,
+        Double externalScore,
+        String priceRangeText,
+        String phone,
+        String website,
+        String reservationUrl,
+        String businessStatus,
+        String healthGrade,
+        Integer distanceMeters,
+        String timezone,
+        String sourceType,
+        String externalId,
+        String sourceName,
+        String sourceUrl,
+        java.time.LocalDateTime sourceFetchedAt,
+        List<String> syntheticFields,
+        String dataVersion,
+        List<String> tags,
+        List<AgentBusinessHours> businessHours
+) {
+}

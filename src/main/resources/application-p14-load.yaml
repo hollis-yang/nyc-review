@@ -1,32 +1,32 @@
 server:
   tomcat:
     threads:
-      max: ${HMDP_LOAD_TOMCAT_MAX_THREADS:200}
-      min-spare: ${HMDP_LOAD_TOMCAT_MIN_SPARE_THREADS:10}
-    accept-count: ${HMDP_LOAD_TOMCAT_ACCEPT_COUNT:200}
+      max: ${NYC_REVIEW_LOAD_TOMCAT_MAX_THREADS:200}
+      min-spare: ${NYC_REVIEW_LOAD_TOMCAT_MIN_SPARE_THREADS:10}
+    accept-count: ${NYC_REVIEW_LOAD_TOMCAT_ACCEPT_COUNT:200}
 
 spring:
   datasource:
     hikari:
-      maximum-pool-size: ${HMDP_LOAD_DB_POOL_SIZE:10}
-      minimum-idle: ${HMDP_LOAD_DB_MIN_IDLE:2}
+      maximum-pool-size: ${NYC_REVIEW_LOAD_DB_POOL_SIZE:10}
+      minimum-idle: ${NYC_REVIEW_LOAD_DB_MIN_IDLE:2}
       connection-timeout: 3000
       validation-timeout: 1000
   data:
     redis:
       lettuce:
         pool:
-          max-active: ${HMDP_LOAD_REDIS_MAX_ACTIVE:10}
-          max-idle: ${HMDP_LOAD_REDIS_MAX_IDLE:10}
-          min-idle: ${HMDP_LOAD_REDIS_MIN_IDLE:2}
+          max-active: ${NYC_REVIEW_LOAD_REDIS_MAX_ACTIVE:10}
+          max-idle: ${NYC_REVIEW_LOAD_REDIS_MAX_IDLE:10}
+          min-idle: ${NYC_REVIEW_LOAD_REDIS_MIN_IDLE:2}
           max-wait: 2s
   rabbitmq:
-    virtual-host: ${HMDP_RABBITMQ_VHOST:/hmdp-p14-load}
+    virtual-host: ${NYC_REVIEW_RABBITMQ_VHOST:/nyc-review-p14-load}
     listener:
       simple:
-        concurrency: ${HMDP_LOAD_RABBIT_CONCURRENCY:1}
-        max-concurrency: ${HMDP_LOAD_RABBIT_MAX_CONCURRENCY:1}
-        prefetch: ${HMDP_LOAD_RABBIT_PREFETCH:16}
+        concurrency: ${NYC_REVIEW_LOAD_RABBIT_CONCURRENCY:1}
+        max-concurrency: ${NYC_REVIEW_LOAD_RABBIT_MAX_CONCURRENCY:1}
+        prefetch: ${NYC_REVIEW_LOAD_RABBIT_PREFETCH:16}
 
 management:
   server:
@@ -40,7 +40,7 @@ management:
       show-details: always
   metrics:
     tags:
-      application: hmdp-p14-load
+      application: nyc-review-p14-load
     distribution:
       percentiles-histogram:
         http.server.requests: true
@@ -48,5 +48,5 @@ management:
 logging:
   level:
     root: INFO
-    com.hmdp: INFO
+    com.nycreview: INFO
 

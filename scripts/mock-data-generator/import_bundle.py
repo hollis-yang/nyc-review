@@ -12,21 +12,6 @@ from typing import Any
 
 FIXED_TIME = "2026-08-17 12:00:00"
 SQL_MARKER = "NYC_IMPORT_BUNDLE_V1"
-LEGACY_ARCHIVE_KEY = "initial-hangzhou"
-LEGACY_TABLES = (
-    "tb_shop_type",
-    "tb_shop",
-    "tb_user",
-    "tb_user_info",
-    "tb_blog",
-    "tb_blog_comments",
-    "tb_follow",
-    "tb_voucher",
-    "tb_seckill_voucher",
-    "tb_voucher_order",
-    "tb_sign",
-    "tb_shop_review",
-)
 CATEGORY_ICONS = {
     1: "/types/nyc-dining.svg",
     2: "/types/nyc-cafe.svg",
@@ -34,37 +19,6 @@ CATEGORY_ICONS = {
     4: "/types/nyc-entertainment.svg",
     5: "/types/nyc-wellness.svg",
     6: "/types/nyc-beauty.svg",
-}
-LEGACY_COLUMN_MAP = {
-    # Keep the archive import compatible with a legacy_hangzhou_tb_shop table
-    # created before later NYC/provenance columns were added to tb_shop.
-    "tb_shop": (
-        "id", "name", "type_id", "images", "area", "address", "x", "y",
-        "avg_price", "sold", "comments", "score", "open_hours", "create_time", "update_time",
-    ),
-    # P10 adds threading/provenance columns to the live review table. The
-    # one-time Hangzhou archive was created from the original nine-column
-    # schema, so SELECT * would fail at statement validation even after the
-    # archive guard has already been written.
-    "tb_shop_review": (
-        "id", "shop_id", "user_id", "rating", "content", "images", "liked",
-        "create_time", "update_time",
-    ),
-    # P10 also adds provenance fields to generated posts, comments and
-    # vouchers. Select only the original columns so an archive created by an
-    # earlier P6 import remains usable after the additive migration.
-    "tb_blog": (
-        "id", "shop_id", "user_id", "title", "images", "content", "liked",
-        "comments", "create_time", "update_time",
-    ),
-    "tb_blog_comments": (
-        "id", "user_id", "blog_id", "parent_id", "answer_id", "content", "liked",
-        "status", "create_time", "update_time",
-    ),
-    "tb_voucher": (
-        "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value",
-        "type", "status", "create_time", "update_time",
-    ),
 }
 P7_DERIVED_TABLES = (
     "tb_neighborhood_shop_count",
@@ -157,14 +111,14 @@ def _first_open_hours(shop_id: int, hours: list[dict[str, Any]]) -> str | None:
 
 def _delete_optional_table(table: str) -> list[str]:
     """Clear a derived P7 table when its additive migration has been applied."""
-    statement_name = "HMDP_OPTIONAL_DELETE"
-    sql_variable = "@HMDP_OPTIONAL_DELETE_SQL"
+    statement_name = "NYC_REVIEW_OPTIONAL_DELETE"
+    sql_variable = "@NYC_REVIEW_OPTIONAL_DELETE_SQL"
     return [
         f"SET {sql_variable} = IF(",
         "  EXISTS(SELECT 1 FROM information_schema.TABLES "
         f"WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{table}'),",
         f"  'DELETE FROM `{table}`',",
-        "  'SET @HMDP_OPTIONAL_DELETE_NOOP = 0'",
+        "  'SET @NYC_REVIEW_OPTIONAL_DELETE_NOOP = 0'",
         ");",
         f"PREPARE {statement_name} FROM {sql_variable};",
         f"EXECUTE {statement_name};",
@@ -201,7 +155,7 @@ def build_mysql_sql(
             "-- Merchant identities are source-backed OpenStreetMap records; reviews, platform activity "
             "and illustrative media are synthetic and explicitly attributed."
             if real_only
-            else "-- HMDP content is synthetic; some establishment identity fields may come from NYC Open Data."
+            else "-- NYC Review content is synthetic; some establishment identity fields may come from NYC Open Data."
         ),
         (
             "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, "
@@ -215,46 +169,15 @@ def build_mysql_sql(
             if real_only
             else "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql."
         ),
-        "-- Stop the application before importing. The initial active dataset is archived exactly once.",
+        "-- Stop the application before importing. This bundle replaces the active development dataset.",
         "SET NAMES utf8mb4;",
-        "SET @HMDP_OLD_TIME_ZONE = @@SESSION.time_zone;",
+        "SET @NYC_REVIEW_OLD_TIME_ZONE = @@SESSION.time_zone;",
         "SET SESSION time_zone = '+00:00';",
         "",
-        "CREATE TABLE IF NOT EXISTS `tb_legacy_archive_state` (",
-        "  `archive_key` VARCHAR(64) NOT NULL,",
-        "  `archived_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,",
-        "  `source_note` VARCHAR(255) NOT NULL,",
-        "  PRIMARY KEY (`archive_key`)",
-        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
-        "",
+        "SET @OLD_FOREIGN_KEY_CHECKS = @@FOREIGN_KEY_CHECKS;",
+        "SET FOREIGN_KEY_CHECKS = 0;",
+        "START TRANSACTION;",
     ]
-    for table in LEGACY_TABLES:
-        lines.append(f"CREATE TABLE IF NOT EXISTS `legacy_hangzhou_{table}` LIKE `{table}`;")
-    lines.extend(["", "START TRANSACTION;"])
-    for table in LEGACY_TABLES:
-        columns = LEGACY_COLUMN_MAP.get(table)
-        if columns:
-            quoted = ", ".join(f"`{column}`" for column in columns)
-            lines.append(
-                f"INSERT INTO `legacy_hangzhou_{table}` ({quoted}) SELECT {quoted} FROM `{table}` "
-                f"WHERE NOT EXISTS (SELECT 1 FROM `tb_legacy_archive_state` WHERE `archive_key` = '{LEGACY_ARCHIVE_KEY}');"
-            )
-        else:
-            lines.append(
-                f"INSERT INTO `legacy_hangzhou_{table}` SELECT * FROM `{table}` "
-                f"WHERE NOT EXISTS (SELECT 1 FROM `tb_legacy_archive_state` WHERE `archive_key` = '{LEGACY_ARCHIVE_KEY}');"
-            )
-    lines.extend(
-        [
-            "INSERT IGNORE INTO `tb_legacy_archive_state` (`archive_key`, `source_note`) ",
-            f"VALUES ('{LEGACY_ARCHIVE_KEY}', 'Snapshot before the first NYC mock import');",
-            "COMMIT;",
-            "",
-            "SET @OLD_FOREIGN_KEY_CHECKS = @@FOREIGN_KEY_CHECKS;",
-            "SET FOREIGN_KEY_CHECKS = 0;",
-            "START TRANSACTION;",
-        ]
-    )
     for table in P7_DERIVED_TABLES:
         lines.extend(_delete_optional_table(table))
     lines.extend(_delete_optional_table("tb_shop_field_observation"))
@@ -264,15 +187,15 @@ def build_mysql_sql(
         lines.extend(_delete_optional_table(table))
     lines.extend(
         [
-            "SET @HMDP_OPTIONAL_DELETE_SQL = IF(",
+            "SET @NYC_REVIEW_OPTIONAL_DELETE_SQL = IF(",
             "  EXISTS(SELECT 1 FROM information_schema.TABLES "
             "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tb_map_data_import'),",
             "  'UPDATE `tb_map_data_import` SET `active`=0',",
-            "  'SET @HMDP_OPTIONAL_DELETE_NOOP = 0'",
+            "  'SET @NYC_REVIEW_OPTIONAL_DELETE_NOOP = 0'",
             ");",
-            "PREPARE HMDP_OPTIONAL_DELETE FROM @HMDP_OPTIONAL_DELETE_SQL;",
-            "EXECUTE HMDP_OPTIONAL_DELETE;",
-            "DEALLOCATE PREPARE HMDP_OPTIONAL_DELETE;",
+            "PREPARE NYC_REVIEW_OPTIONAL_DELETE FROM @NYC_REVIEW_OPTIONAL_DELETE_SQL;",
+            "EXECUTE NYC_REVIEW_OPTIONAL_DELETE;",
+            "DEALLOCATE PREPARE NYC_REVIEW_OPTIONAL_DELETE;",
             "",
         ]
     )
@@ -284,7 +207,6 @@ def build_mysql_sql(
         "tb_shop_review",
         "tb_blog",
         "tb_follow",
-        "tb_sign",
         "tb_user_info",
         "tb_user",
         "tb_shop_business_hours",
@@ -574,7 +496,7 @@ def build_mysql_sql(
         [
             "COMMIT;",
             "SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;",
-            "SET SESSION time_zone = @HMDP_OLD_TIME_ZONE;",
+            "SET SESSION time_zone = @NYC_REVIEW_OLD_TIME_ZONE;",
             "",
             f"-- Dataset SHA-256: {dataset_sha256}",
             "",
@@ -712,7 +634,7 @@ def build_import_bundle(
         "mysql": {
             "file": sql_path.name,
             "sha256": _sha256(sql_path),
-            "archivesLegacyKey": LEGACY_ARCHIVE_KEY,
+            "legacyArchiveTables": False,
         },
         "redis": {
             "file": redis_path.name,

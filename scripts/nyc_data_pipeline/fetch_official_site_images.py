@@ -223,7 +223,7 @@ def _validate_remote_image(candidate: dict[str, Any]) -> dict[str, Any] | None:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "hm-dianping-official-image-discovery/2.0",
+            "User-Agent": "nyc-review-official-image-discovery/2.0",
             "Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8",
             "Range": f"bytes=0-{MAX_IMAGE_SAMPLE_BYTES - 1}",
         },
@@ -291,7 +291,7 @@ def _fetch_shop(shop: dict[str, Any], fetched_at: str) -> tuple[list[dict[str, A
     request = urllib.request.Request(
         website,
         headers={
-            "User-Agent": "hm-dianping-official-enrichment/2.0",
+            "User-Agent": "nyc-review-official-enrichment/2.0",
             "Accept": "text/html,application/xhtml+xml",
         },
     )

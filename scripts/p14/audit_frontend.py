@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REACT = ROOT / "hmdp-react"
+REACT = ROOT / "nyc-review-web"
 
 
 def flatten(value: dict, prefix: str = "") -> dict[str, object]:
@@ -49,7 +49,7 @@ def main() -> int:
         "mapCancelsSupersededRequests": "new AbortController()" in map_source
         and "sequence !== requestSequence.current" in map_source,
         "mapKeepsFiveHundredMarkerBoundary": "MAX_POINTS = 500" in (
-            ROOT / "src/main/java/com/hmdp/service/ShopMapService.java"
+            ROOT / "src/main/java/com/nycreview/service/ShopMapService.java"
         ).read_text(encoding="utf-8"),
         "agentHttpClientHasNoDeadline": "timeout:" not in agent_api_source,
         "multiAgentOnly": "const MULTI_AGENTS" in ai_source

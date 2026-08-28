@@ -1,13 +1,15 @@
--- Apply after hmdp_new.sql in the NYC development database.
+-- Apply after nyc_review.sql in the NYC development database.
 -- The unique key is the final idempotency guard for asynchronous MQ redelivery.
--- Legacy fixture data contains one duplicate user/voucher pair. Archive every
--- non-canonical row, retain the earliest order, then add the guard idempotently.
+-- The original fixture contains one duplicate user/voucher pair. Stage every
+-- non-canonical row temporarily, retain the earliest order, then add the guard
+-- idempotently without leaving a permanent migration archive table.
 
-CREATE TABLE IF NOT EXISTS tb_voucher_order_conflict_archive LIKE tb_voucher_order;
+DROP TEMPORARY TABLE IF EXISTS tmp_voucher_order_conflicts;
+CREATE TEMPORARY TABLE tmp_voucher_order_conflicts LIKE tb_voucher_order;
 
 START TRANSACTION;
 
-INSERT IGNORE INTO tb_voucher_order_conflict_archive
+INSERT IGNORE INTO tmp_voucher_order_conflicts
 SELECT duplicate_order.*
 FROM tb_voucher_order AS duplicate_order
 INNER JOIN tb_voucher_order AS retained_order
@@ -36,7 +38,9 @@ INNER JOIN tb_voucher_order AS retained_order
 
 COMMIT;
 
-SET @HMDP_ADD_ORDER_UNIQUE_INDEX = IF(
+DROP TEMPORARY TABLE IF EXISTS tmp_voucher_order_conflicts;
+
+SET @NYC_REVIEW_ADD_ORDER_UNIQUE_INDEX = IF(
     EXISTS(
         SELECT 1
         FROM information_schema.statistics
@@ -44,10 +48,10 @@ SET @HMDP_ADD_ORDER_UNIQUE_INDEX = IF(
           AND table_name = 'tb_voucher_order'
           AND index_name = 'uk_voucher_order_user_voucher'
     ),
-    'SET @HMDP_ORDER_UNIQUE_INDEX_EXISTS = 1',
+    'SET @NYC_REVIEW_ORDER_UNIQUE_INDEX_EXISTS = 1',
     'ALTER TABLE tb_voucher_order ADD UNIQUE KEY uk_voucher_order_user_voucher (user_id, voucher_id)'
 );
 
-PREPARE hmdp_order_unique_index_statement FROM @HMDP_ADD_ORDER_UNIQUE_INDEX;
-EXECUTE hmdp_order_unique_index_statement;
-DEALLOCATE PREPARE hmdp_order_unique_index_statement;
+PREPARE nyc_review_order_unique_index_statement FROM @NYC_REVIEW_ADD_ORDER_UNIQUE_INDEX;
+EXECUTE nyc_review_order_unique_index_statement;
+DEALLOCATE PREPARE nyc_review_order_unique_index_statement;

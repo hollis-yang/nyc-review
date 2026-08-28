@@ -96,7 +96,7 @@
 
 ### P12：混合检索与固定评测（已完成，可进行隔离索引验收）
 
-- 不修改 P11.5 的 MySQL/Redis 数据，新增 `p12-rag-v1` 检索版本与 `hmdp_content_v2` Collection。
+- 不修改 P11.5 的 MySQL/Redis 数据，新增 `p12-rag-v1` 检索版本与 `nyc_review_content_v2` Collection。
 - 将商户身份/属性 FACT 与评论/博客 EVIDENCE 分层，新增中英文查询扩展、稠密+稀疏 RRF、候选池重排、证据去重和品牌多样性。
 - Discovery 从最多 100 个结构化候选中选择最终 5 个；Preview、Run、Trace 与只读 MCP 使用同一检索链路。
 - 固定 72 条中英文、六类别用例，并以 Recall@10、证据覆盖、约束满足、重复商户、注入泄漏、版本一致性和 P95 延迟作为门禁。
@@ -112,7 +112,7 @@ P13.5 不改变 P13 数据检查点，也不把场景相关图片声明成对应
 
 实施边界：
 
-- 只修改 `hmdp-react` 的静态资源、图片清单、统一视觉组件、前端工具脚本和测试。
+- 只修改 `nyc-review-web` 的静态资源、图片清单、统一视觉组件、前端工具脚本和测试。
 - 不修改 MySQL、Redis、RabbitMQ、Spring API、Agent Service、Qdrant、RAG 文档、P12/P13 评测集、shop ID、`dataVersion` 或 `datasetSha256`。
 - 不需要重新导入数据库、重建地图投影或重建 Qdrant；P14 可独立实施，不以 P13.5 为后端前置依赖。
 - 不使用付费 API，不从 Google/Yelp/社交平台复制受限图片，也不把低置信度场景图伪装成商户实景。

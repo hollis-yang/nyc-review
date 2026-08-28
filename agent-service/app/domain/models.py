@@ -86,7 +86,7 @@ class ShopCandidate(BaseModel):
     avg_price_cents: int | None = Field(default=None, ge=0)
     score: float | None = Field(default=None, ge=0, le=5)
     tags: list[str] = Field(default_factory=list)
-    source: str = "hmdp"
+    source: str = "nyc-review"
     source_type: str = "MOCK"
     external_id: str | None = None
     source_name: str | None = None

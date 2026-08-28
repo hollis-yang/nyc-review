@@ -135,7 +135,7 @@ def _fetch(url: str, *, accept: str, max_bytes: int, timeout: int = 8) -> tuple[
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "hm-dianping-official-enrichment/2.1",
+            "User-Agent": "nyc-review-official-enrichment/2.1",
             "Accept": accept,
         },
     )

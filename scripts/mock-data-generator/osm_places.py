@@ -78,7 +78,7 @@ def fetch_snapshot(
     nta_snapshot: Path,
     *,
     overpass_url: str = DEFAULT_OVERPASS_URL,
-    user_agent: str = "hm-dianping-p8-real-data-pipeline/1.0",
+    user_agent: str = "nyc-review-p8-real-data-pipeline/1.0",
     retries: int = 5,
     request_delay: float = 1.0,
     retry_base_delay: float = 5.0,
@@ -135,7 +135,7 @@ def fetch_snapshot(
             "bbox": list(NYC_BBOX),
             "notes": (
                 "Only OSM establishment identity, tags and location are source-backed. "
-                "HMDP reviews, ratings, promotions and illustrative images are synthetic demo content."
+                "NYC Review reviews, ratings, promotions and illustrative images are synthetic demo content."
             ),
         },
         "records": records,
@@ -210,7 +210,7 @@ def normalize_elements(
             "sourceFetchedAt": fetched_at,
             "sourceLicense": LICENSE_NAME,
             "sourceTags": _source_tags(tags),
-            "verifiedTags": _verified_hmdp_tags(tags),
+            "verifiedTags": _verified_nyc_review_tags(tags),
         }
         _validate_source_field_lengths(record, external_id)
         records.append(record)
@@ -492,7 +492,7 @@ def _source_tags(tags: dict[str, Any]) -> dict[str, str]:
     return {key: _clean(tags.get(key)) for key in allowed if _clean(tags.get(key))}
 
 
-def _verified_hmdp_tags(tags: dict[str, Any]) -> list[str]:
+def _verified_nyc_review_tags(tags: dict[str, Any]) -> list[str]:
     result = []
     if _normalize_text(tags.get("wheelchair")) == "yes":
         result.append("wheelchair_accessible")

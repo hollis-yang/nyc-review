@@ -94,7 +94,7 @@ def fetch_snapshot(
     manifest = read_manifest(manifest_path)
     request = urllib.request.Request(
         str(manifest["downloadUrl"]),
-        headers={"User-Agent": "hm-dianping-nyc-data/1.0"},
+        headers={"User-Agent": "nyc-review-nyc-data/1.0"},
     )
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         payload = response.read(MAX_DOWNLOAD_BYTES + 1)

@@ -79,7 +79,7 @@ def _request(endpoint: str, query: str, retries: int) -> dict[str, Any]:
     for attempt in range(retries):
         request = urllib.request.Request(
             endpoint, data=encoded,
-            headers={"User-Agent": "hm-dianping-p2-p3-enrichment/1.0", "Accept": "application/json"},
+            headers={"User-Agent": "nyc-review-p2-p3-enrichment/1.0", "Accept": "application/json"},
         )
         try:
             with urllib.request.urlopen(request, timeout=210) as response:

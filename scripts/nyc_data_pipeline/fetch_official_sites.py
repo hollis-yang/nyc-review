@@ -73,7 +73,7 @@ def _fetch_shop(shop: dict[str, Any]) -> dict[str, Any] | None:
         return None
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "hm-dianping-official-enrichment/2.0", "Accept": "text/html,application/xhtml+xml"},
+        headers={"User-Agent": "nyc-review-official-enrichment/2.0", "Accept": "text/html,application/xhtml+xml"},
     )
     try:
         with urllib.request.build_opener(SafeRedirectHandler()).open(request, timeout=8) as response:

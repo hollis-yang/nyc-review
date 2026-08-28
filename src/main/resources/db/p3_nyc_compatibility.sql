@@ -1,4 +1,4 @@
--- Apply after hmdp_new.sql before importing NYC data.
+-- Apply after nyc_review.sql before importing NYC data.
 -- NYC longitude is negative, so the legacy UNSIGNED longitude column must become signed.
 -- E.164 phone numbers can include a leading plus sign and up to 15 digits.
 

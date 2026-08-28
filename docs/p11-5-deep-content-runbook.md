@@ -89,11 +89,11 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   scripts/mock-data-generator/test_generate.py
 
 uv run --project agent-service pytest agent-service/tests -q
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
-`HmDianPingApplicationTests` remains excluded because it constructs database
+`NycReviewApplicationTests` remains excluded because it constructs database
 and Redis data and is not container-isolated.
 
 ## 4. Promote the checkpoint manually
@@ -104,10 +104,10 @@ development database as described in the P10/P11 runbook. Then import this
 single matching checkpoint in order:
 
 ```bash
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-real-p11-5-full/mysql_import.sql
 
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-real-p11-5-full/p7_neighborhood_import.sql
 
 redis-cli --pipe \
@@ -123,21 +123,21 @@ Agent Service with the new token, bundle and a new Qdrant path:
 ```bash
 cd agent-service
 
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<new-login-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant-p11-5 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p11-5-full \
-HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
-HMDP_AGENT_MODEL_PROVIDER=deepseek \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<new-login-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant-p11-5 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p11-5-full \
+NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --port 8090
 ```
 
 ## 5. Acceptance checks
 
 ```bash
-mysql -u root -p hmdp_new -e "
+mysql -u root -p nyc_review -e "
 SELECT data_version, profile, dataset_sha256, shop_count, active
 FROM tb_data_import ORDER BY imported_at DESC LIMIT 1;
 SELECT COUNT(*) AS shops, COUNT(DISTINCT data_version) AS versions FROM tb_shop;
@@ -148,7 +148,7 @@ FROM tb_shop_image;
 SELECT COUNT(*) AS map_locations FROM tb_shop_map_location;
 SELECT field_name, COUNT(DISTINCT shop_id) AS shops
 FROM tb_shop_field_observation
-WHERE provider <> 'HMDP_GENERATED'
+WHERE provider <> 'NYC_REVIEW_GENERATED'
   AND field_name IN ('rating','priceRangeText','avgPriceCents','phone','openingHours','reservationUrl')
 GROUP BY field_name ORDER BY field_name;"
 ```

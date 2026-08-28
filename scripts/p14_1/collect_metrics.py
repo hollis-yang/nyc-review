@@ -117,7 +117,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     environment = validate_isolated_environment()
-    queue_names = ("hmdp.voucher.order.queue", "hmdp.voucher.order.error.queue")
+    queue_names = ("nyc-review.voucher.order.queue", "nyc-review.voucher.order.error.queue")
     container_ids = [line for line in compose("ps", "-q").splitlines() if line]
     docker_stats = []
     if container_ids:

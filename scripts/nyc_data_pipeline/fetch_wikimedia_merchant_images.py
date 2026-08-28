@@ -90,7 +90,7 @@ def fetch(shops: list[dict[str, Any]], osm_snapshot: dict[str, Any]) -> dict[str
 
 def _get_json(endpoint: str, params: dict[str, str]) -> dict[str, Any]:
     url = f"{endpoint}?{urllib.parse.urlencode(params)}"
-    request = urllib.request.Request(url, headers={"User-Agent": "hm-dianping-p2-p3-wikimedia/1.0", "Accept": "application/json"})
+    request = urllib.request.Request(url, headers={"User-Agent": "nyc-review-p2-p3-wikimedia/1.0", "Accept": "application/json"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 

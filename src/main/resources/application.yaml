@@ -4,23 +4,23 @@ spring:
   config:
     import: "optional:file:.env[.properties]"
   application:
-    name: hmdp
+    name: nyc-review
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: ${HMDP_DB_URL:jdbc:mysql://127.0.0.1:3306/hmdp_new?useSSL=false&serverTimezone=UTC}
-    username: ${HMDP_DB_USERNAME:root}
-    password: ${HMDP_DB_PASSWORD}
+    url: ${NYC_REVIEW_DB_URL:jdbc:mysql://127.0.0.1:3306/nyc_review?useSSL=false&serverTimezone=UTC}
+    username: ${NYC_REVIEW_DB_USERNAME:root}
+    password: ${NYC_REVIEW_DB_PASSWORD}
   servlet:
     multipart:
       max-file-size: 5MB
       max-request-size: 6MB
   data:
     redis:
-      host: ${HMDP_REDIS_HOST:localhost}
-      port: ${HMDP_REDIS_PORT:6379}
-      database: ${HMDP_REDIS_DATABASE:0}
-      username: ${HMDP_REDIS_USERNAME:}
-      password: ${HMDP_REDIS_PASSWORD:}
+      host: ${NYC_REVIEW_REDIS_HOST:localhost}
+      port: ${NYC_REVIEW_REDIS_PORT:6379}
+      database: ${NYC_REVIEW_REDIS_DATABASE:0}
+      username: ${NYC_REVIEW_REDIS_USERNAME:}
+      password: ${NYC_REVIEW_REDIS_PASSWORD:}
       lettuce:
         pool:
           max-active: 10
@@ -28,10 +28,10 @@ spring:
           min-idle: 1
           time-between-eviction-runs: 10s
   rabbitmq:
-    host: ${HMDP_RABBITMQ_HOST:localhost}
-    port: ${HMDP_RABBITMQ_PORT:5672}
-    username: ${HMDP_RABBITMQ_USERNAME:guest}
-    password: ${HMDP_RABBITMQ_PASSWORD:guest}
+    host: ${NYC_REVIEW_RABBITMQ_HOST:localhost}
+    port: ${NYC_REVIEW_RABBITMQ_PORT:5672}
+    username: ${NYC_REVIEW_RABBITMQ_USERNAME:guest}
+    password: ${NYC_REVIEW_RABBITMQ_PASSWORD:guest}
     publisher-confirm-type: correlated
     publisher-returns: true
     template:
@@ -44,19 +44,19 @@ spring:
   jackson:
     default-property-inclusion: non_null # JSON处理时忽略非空字段
 mybatis-plus:
-  type-aliases-package: com.hmdp.entity # 别名扫描包
+  type-aliases-package: com.nycreview.entity # 别名扫描包
 logging:
   level:
-    com.hmdp: debug
+    com.nycreview: debug
 
 deepseek:
   api-key: ${DEEPSEEK_API_KEY}
   model: ${DEEPSEEK_MODEL:deepseek-v4-pro}
   base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
-hmdp:
+nyc-review:
   upload:
-    image-dir: ${HMDP_IMAGE_UPLOAD_DIR:./uploads/imgs}
+    image-dir: ${NYC_REVIEW_IMAGE_UPLOAD_DIR:./uploads/imgs}
   rabbitmq:
-    confirm-timeout: ${HMDP_RABBITMQ_CONFIRM_TIMEOUT:5s}
-    replay-interval-ms: ${HMDP_RABBITMQ_REPLAY_INTERVAL_MS:5000}
-    replay-batch-size: ${HMDP_RABBITMQ_REPLAY_BATCH_SIZE:50}
+    confirm-timeout: ${NYC_REVIEW_RABBITMQ_CONFIRM_TIMEOUT:5s}
+    replay-interval-ms: ${NYC_REVIEW_RABBITMQ_REPLAY_INTERVAL_MS:5000}
+    replay-batch-size: ${NYC_REVIEW_RABBITMQ_REPLAY_BATCH_SIZE:50}

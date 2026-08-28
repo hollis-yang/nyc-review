@@ -245,7 +245,7 @@ def test_loader_preserves_user_submitted_blog_and_comment_provenance(tmp_path):
         "description": "A test shop.",
         "sourceType": "MOCK",
         "externalId": "mock:42",
-        "sourceName": "HMDP",
+        "sourceName": "NYC Review",
         "syntheticFields": ["description", "images", "reviews"],
         "dataVersion": "nyc-mock-v2",
     }

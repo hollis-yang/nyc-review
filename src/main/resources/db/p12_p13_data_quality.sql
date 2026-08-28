@@ -3,33 +3,33 @@
 
 SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;
 
-SET @HMDP_P13_SQL = IF(
+SET @NYC_REVIEW_P13_SQL = IF(
     EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tb_shop' AND COLUMN_NAME='local_review_count'),
-    'SET @HMDP_P13_NOOP = 0',
+    'SET @NYC_REVIEW_P13_NOOP = 0',
     'ALTER TABLE `tb_shop` ADD COLUMN `local_review_count` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `comments`'
 );
-PREPARE HMDP_P13_STMT FROM @HMDP_P13_SQL; EXECUTE HMDP_P13_STMT; DEALLOCATE PREPARE HMDP_P13_STMT;
+PREPARE NYC_REVIEW_P13_STMT FROM @NYC_REVIEW_P13_SQL; EXECUTE NYC_REVIEW_P13_STMT; DEALLOCATE PREPARE NYC_REVIEW_P13_STMT;
 
-SET @HMDP_P13_SQL = IF(
+SET @NYC_REVIEW_P13_SQL = IF(
     EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tb_shop' AND COLUMN_NAME='local_score'),
-    'SET @HMDP_P13_NOOP = 0',
+    'SET @NYC_REVIEW_P13_NOOP = 0',
     'ALTER TABLE `tb_shop` ADD COLUMN `local_score` INT UNSIGNED NULL AFTER `score`'
 );
-PREPARE HMDP_P13_STMT FROM @HMDP_P13_SQL; EXECUTE HMDP_P13_STMT; DEALLOCATE PREPARE HMDP_P13_STMT;
+PREPARE NYC_REVIEW_P13_STMT FROM @NYC_REVIEW_P13_SQL; EXECUTE NYC_REVIEW_P13_STMT; DEALLOCATE PREPARE NYC_REVIEW_P13_STMT;
 
-SET @HMDP_P13_SQL = IF(
+SET @NYC_REVIEW_P13_SQL = IF(
     EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tb_shop' AND COLUMN_NAME='external_score'),
-    'SET @HMDP_P13_NOOP = 0',
+    'SET @NYC_REVIEW_P13_NOOP = 0',
     'ALTER TABLE `tb_shop` ADD COLUMN `external_score` INT UNSIGNED NULL AFTER `rating_count`'
 );
-PREPARE HMDP_P13_STMT FROM @HMDP_P13_SQL; EXECUTE HMDP_P13_STMT; DEALLOCATE PREPARE HMDP_P13_STMT;
+PREPARE NYC_REVIEW_P13_STMT FROM @NYC_REVIEW_P13_SQL; EXECUTE NYC_REVIEW_P13_STMT; DEALLOCATE PREPARE NYC_REVIEW_P13_STMT;
 
-SET @HMDP_P13_SQL = IF(
+SET @NYC_REVIEW_P13_SQL = IF(
     EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tb_shop' AND COLUMN_NAME='external_rating_count'),
-    'SET @HMDP_P13_NOOP = 0',
+    'SET @NYC_REVIEW_P13_NOOP = 0',
     'ALTER TABLE `tb_shop` ADD COLUMN `external_rating_count` INT UNSIGNED NULL AFTER `external_score`'
 );
-PREPARE HMDP_P13_STMT FROM @HMDP_P13_SQL; EXECUTE HMDP_P13_STMT; DEALLOCATE PREPARE HMDP_P13_STMT;
+PREPARE NYC_REVIEW_P13_STMT FROM @NYC_REVIEW_P13_SQL; EXECUTE NYC_REVIEW_P13_STMT; DEALLOCATE PREPARE NYC_REVIEW_P13_STMT;
 
 -- Recompute local aggregates from browsable depth-zero rows instead of trusting
 -- a legacy counter. USER_SUBMITTED rows and generated rows are both retained.
@@ -48,7 +48,7 @@ SET shop.`local_review_count` = COALESCE(local_aggregate.`root_count`, 0),
     shop.`comments` = COALESCE(local_aggregate.`root_count`, 0),
     shop.`local_score` = local_aggregate.`root_score`;
 
--- Keep external source observations separate. HMDP_GENERATED observations are
+-- Keep external source observations separate. NYC_REVIEW_GENERATED observations are
 -- intentionally excluded because they describe the local test corpus.
 UPDATE `tb_shop` shop
 SET shop.`external_score` = (
@@ -56,7 +56,7 @@ SET shop.`external_score` = (
         FROM `tb_shop_field_observation` observation
         WHERE observation.`shop_id` = shop.`id`
           AND observation.`field_name` = 'rating'
-          AND observation.`provider` <> 'HMDP_GENERATED'
+          AND observation.`provider` <> 'NYC_REVIEW_GENERATED'
         ORDER BY observation.`source_priority` DESC, observation.`observed_at` DESC, observation.`id` DESC
         LIMIT 1
     ),
@@ -65,7 +65,7 @@ SET shop.`external_score` = (
         FROM `tb_shop_field_observation` observation
         WHERE observation.`shop_id` = shop.`id`
           AND observation.`field_name` = 'ratingCount'
-          AND observation.`provider` <> 'HMDP_GENERATED'
+          AND observation.`provider` <> 'NYC_REVIEW_GENERATED'
         ORDER BY observation.`source_priority` DESC, observation.`observed_at` DESC, observation.`id` DESC
         LIMIT 1
     );

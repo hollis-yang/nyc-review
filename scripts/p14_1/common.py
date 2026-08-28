@@ -13,11 +13,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = ROOT / "docker-compose.p14-load.yml"
-PROJECT = "hmdp-p14-load"
-DATABASE = "hmdp_p14_load"
-REDIS_SENTINEL_KEY = "hmdp:p14:environment"
+PROJECT = "nyc-review-p14-load"
+DATABASE = "nyc_review_p14_load"
+REDIS_SENTINEL_KEY = "nyc-review:p14:environment"
 REDIS_SENTINEL_VALUE = "isolated-load-only"
-RABBIT_VHOST = "/hmdp-p14-load"
+RABBIT_VHOST = "/nyc-review-p14-load"
 RABBIT_USER = "p14-load"
 RABBIT_PASSWORD = "p14-load-only"
 RABBIT_API = "http://127.0.0.1:15683/api"
@@ -162,7 +162,7 @@ def rabbit_queue(name: str) -> dict[str, Any]:
 
 
 def validate_isolated_environment(*, require_spring: bool = True) -> dict[str, Any]:
-    if COMPOSE_FILE.name != "docker-compose.p14-load.yml" or PROJECT != "hmdp-p14-load":
+    if COMPOSE_FILE.name != "docker-compose.p14-load.yml" or PROJECT != "nyc-review-p14-load":
         raise GuardFailure("P14.1 compose identity is not the expected isolated project")
     database = mysql("SELECT DATABASE()")
     if database != DATABASE:

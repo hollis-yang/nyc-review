@@ -17,9 +17,9 @@ from validate_orders import converged
 
 class P141ContractsTest(unittest.TestCase):
     def test_environment_identity_is_never_the_active_development_database(self) -> None:
-        self.assertEqual("hmdp-p14-load", PROJECT)
-        self.assertEqual("hmdp_p14_load", DATABASE)
-        self.assertNotEqual("hmdp_new", DATABASE)
+        self.assertEqual("nyc-review-p14-load", PROJECT)
+        self.assertEqual("nyc_review_p14_load", DATABASE)
+        self.assertNotEqual("nyc_review", DATABASE)
 
     def test_fixture_sql_only_targets_the_reserved_load_range(self) -> None:
         sql = build_user_sql(user_count=10, stock=5)

@@ -92,8 +92,8 @@ Add optional snapshot arguments only after the corresponding pinned snapshot has
 Per the project plan, do not import or rebuild full Qdrant until the final integration phase. At that time, stop the application and run:
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p11_p2_p3_shop_enrichment.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-p2-p3-full/mysql_import.sql
+mysql -u root -p nyc_review < src/main/resources/db/p11_p2_p3_shop_enrichment.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-p2-p3-full/mysql_import.sql
 redis-cli --pipe < data/generated/nyc-real-p2-p3-full/redis_seed.resp
 redis-cli DEL cache:shopType:list
 ```
@@ -110,7 +110,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   scripts/mock-data-generator/test_generate.py
 
 uv run --project agent-service pytest agent-service/tests -q
-cd hmdp-react && npm run build
+cd nyc-review-web && npm run build
 ```
 
 The pipeline and CI tests never require live network access. Network is used only by explicit fetch commands; generation always consumes pinned files.

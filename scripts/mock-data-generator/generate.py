@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic NYC demo data for the hm-dianping project."""
+"""Generate deterministic NYC demo data for the nyc-review project."""
 
 from __future__ import annotations
 
@@ -576,7 +576,7 @@ def generate_shops(
             "timezone": "America/New_York",
             "sourceType": "MOCK",
             "externalId": f"mock:{shop_id}",
-            "sourceName": "HMDP deterministic NYC generator",
+            "sourceName": "NYC Review deterministic NYC generator",
             "sourceUrl": None,
             "sourceFetchedAt": None,
             "syntheticFields": MOCK_SHOP_FIELDS,
@@ -634,7 +634,7 @@ def apply_real_shop_snapshot(
                 "syntheticFields": HYBRID_SYNTHETIC_FIELDS,
                 "description": (
                     f"Public establishment identity from NYC Open Data in {neighborhood}, {borough}. "
-                    "All HMDP prices, tags, hours, media, reviews and promotions are synthetic demo data."
+                    "All NYC Review prices, tags, hours, media, reviews and promotions are synthetic demo data."
                 ),
             }
         )

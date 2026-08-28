@@ -9,16 +9,16 @@ DEFAULT_RUN_STORE_PATH = str(Path(__file__).resolve().parents[1] / ".local" / "a
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="HMDP_AGENT_", extra="ignore", populate_by_name=True)
+    model_config = SettingsConfigDict(env_prefix="NYC_REVIEW_AGENT_", extra="ignore", populate_by_name=True)
 
-    app_name: str = "hmdp-agent-service"
+    app_name: str = "nyc-review-agent-service"
     environment: str = "development"
     adapter: Literal["mock", "http"] = "mock"
     backend_base_url: str = "http://127.0.0.1:8081"
     backend_auth_token: str = ""
     rag_adapter: Literal["memory", "qdrant"] = "memory"
     qdrant_location: str = "http://127.0.0.1:6333"
-    qdrant_collection: str = "hmdp_content_v2"
+    qdrant_collection: str = "nyc_review_content_v2"
     retrieval_version: str = "p12-rag-v1"
     rag_data_directory: Path | None = None
     rag_index_batch_size: int = Field(default=128, ge=1, le=2_048)
@@ -31,11 +31,11 @@ class Settings(BaseSettings):
     model_base_url: str = "https://api.deepseek.com/v1"
     model_api_key: str = Field(
         default="",
-        validation_alias=AliasChoices("HMDP_AGENT_MODEL_API_KEY", "DEEPSEEK_API_KEY"),
+        validation_alias=AliasChoices("NYC_REVIEW_AGENT_MODEL_API_KEY", "DEEPSEEK_API_KEY"),
     )
     model_name: str = Field(
         default="deepseek-chat",
-        validation_alias=AliasChoices("HMDP_AGENT_MODEL_NAME", "DEEPSEEK_MODEL"),
+        validation_alias=AliasChoices("NYC_REVIEW_AGENT_MODEL_NAME", "DEEPSEEK_MODEL"),
     )
     model_fallback_to_heuristic: bool = True
     run_store_path: str = DEFAULT_RUN_STORE_PATH

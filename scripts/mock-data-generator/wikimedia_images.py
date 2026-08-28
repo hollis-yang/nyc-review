@@ -139,7 +139,7 @@ def _search(search: str, *, limit: int) -> list[dict[str, Any]]:
         f"{API_URL}?{urllib.parse.urlencode(params)}",
         headers={
             "Accept": "application/json",
-            "User-Agent": "hm-dianping-p8-image-catalog/1.0",
+            "User-Agent": "nyc-review-p8-image-catalog/1.0",
         },
     )
     with urllib.request.urlopen(request, timeout=60) as response:

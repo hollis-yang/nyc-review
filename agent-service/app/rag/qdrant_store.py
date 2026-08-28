@@ -48,7 +48,7 @@ class QdrantRagService:
         self,
         client: AsyncQdrantClient,
         embeddings: EmbeddingService,
-        collection_name: str = "hmdp_content_v2",
+        collection_name: str = "nyc_review_content_v2",
         citations_per_shop: int = 3,
         index_batch_size: int = 128,
         dataset_sha256: str | None = None,

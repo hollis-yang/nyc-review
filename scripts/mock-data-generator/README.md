@@ -76,9 +76,9 @@ python3 scripts/mock-data-generator/wikimedia_images.py \
 应用导入包前先阻止新的秒杀流量，同时保持 Spring RabbitMQ consumer 运行，直到订单/错误队列和 Redis pending 索引均为空；随后停止 Spring Boot 与 Agent Service，并确认当前连接的是可替换数据的开发数据库。已经完成 P6/P7 的现有环境只执行 P10、真实数据导入、P7 投影和 Redis seed：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-medium/mysql_import.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-medium/p7_neighborhood_import.sql
+mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-medium/mysql_import.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-medium/p7_neighborhood_import.sql
 redis-cli --pipe < data/generated/nyc-real-medium/redis_seed.resp
 redis-cli DEL cache:shopType:list
 ```

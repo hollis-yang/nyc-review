@@ -1,9 +1,10 @@
-# hm-dianping
+# NYC Review
 
-黑马点评 NYC AI 全栈改造项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
+NYC Review（纽约点评）是面向纽约本地生活的 AI 全栈项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
 
 架构边界与不可回退能力见 [目标架构](docs/target-architecture.md) 和 [验收标准](docs/acceptance-criteria.md)。
 当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md)、[P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md) 和 [P14.1 后端压测 Runbook](docs/p14-1-backend-load-runbook.md)。
+工程重命名后的本地迁移步骤见 [NYC Review 重命名迁移指南](docs/nyc-review-rename-guide.md)。
 
 ## 环境要求
 
@@ -31,31 +32,31 @@ cp .env.example .env
 
 | 变量 | 必需 | 说明 |
 | --- | --- | --- |
-| `HMDP_DB_URL` | 否 | JDBC 地址，默认连接本机 `hmdp_new` 数据库 |
-| `HMDP_DB_USERNAME` | 否 | 数据库用户名，默认 `root` |
-| `HMDP_DB_PASSWORD` | 是 | 数据库密码，无默认值 |
-| `HMDP_REDIS_HOST` | 否 | Redis 地址，默认 `localhost` |
-| `HMDP_REDIS_PORT` | 否 | Redis 端口，默认 `6379` |
-| `HMDP_REDIS_DATABASE` | 否 | Redis 数据库编号，默认 `0` |
-| `HMDP_REDIS_USERNAME` | 否 | Redis ACL 用户名，默认空 |
-| `HMDP_REDIS_PASSWORD` | 否 | Redis 密码，默认空 |
-| `HMDP_RABBITMQ_HOST` | 否 | RabbitMQ 地址，默认 `localhost` |
-| `HMDP_RABBITMQ_PORT` | 否 | AMQP 端口，默认 `5672` |
-| `HMDP_RABBITMQ_USERNAME` | 否 | RabbitMQ 用户名，本地默认 `guest` |
-| `HMDP_RABBITMQ_PASSWORD` | 否 | RabbitMQ 密码，本地默认 `guest` |
+| `NYC_REVIEW_DB_URL` | 否 | JDBC 地址，默认连接本机 `nyc_review` 数据库 |
+| `NYC_REVIEW_DB_USERNAME` | 否 | 数据库用户名，默认 `root` |
+| `NYC_REVIEW_DB_PASSWORD` | 是 | 数据库密码，无默认值 |
+| `NYC_REVIEW_REDIS_HOST` | 否 | Redis 地址，默认 `localhost` |
+| `NYC_REVIEW_REDIS_PORT` | 否 | Redis 端口，默认 `6379` |
+| `NYC_REVIEW_REDIS_DATABASE` | 否 | Redis 数据库编号，默认 `0` |
+| `NYC_REVIEW_REDIS_USERNAME` | 否 | Redis ACL 用户名，默认空 |
+| `NYC_REVIEW_REDIS_PASSWORD` | 否 | Redis 密码，默认空 |
+| `NYC_REVIEW_RABBITMQ_HOST` | 否 | RabbitMQ 地址，默认 `localhost` |
+| `NYC_REVIEW_RABBITMQ_PORT` | 否 | AMQP 端口，默认 `5672` |
+| `NYC_REVIEW_RABBITMQ_USERNAME` | 否 | RabbitMQ 用户名，本地默认 `guest` |
+| `NYC_REVIEW_RABBITMQ_PASSWORD` | 否 | RabbitMQ 密码，本地默认 `guest` |
 | `DEEPSEEK_API_KEY` | 是 | DeepSeek API Key，无默认值 |
 | `DEEPSEEK_MODEL` | 否 | 翻译与 Agent 模型，默认 `deepseek-chat` |
 | `DEEPSEEK_BASE_URL` | 否 | DeepSeek OpenAI-compatible API 地址 |
-| `HMDP_IMAGE_UPLOAD_DIR` | 否 | 用户图片保存目录，默认 `./uploads/imgs`；Nginx 部署时应指向其图片目录 |
+| `NYC_REVIEW_IMAGE_UPLOAD_DIR` | 否 | 用户图片保存目录，默认 `./uploads/imgs`；Nginx 部署时应指向其图片目录 |
 
 `.env` 和 `application-local.yaml` 已被 Git 忽略。`.env` 自动导入依赖当前工作目录；请从项目根目录启动后端。不要把真实凭据写入 `.env.example`、`application.yaml`、README 或提交记录。
 
 ## 初始化数据
 
-创建 `hmdp_new` 数据库后导入当前数据集：
+创建 `nyc_review` 数据库后导入当前数据集：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
+mysql -u root -p nyc_review < src/main/resources/db/nyc_review.sql
 ```
 
 默认 Redis 地址为 `localhost:6379`，统一使用数据库编号 `0`。Spring Data Redis 与 Redisson 共用同一套连接配置。部分 GEO、秒杀库存和 Feed 数据需要按项目初始化流程写入 Redis；不要直接运行整个测试类，因为其中包含清表和测试数据回填操作。
@@ -63,15 +64,15 @@ mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
 全新数据库在基础 SQL 后按顺序执行秒杀、NYC、Agent、P4 Memory、地图和 P8 内容迁移：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p4_nyc_domain.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p5_agent_actions.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p7_p5_mcp_ui.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p8_p6_data_provenance.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p9_p7_map_geospatial.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
+mysql -u root -p nyc_review < src/main/resources/db/p2_redis_stream_order.sql
+mysql -u root -p nyc_review < src/main/resources/db/p3_nyc_compatibility.sql
+mysql -u root -p nyc_review < src/main/resources/db/p4_nyc_domain.sql
+mysql -u root -p nyc_review < src/main/resources/db/p5_agent_actions.sql
+mysql -u root -p nyc_review < src/main/resources/db/p6_rabbitmq_profile_memory.sql
+mysql -u root -p nyc_review < src/main/resources/db/p7_p5_mcp_ui.sql
+mysql -u root -p nyc_review < src/main/resources/db/p8_p6_data_provenance.sql
+mysql -u root -p nyc_review < src/main/resources/db/p9_p7_map_geospatial.sql
+mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
 redis-cli DEL cache:shopType:list
 ```
 
@@ -102,9 +103,10 @@ python3 scripts/mock-data-generator/build_neighborhood_import.py \
 生成动作不会连接数据库。现有 P6/P7 环境在生成完成后执行下面命令；全新库已经按上文执行过 P10，也可安全重复执行 P10，再使用相同的数据切换步骤：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p10_p8_real_content.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-medium/mysql_import.sql
-mysql -u root -p hmdp_new < data/generated/nyc-real-medium/p7_neighborhood_import.sql
+mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-medium/mysql_import.sql
+mysql -u root -p nyc_review < data/generated/nyc-real-medium/p7_neighborhood_import.sql
+mysql -u root -p nyc_review < src/main/resources/db/cleanup_nyc_review_legacy.sql
 redis-cli --pipe < data/generated/nyc-real-medium/redis_seed.resp
 redis-cli DEL cache:shopType:list
 ```
@@ -134,18 +136,18 @@ mvn spring-boot:run
 ```bash
 cd agent-service
 uv sync --dev
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=http://127.0.0.1:6333 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-medium \
-HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
-HMDP_AGENT_MODEL_PROVIDER=deepseek \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=http://127.0.0.1:6333 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-medium \
+NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --reload --port 8090
 ```
 
-配置 `HMDP_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会拒绝混入 Mock 商户或缺少六分类的 P8 清单，并使用同一组 shopId、`dataVersion` 和 SHA-256 增量同步 Qdrant；未变化文档按内容哈希跳过，不再每次完整重建。HTTP Adapter 必须使用当前登录 token，否则 Spring Tool API 返回 401。`HMDP_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
+配置 `NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY` 后，Agent Service 会拒绝混入 Mock 商户或缺少六分类的 P8 清单，并使用同一组 shopId、`dataVersion` 和 SHA-256 增量同步 Qdrant；未变化文档按内容哈希跳过，不再每次完整重建。HTTP Adapter 必须使用当前登录 token，否则 Spring Tool API 返回 401。`NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek` 会复用 `DEEPSEEK_API_KEY`，未配置或模型不可用时默认受控回退到离线约束解析器。完整配置与 Run/SSE 验证见 [Agent Service README](agent-service/README.md) 和 [P2 Runbook](docs/p2-agent-runbook.md)。模型 Tool Catalog 不包含 `seckill_voucher`，因此 Agent 不能代替用户秒杀。
 
 P3 增加人工审批操作、幂等执行、MySQL 审计、收藏偏好、Run 历史与指标；React 默认英语，可在 `Profile → Edit Profile` 切换中文，DeepSeek 翻译入口只在中文模式显示。迁移、接口和 Docker Compose 验证见 [P3 Runbook](docs/p3-agent-actions-runbook.md)。
 
@@ -166,7 +168,7 @@ P14.1 已将 P14 门禁扩展为隔离全栈压测：专用 Compose 项目导入
 使用集成 Compose 前先生成 `nyc-real-medium`，并将当前用户登录 token 传给 Agent Service；缺少该变量时 Agent 的 HTTP Adapter 调用 Spring Tool API 会返回 401：
 
 ```bash
-export HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>'
+export NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>'
 docker compose -f docker-compose.p4.yml up --build
 ```
 
@@ -175,7 +177,7 @@ Compose 中的 MySQL init 脚本只会在全新的空 volume 上运行；已有 
 ## 启动前端开发环境
 
 ```bash
-cd hmdp-react
+cd nyc-review-web
 npm ci
 npm run dev
 ```
@@ -185,35 +187,35 @@ Vite 默认监听 `http://127.0.0.1:3000`，将 `/api` 代理到 Spring Boot 808
 生产构建：
 
 ```bash
-cd hmdp-react
+cd nyc-review-web
 npm run build
 ```
 
-构建结果位于 `hmdp-react/dist`。
+构建结果位于 `nyc-review-web/dist`。
 
 ## Nginx 部署
 
 当前桌面部署约定为：
 
-- React 静态资源：`nginx-1.18.0/html/hmdp-react`
-- 用户上传图片：`nginx-1.18.0/html/hmdp/imgs`
+- React 静态资源：`nginx-1.18.0/html/nyc-review-web`
+- 用户上传图片：`nginx-1.18.0/html/nyc-review/imgs`
 - Nginx 监听端口：`8080`
 - Spring Boot 上游端口：`8081`
 
-部署到 Nginx 时，请将 `HMDP_IMAGE_UPLOAD_DIR` 设置为上述用户图片目录的绝对路径。上传接口仅接受 JPEG、PNG 和 WebP，单文件最大 5MB。
+部署到 Nginx 时，请将 `NYC_REVIEW_IMAGE_UPLOAD_DIR` 设置为上述用户图片目录的绝对路径。上传接口仅接受 JPEG、PNG 和 WebP，单文件最大 5MB。
 
-将 `hmdp-react/dist` 中的内容部署到 React 静态资源目录后，检查并重新加载 Nginx 配置。SPA 路由需要保留 `try_files $uri $uri/ /index.html`，API 请求需要把 `/api` 前缀代理到 Spring Boot。
+将 `nyc-review-web/dist` 中的内容部署到 React 静态资源目录后，检查并重新加载 Nginx 配置。SPA 路由需要保留 `try_files $uri $uri/ /index.html`，API 请求需要把 `/api` 前缀代理到 Spring Boot。
 
 ## 验证
 
 ```bash
-cd hmdp-react
+cd nyc-review-web
 npm run build
 npm run lint
 ```
 
-安全的后端回归命令是 `mvn -Dtest='!HmDianPingApplicationTests' test`。
-`HmDianPingApplicationTests` 包含数据构造和 Redis 回填方法；在完成容器化隔离前，不要在承载有效数据的环境执行它。
+安全的后端回归命令是 `mvn -Dtest='!NycReviewApplicationTests' test`。
+`NycReviewApplicationTests` 包含数据构造和 Redis 回填方法；在完成容器化隔离前，不要在承载有效数据的环境执行它。
 
 ## 安全说明
 

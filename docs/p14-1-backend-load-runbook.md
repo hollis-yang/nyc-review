@@ -3,8 +3,8 @@
 P14.1 turns the P14 correctness checks into a reproducible full-stack capacity
 baseline. It does not change the active P13 merchant checkpoint. All destructive
 fixture resets and failure drills are constrained to the Docker Compose project
-`hmdp-p14-load`, database `hmdp_p14_load`, Redis sentinel
-`hmdp:p14:environment=isolated-load-only`, RabbitMQ vhost `/hmdp-p14-load`,
+`nyc-review-p14-load`, database `nyc_review_p14_load`, Redis sentinel
+`nyc-review:p14:environment=isolated-load-only`, RabbitMQ vhost `/nyc-review-p14-load`,
 voucher `9140001`, and reserved load-user range beginning at `9000000`.
 
 ## 1. Delivered scope
@@ -32,7 +32,7 @@ the repository root:
 
 ```bash
 docker compose \
-  --project-name hmdp-p14-load \
+  --project-name nyc-review-p14-load \
   --file docker-compose.p14-load.yml \
   up --build -d
 
@@ -42,8 +42,8 @@ python3 scripts/p14_1/validate_environment.py
 The validator must report:
 
 ```text
-project: hmdp-p14-load
-database: hmdp_p14_load
+project: nyc-review-p14-load
+database: nyc_review_p14_load
 redisSentinel: isolated-load-only
 activeDataset: nyc-real-v5-8b645404-m20260824|p13-full|5000
 springHealth: UP
@@ -147,13 +147,13 @@ project. The exact project confirmation is mandatory:
 
 ```bash
 python3 scripts/p14_1/run_failure_drill.py \
-  rabbitmq --confirm-project hmdp-p14-load
+  rabbitmq --confirm-project nyc-review-p14-load
 
 python3 scripts/p14_1/run_failure_drill.py \
-  mysql --confirm-project hmdp-p14-load
+  mysql --confirm-project nyc-review-p14-load
 
 python3 scripts/p14_1/run_failure_drill.py \
-  redis --confirm-project hmdp-p14-load
+  redis --confirm-project nyc-review-p14-load
 ```
 
 The RabbitMQ drill proves Redis publisher-recovery records survive broker
@@ -163,7 +163,7 @@ through the guarded tool:
 
 ```bash
 python3 scripts/p14_1/replay_error_queue.py \
-  --confirm-vhost /hmdp-p14-load
+  --confirm-vhost /nyc-review-p14-load
 ```
 
 The Redis drill verifies Spring becomes unhealthy/unavailable while Redis is
@@ -195,13 +195,13 @@ It must write `reports/p14-1/accepted-results.json` with `status: accepted`.
 python3 -m unittest scripts/p14_1/test_p14_1.py
 uv run --project agent-service ruff check agent-service/app agent-service/tests scripts/p14 scripts/p14_1
 uv run --project agent-service pytest agent-service/tests -q
-mvn -Dtest='!HmDianPingApplicationTests' test
+mvn -Dtest='!NycReviewApplicationTests' test
 ```
 
 Accepted regression result: 67 Agent tests, 125 safe Java tests, four P14.1
 offline contracts, Ruff, JavaScript syntax and Compose configuration all pass.
 
-`HmDianPingApplicationTests` remains excluded because it creates database and
+`NycReviewApplicationTests` remains excluded because it creates database and
 Redis fixtures and is not container-isolated.
 
 ## 8. Stop and restart
@@ -210,7 +210,7 @@ Stop containers while preserving the isolated database and metrics volumes:
 
 ```bash
 docker compose \
-  --project-name hmdp-p14-load \
+  --project-name nyc-review-p14-load \
   --file docker-compose.p14-load.yml \
   down
 ```

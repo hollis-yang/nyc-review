@@ -47,7 +47,7 @@ def fetch_snapshot(count_per_borough: int, app_token: str = "") -> dict[str, Any
             f"{API_URL}?{urllib.parse.urlencode(params)}",
             headers={
                 "Accept": "application/json",
-                "User-Agent": "hm-dianping-p6-data-pipeline/1.0",
+                "User-Agent": "nyc-review-p6-data-pipeline/1.0",
                 **({"X-App-Token": app_token} if app_token else {}),
             },
         )
@@ -74,7 +74,7 @@ def fetch_snapshot(count_per_borough: int, app_token: str = "") -> dict[str, Any
             "boroughs": list(BOROUGHS),
             "notes": (
                 "Public establishment identity and location fields only. "
-                "HMDP reviews, prices, tags, hours, images and promotions are synthetic."
+                "NYC Review reviews, prices, tags, hours, images and promotions are synthetic."
             ),
         },
         "records": records,

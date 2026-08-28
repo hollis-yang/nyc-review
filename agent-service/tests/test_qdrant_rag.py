@@ -29,7 +29,7 @@ async def test_qdrant_rag_filters_by_shop_and_returns_traceable_citations():
     rag = QdrantRagService(
         client=client,
         embeddings=DeterministicHashEmbeddingService(dimensions=64),
-        collection_name="test_hmdp_content",
+        collection_name="test_nyc_review_content",
     )
     await rag.index(
         [
@@ -99,7 +99,7 @@ async def test_qdrant_rag_filters_same_shop_id_by_data_version():
     rag = QdrantRagService(
         client=client,
         embeddings=DeterministicHashEmbeddingService(dimensions=64),
-        collection_name="test_hmdp_versioned_content",
+        collection_name="test_nyc_review_versioned_content",
     )
     await rag.index(
         [
@@ -141,13 +141,13 @@ async def test_qdrant_rag_filters_same_shop_id_by_data_version():
     )
 
     assert [citation.source_id for citation in result.evidence[0].citations] == ["shop_review:v2:1"]
-    assert (await client.count("test_hmdp_versioned_content", exact=True)).count == 2
+    assert (await client.count("test_nyc_review_versioned_content", exact=True)).count == 2
     await client.close()
 
 
 async def test_qdrant_rag_isolates_same_version_and_document_id_by_dataset_sha256():
     client = AsyncQdrantClient(location=":memory:")
-    collection = "test_hmdp_dataset_hash_content"
+    collection = "test_nyc_review_dataset_hash_content"
     old_rag = QdrantRagService(
         client=client,
         embeddings=DeterministicHashEmbeddingService(dimensions=64),

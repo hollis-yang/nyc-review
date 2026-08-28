@@ -4,7 +4,7 @@ P1 把确定性的 NYC Mock 数据同时送入 MySQL、Redis 和 Qdrant，并以
 
 ## 1. 停止服务并确认环境
 
-停止 Spring Boot、Agent Service 和任何会写入 MySQL/Redis 的本地进程。以下流程会替换 `hmdp_new` 中的活动业务数据，只应在开发或演示环境执行。不要在含有不可替代数据的库上直接运行。
+停止 Spring Boot、Agent Service 和任何会写入 MySQL/Redis 的本地进程。以下流程会替换 `nyc_review` 中的活动业务数据，只应在开发或演示环境执行。不要在含有不可替代数据的库上直接运行。
 
 确认 MySQL 数据库名、Redis 主机、端口和 DB 编号。Spring Data Redis 与 Redisson 默认都使用 Redis DB 0，导入时必须指向同一 DB。
 
@@ -32,26 +32,29 @@ python3 -m json.tool data/generated/nyc-small/import_manifest.json
 全新数据库按顺序执行四个脚本：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/hmdp_new.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p2_redis_stream_order.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p3_nyc_compatibility.sql
-mysql -u root -p hmdp_new < src/main/resources/db/p4_nyc_domain.sql
+mysql -u root -p nyc_review < src/main/resources/db/nyc_review.sql
+mysql -u root -p nyc_review < src/main/resources/db/p2_redis_stream_order.sql
+mysql -u root -p nyc_review < src/main/resources/db/p3_nyc_compatibility.sql
+mysql -u root -p nyc_review < src/main/resources/db/p4_nyc_domain.sql
 ```
 
 已经完成前三步的数据库只执行 `p4_nyc_domain.sql`。P4 是一次性增量迁移，新增子分类、标签、营业时间、纽约字段和导入审计表，不会主动删除现有数据。
 
-## 4. 归档杭州数据并导入 NYC
+## 4. 导入 NYC
 
 ```bash
-mysql -u root -p hmdp_new < data/generated/nyc-small/mysql_import.sql
+mysql -u root -p nyc_review < data/generated/nyc-small/mysql_import.sql
 ```
 
-导入脚本首先创建 `legacy_hangzhou_tb_*` 表，并在 `tb_legacy_archive_state` 没有 `initial-hangzhou` 标记时复制一次当前活动数据。随后在事务内替换商户、用户、评论、博客、关注、优惠券和秒杀数据。再次执行同一导入包不会重复覆盖杭州归档。
+导入脚本在事务内替换开发环境中的商户、用户、评论、博客、关注、优惠券和秒杀数据，不再创建杭州归档表。旧生成包可能仍包含历史归档逻辑；导入旧包后应执行 `cleanup_nyc_review_legacy.sql`。
+
+```bash
+mysql -u root -p nyc_review < src/main/resources/db/cleanup_nyc_review_legacy.sql
+```
 
 验证 MySQL：
 
 ```sql
-SELECT archive_key, archived_at FROM tb_legacy_archive_state;
 SELECT data_version, profile, seed, dataset_sha256, shop_count, active
 FROM tb_data_import ORDER BY imported_at DESC;
 SELECT COUNT(*) AS shops, MIN(x) AS west, MAX(x) AS east FROM tb_shop;
@@ -101,12 +104,12 @@ curl -s -X POST http://127.0.0.1:8081/internal/agent/tools/shops/search \
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='replace-with-current-token' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='replace-with-current-token' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
 uv run uvicorn app.main:app --port 8090
 ```
 
@@ -128,8 +131,8 @@ curl -sS -X POST http://127.0.0.1:8090/v1/agent/runs/preview \
 ```bash
 python3 -m unittest scripts/mock-data-generator/test_generate.py
 uv run --project agent-service pytest agent-service/tests -q
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
-`HmDianPingApplicationTests` 含数据库和 Redis 数据构造逻辑，未完成容器化隔离前不要在承载有效数据的环境执行。
+`NycReviewApplicationTests` 含数据库和 Redis 数据构造逻辑，未完成容器化隔离前不要在承载有效数据的环境执行。

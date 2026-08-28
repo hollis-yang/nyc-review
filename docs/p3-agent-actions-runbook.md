@@ -4,10 +4,10 @@ P3 将 P2 的只读推荐升级为需要人工确认的执行闭环：标准标�
 
 ## 1. 执行 P3 数据库迁移
 
-在现有 `hmdp_new` 上执行一次：
+在现有 `nyc_review` 上执行一次：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p5_agent_actions.sql
+mysql -u root -p nyc_review < src/main/resources/db/p5_agent_actions.sql
 ```
 
 迁移新增：
@@ -25,12 +25,12 @@ Spring 和 Agent Service 沿用 P2 配置。Agent Service 必须使用 HTTP Adap
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
-HMDP_AGENT_MODEL_PROVIDER=deepseek \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --port 8090
 ```
 
@@ -113,6 +113,6 @@ docker compose -f docker-compose.p3.yml up --build
 uv run --project agent-service ruff check agent-service/app agent-service/tests agent-service/evals
 uv run --project agent-service pytest agent-service/tests -q
 uv run --project agent-service python -m evals.run_eval
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```

@@ -80,7 +80,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   scripts/mock-data-generator/test_generate.py
 
 uv run --project agent-service pytest agent-service/tests -q
-cd hmdp-react && npm run build
+cd nyc-review-web && npm run build
 ```
 
 ## 5. Promote the checkpoint to the development environment
@@ -108,17 +108,17 @@ database before replacement:
 ```bash
 mkdir -p backups
 mysqldump -u root -p --single-transaction --routines --triggers \
-  hmdp_new > backups/hmdp_new_before_p10_p11_20260824.sql
+  nyc_review > backups/nyc_review_before_p10_p11_20260824.sql
 ```
 
 With Spring and Agent Service stopped, import one matching bundle in this
 order:
 
 ```bash
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-real-p10-p11-full/mysql_import.sql
 
-mysql -u root -p hmdp_new \
+mysql -u root -p nyc_review \
   < data/generated/nyc-real-p10-p11-full/p7_neighborhood_import.sql
 
 redis-cli --pipe \
@@ -146,14 +146,14 @@ with a new Qdrant path so the previous index remains available for rollback:
 ```bash
 cd agent-service
 
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<new-login-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant-p10-p11 \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p10-p11-full \
-HMDP_AGENT_RAG_INDEX_BATCH_SIZE=128 \
-HMDP_AGENT_MODEL_PROVIDER=deepseek \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<new-login-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant-p10-p11 \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-real-p10-p11-full \
+NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
+NYC_REVIEW_AGENT_MODEL_PROVIDER=deepseek \
 uv run uvicorn app.main:app --port 8090
 ```
 
@@ -166,7 +166,7 @@ replacement.
 Read-only database checks:
 
 ```bash
-mysql -u root -p hmdp_new -e "
+mysql -u root -p nyc_review -e "
 SELECT data_version, profile, dataset_sha256, shop_count, active
 FROM tb_data_import ORDER BY imported_at DESC LIMIT 1;
 SELECT COUNT(*) AS shops, COUNT(DISTINCT data_version) AS versions FROM tb_shop;
@@ -176,7 +176,7 @@ FROM tb_shop_image;
 SELECT COUNT(*) AS map_locations FROM tb_shop_map_location;
 SELECT field_name, COUNT(DISTINCT shop_id) AS shops
 FROM tb_shop_field_observation
-WHERE provider <> 'HMDP_GENERATED'
+WHERE provider <> 'NYC_REVIEW_GENERATED'
   AND field_name IN ('rating','priceRangeText','phone','openingHours','reservationUrl')
 GROUP BY field_name ORDER BY field_name;"
 ```

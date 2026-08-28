@@ -55,10 +55,10 @@ class FieldResolver:
         rating_provider = providers.get("rating")
         rating_count = count(value("ratingCount"))
         rating_count_provider = providers.get("ratingCount")
-        external_rating = rating if rating_provider and rating_provider != "HMDP_GENERATED" else None
+        external_rating = rating if rating_provider and rating_provider != "NYC_REVIEW_GENERATED" else None
         external_rating_count = (
             rating_count
-            if rating_count_provider and rating_count_provider != "HMDP_GENERATED"
+            if rating_count_provider and rating_count_provider != "NYC_REVIEW_GENERATED"
             else None
         )
         avg_price_cents = _positive_cents(value("avgPriceCents"))

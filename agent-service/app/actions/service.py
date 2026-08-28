@@ -234,7 +234,7 @@ class AgentActionService:
     ) -> AgentActionProposal:
         policy = require_model_tool(action_type.value)
         return AgentActionProposal(
-            action_id=str(uuid5(NAMESPACE_URL, f"hmdp:{run_id}:{action_type.value}:{target}")),
+            action_id=str(uuid5(NAMESPACE_URL, f"nyc-review:{run_id}:{action_type.value}:{target}")),
             action_type=action_type,
             title=title,
             description=description,

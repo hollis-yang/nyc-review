@@ -19,7 +19,7 @@ from nyc_nta import (
     normalized_neighborhoods,
 )
 
-SQL_MARKER = "HMDP_P7_NEIGHBORHOOD_IMPORT_V1"
+SQL_MARKER = "NYC_REVIEW_P7_NEIGHBORHOOD_IMPORT_V1"
 
 
 def _write_text_atomic(path: Path, content: str) -> None:
@@ -131,12 +131,12 @@ def build_sql(
         "-- Unmatched coordinates remain UNASSIGNED; the importer never fabricates a nearest NTA.",
         "-- tb_shop.area is intentionally preserved because Agent constraints use the legacy friendly area names.",
         "SET NAMES utf8mb4 COLLATE utf8mb4_general_ci;",
-        "SET @HMDP_OLD_TIME_ZONE = @@SESSION.time_zone;",
+        "SET @NYC_REVIEW_OLD_TIME_ZONE = @@SESSION.time_zone;",
         "SET SESSION time_zone = '+00:00';",
         "",
         "-- Fail closed before persistent writes if this is not the exact source shop dataset.",
-        "DROP TEMPORARY TABLE IF EXISTS `hmdp_p7_expected_shop`;",
-        "CREATE TEMPORARY TABLE `hmdp_p7_expected_shop` (",
+        "DROP TEMPORARY TABLE IF EXISTS `nyc_review_p7_expected_shop`;",
+        "CREATE TEMPORARY TABLE `nyc_review_p7_expected_shop` (",
         "  `shop_id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,",
         "  `type_id` BIGINT UNSIGNED NOT NULL,",
         "  `longitude` DOUBLE NOT NULL,",
@@ -163,21 +163,21 @@ def build_sql(
         )
         lines.extend(
             [
-                "INSERT INTO `hmdp_p7_expected_shop` "
+                "INSERT INTO `nyc_review_p7_expected_shop` "
                 "(`shop_id`, `type_id`, `longitude`, `latitude`, `borough`, `area`, `source_type`) VALUES",
                 rows + ";",
             ]
         )
     lines.extend(
         [
-            "DROP TEMPORARY TABLE IF EXISTS `hmdp_p7_dataset_guard`;",
-            "CREATE TEMPORARY TABLE `hmdp_p7_dataset_guard` (",
+            "DROP TEMPORARY TABLE IF EXISTS `nyc_review_p7_dataset_guard`;",
+            "CREATE TEMPORARY TABLE `nyc_review_p7_dataset_guard` (",
             "  `ok` TINYINT NOT NULL CHECK (`ok` = 1)",
             ") ENGINE=InnoDB;",
             "-- A missing or map-relevant mismatched shop inserts 0 and trips the CHECK.",
-            "INSERT INTO `hmdp_p7_dataset_guard` (`ok`)",
+            "INSERT INTO `nyc_review_p7_dataset_guard` (`ok`)",
             "SELECT 0",
-            "FROM `hmdp_p7_expected_shop` AS expected",
+            "FROM `nyc_review_p7_expected_shop` AS expected",
             "LEFT JOIN `tb_shop` AS actual",
             "  ON actual.`id`=expected.`shop_id`",
             f" AND actual.`data_version`={_sql_literal(data_version)}",
@@ -190,15 +190,15 @@ def build_sql(
             "   OR NOT (CAST(actual.`source_type` AS BINARY) <=> CAST(expected.`source_type` AS BINARY))",
             "LIMIT 1;",
             "-- An unexpected shop in the same dataVersion also trips the guard.",
-            "INSERT INTO `hmdp_p7_dataset_guard` (`ok`)",
+            "INSERT INTO `nyc_review_p7_dataset_guard` (`ok`)",
             "SELECT 0",
             "FROM `tb_shop` AS actual",
-            "LEFT JOIN `hmdp_p7_expected_shop` AS expected ON expected.`shop_id`=actual.`id`",
+            "LEFT JOIN `nyc_review_p7_expected_shop` AS expected ON expected.`shop_id`=actual.`id`",
             f"WHERE actual.`data_version`={_sql_literal(data_version)}",
             "  AND expected.`shop_id` IS NULL",
             "LIMIT 1;",
             "-- The P6 import audit must identify the same reproducible dataset hash.",
-            "INSERT INTO `hmdp_p7_dataset_guard` (`ok`)",
+            "INSERT INTO `nyc_review_p7_dataset_guard` (`ok`)",
             "SELECT IF(EXISTS(",
             "  SELECT 1 FROM `tb_data_import`",
             f"  WHERE `data_version`={_sql_literal(data_version)}",
@@ -389,9 +389,9 @@ def build_sql(
             "`assignment_methods`=VALUES(`assignment_methods`), `active`=1, "
             "`imported_at`=CURRENT_TIMESTAMP;",
             "COMMIT;",
-            "DROP TEMPORARY TABLE IF EXISTS `hmdp_p7_dataset_guard`;",
-            "DROP TEMPORARY TABLE IF EXISTS `hmdp_p7_expected_shop`;",
-            "SET SESSION time_zone = @HMDP_OLD_TIME_ZONE;",
+            "DROP TEMPORARY TABLE IF EXISTS `nyc_review_p7_dataset_guard`;",
+            "DROP TEMPORARY TABLE IF EXISTS `nyc_review_p7_expected_shop`;",
+            "SET SESSION time_zone = @NYC_REVIEW_OLD_TIME_ZONE;",
             "",
             f"-- Dataset SHA-256: {dataset_sha256}",
             f"-- Shop IDs SHA-256: {shop_ids_sha256}",

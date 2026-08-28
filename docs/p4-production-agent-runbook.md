@@ -4,10 +4,10 @@ P4 把 P3 的可控执行闭环升级为可观测、可评测、可恢复的 Age
 
 ## 1. 执行增量迁移
 
-现有 `hmdp_new` 只需执行一次：
+现有 `nyc_review` 只需执行一次：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
+mysql -u root -p nyc_review < src/main/resources/db/p6_rabbitmq_profile_memory.sql
 ```
 
 脚本新增 `tb_agent_user_memory`，使用 `CREATE TABLE IF NOT EXISTS`，不会清空 P3 的收藏、行程、提醒或 Action Audit。`p2_redis_stream_order.sql` 虽保留历史文件名，但 P4 仅继续使用其中的订单唯一键迁移。
@@ -17,10 +17,10 @@ mysql -u root -p hmdp_new < src/main/resources/db/p6_rabbitmq_profile_memory.sql
 手动启动开发环境时，RabbitMQ AMQP 默认地址为 `localhost:5672`：
 
 ```properties
-HMDP_RABBITMQ_HOST=localhost
-HMDP_RABBITMQ_PORT=5672
-HMDP_RABBITMQ_USERNAME=guest
-HMDP_RABBITMQ_PASSWORD=guest
+NYC_REVIEW_RABBITMQ_HOST=localhost
+NYC_REVIEW_RABBITMQ_PORT=5672
+NYC_REVIEW_RABBITMQ_USERNAME=guest
+NYC_REVIEW_RABBITMQ_PASSWORD=guest
 ```
 
 确认 Broker 可用：
@@ -37,10 +37,10 @@ rabbitmq-diagnostics -q ping
 
 1. Lua 原子检查 Redis 库存与一人一单。
 2. Lua 预扣库存，并写入 `seckill:pending:order:{orderId}` 和 ZSET 恢复索引。
-3. Spring 发布持久化 JSON 消息到 `hmdp.voucher.order.exchange`，等待 correlated Publisher Confirm 与 return 检查。
+3. Spring 发布持久化 JSON 消息到 `nyc-review.voucher.order.exchange`，等待 correlated Publisher Confirm 与 return 检查。
 4. Confirm 后移除 Redis 待发布记录；Broker 暂时不可用时定时任务会重新发布。
-5. `hmdp.voucher.order.queue` 消费消息并在 MySQL 事务中扣减库存、创建订单。
-6. 消费失败执行最多五次指数退避重试；仍失败的消息带异常头发布到 `hmdp.voucher.order.error.queue`。
+5. `nyc-review.voucher.order.queue` 消费消息并在 MySQL 事务中扣减库存、创建订单。
+6. 消费失败执行最多五次指数退避重试；仍失败的消息带异常头发布到 `nyc-review.voucher.order.error.queue`。
 7. 重复消息由订单 ID、一人一券唯一索引和事务回滚共同保证幂等。
 
 RabbitMQ 只替换 MQ 角色。原有 React 手动秒杀入口、Redis Lua 原子校验和 MySQL 乐观扣库存仍然保留，Agent 仍然只能创建提醒。
@@ -103,7 +103,7 @@ docker compose -f docker-compose.p4.yml up --build
 uv run --project agent-service ruff check agent-service/app agent-service/tests agent-service/evals
 uv run --project agent-service pytest agent-service/tests -q
 uv run --project agent-service python -m evals.run_eval
-mvn clean -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn clean -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 docker compose -f docker-compose.p4.yml config --quiet
 ```

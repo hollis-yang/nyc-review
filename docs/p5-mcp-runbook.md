@@ -7,7 +7,7 @@ P5 把现有 NYC 领域能力接入本地 coding agent harness。MCP Server 位�
 已有数据库执行一次幂等迁移，并清理 Shop Type 的 Redis 缓存：
 
 ```bash
-mysql -u root -p hmdp_new < src/main/resources/db/p7_p5_mcp_ui.sql
+mysql -u root -p nyc_review < src/main/resources/db/p7_p5_mcp_ui.sql
 redis-cli DEL cache:shopType:list
 ```
 
@@ -19,13 +19,13 @@ Spring 的受限 Tool API 仍需要当前有效的后端登录 token。MCP 使�
 
 ```bash
 cd agent-service
-HMDP_AGENT_ADAPTER=http \
-HMDP_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
-HMDP_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
-HMDP_AGENT_RAG_ADAPTER=qdrant \
-HMDP_AGENT_QDRANT_LOCATION=./.local/qdrant \
-HMDP_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
-HMDP_AGENT_MCP_API_KEY='<local-mcp-key>' \
+NYC_REVIEW_AGENT_ADAPTER=http \
+NYC_REVIEW_AGENT_BACKEND_BASE_URL=http://127.0.0.1:8081 \
+NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>' \
+NYC_REVIEW_AGENT_RAG_ADAPTER=qdrant \
+NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant \
+NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY=../data/generated/nyc-small \
+NYC_REVIEW_AGENT_MCP_API_KEY='<local-mcp-key>' \
 uv run uvicorn app.main:app --port 8090
 ```
 
@@ -38,7 +38,7 @@ uv run uvicorn app.main:app --port 8090
 ```json
 {
   "mcpServers": {
-    "hmdp-nyc": {
+    "nyc-review-nyc": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:8090/mcp",
       "headers": {
@@ -49,7 +49,7 @@ uv run uvicorn app.main:app --port 8090
 }
 ```
 
-不要把真实 key 提交到仓库。未设置 `HMDP_AGENT_MCP_API_KEY` 时，仅适合本机无鉴权开发。
+不要把真实 key 提交到仓库。未设置 `NYC_REVIEW_AGENT_MCP_API_KEY` 时，仅适合本机无鉴权开发。
 
 ## 4. 协议级验证
 
@@ -106,17 +106,17 @@ asyncio.run(main())
 python3 -m unittest scripts/mock-data-generator/test_generate.py
 uv run --project agent-service ruff check agent-service/app agent-service/tests
 uv run --project agent-service pytest agent-service/tests -q
-mvn -Dtest='!HmDianPingApplicationTests' test
-cd hmdp-react && npm run build
+mvn -Dtest='!NycReviewApplicationTests' test
+cd nyc-review-web && npm run build
 ```
 
-`HmDianPingApplicationTests` 会构造数据库和 Redis 数据，不要在承载有效数据的实例上执行。
+`NycReviewApplicationTests` 会构造数据库和 Redis 数据，不要在承载有效数据的实例上执行。
 
 如果 macOS 终端没有安装独立 Maven，但已安装 IntelliJ IDEA，可使用 IDE 自带的 Maven：
 
 ```bash
 '/Applications/IntelliJ IDEA.app/Contents/plugins/maven/lib/maven3/bin/mvn' \
-  -Dtest='!HmDianPingApplicationTests' test
+  -Dtest='!NycReviewApplicationTests' test
 ```
 
 `npm run lint` 是独立的代码质量检查，不要与生产构建使用 `&&` 串联。当前仓库仍有一批历史 TypeScript ESLint 债务（主要是 `any`、空 `catch` 和 React Effect 规则），因此 P5 功能验收以 `npm run build` 为阻断项，lint 债务应单独清理且不能通过关闭规则掩盖。
