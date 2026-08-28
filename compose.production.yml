@@ -46,7 +46,7 @@ services:
       agent-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/index.html"]
       interval: 10s
       timeout: 3s
       retries: 12
@@ -266,11 +266,11 @@ services:
       RABBITMQ_DEFAULT_USER: "${NYC_REVIEW_RABBITMQ_USERNAME:?NYC_REVIEW_RABBITMQ_USERNAME is required}"
       RABBITMQ_DEFAULT_PASS: "${NYC_REVIEW_RABBITMQ_PASSWORD:?NYC_REVIEW_RABBITMQ_PASSWORD is required}"
       RABBITMQ_DEFAULT_VHOST: "${NYC_REVIEW_RABBITMQ_VHOST:?NYC_REVIEW_RABBITMQ_VHOST is required}"
-      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "0.65"
     expose:
       - "5672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./deploy/production/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s

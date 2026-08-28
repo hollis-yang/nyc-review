@@ -162,5 +162,16 @@ if mode == "actual":
             f"P13 data directory is incomplete ({data_dir}): {', '.join(missing_data)}"
         )
 
+    unreadable_data = [
+        name
+        for name in required_data
+        if not ((data_dir / name).stat().st_mode & 0o004)
+    ]
+    if unreadable_data:
+        raise SystemExit(
+            "P13 files must be readable by the non-root Agent container: "
+            + ", ".join(unreadable_data)
+        )
+
 print("Production Compose validation passed: pull-only images, one Agent service, only 80/443 published.")
 PY

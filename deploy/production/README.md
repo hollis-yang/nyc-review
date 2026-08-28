@@ -50,10 +50,16 @@ sudo mkdir -p /opt/nyc-review/data
 sudo chown -R ubuntu:ubuntu /opt/nyc-review
 tar -xzf /tmp/nyc-review-production-bundle.tar.gz -C /opt/nyc-review
 tar -xzf /tmp/nyc-real-p13-full.tar.gz -C /opt/nyc-review/data
+find /opt/nyc-review/data/nyc-real-p13-full -type d -exec chmod 0755 {} +
+find /opt/nyc-review/data/nyc-real-p13-full -type f -exec chmod 0644 {} +
 cd /opt/nyc-review
 cp .env.production.example .env.production
 chmod 600 .env.production
 ```
+
+The explicit data permissions are required because macOS archives can preserve
+owner-only modes. The Agent runs as an unprivileged container user and mounts
+the P13 dataset read-only.
 
 Edit `.env.production`. Generate a different safe value for every password and
 service token:
