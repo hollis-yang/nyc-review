@@ -195,7 +195,13 @@ services:
       - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/14-map-data.sql:ro"
       - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/15-cleanup.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_ROOT_PASSWORD}\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      test:
+        - CMD-SHELL
+        - >-
+          MYSQL_PWD="$${MYSQL_ROOT_PASSWORD}"
+          mysql --protocol=tcp -h 127.0.0.1 -uroot --batch --skip-column-names
+          -e "SELECT COUNT(*) FROM nyc_review.tb_data_import WHERE active = 1 AND profile = 'p13-full' AND shop_count = 5000"
+          2>/dev/null | grep -qx 1
       interval: 5s
       timeout: 5s
       retries: 120

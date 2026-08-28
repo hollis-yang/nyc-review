@@ -86,6 +86,12 @@ bad_restart = sorted(
 if bad_restart:
     raise SystemExit(f"Missing restart policy: {', '.join(bad_restart)}")
 
+mysql_healthcheck = " ".join(
+    str(item) for item in services["mysql"].get("healthcheck", {}).get("test", [])
+)
+if "tb_data_import" not in mysql_healthcheck or "p13-full" not in mysql_healthcheck:
+    raise SystemExit("MySQL healthcheck must verify that the P13 full import completed.")
+
 def parse_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
