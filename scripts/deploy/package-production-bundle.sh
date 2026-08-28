@@ -14,6 +14,7 @@ tar -czf "$OUTPUT" \
   .env.production.example \
   deploy/production \
   scripts/deploy/check-production-config.sh \
+  scripts/deploy/update-production.sh \
   src/main/resources/db
 
 echo "Created production bundle: $OUTPUT"

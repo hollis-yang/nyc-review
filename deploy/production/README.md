@@ -1,5 +1,8 @@
 # NYC Review production deployment
 
+For the repeatable Chinese release checklist, see
+[`UPDATE.zh-CN.md`](./UPDATE.zh-CN.md).
+
 This deployment targets one x86_64 Ubuntu 24.04 Lightsail instance with 4 GB RAM,
 the 2 GB swap file described in the P15 plan, and Docker Compose. It runs one
 Agent Service instance. MySQL, Redis, RabbitMQ, Qdrant, Spring, and Agent ports
