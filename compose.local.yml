@@ -1,0 +1,141 @@
+name: nyc-review-local
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${NYC_REVIEW_DB_PASSWORD:-nyc-review-local}
+      MYSQL_DATABASE: nyc_review
+      TZ: America/New_York
+    command: ["--default-time-zone=+00:00", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_general_ci"]
+    ports:
+      - "3306:3306"
+    volumes:
+      - nyc-review-mysql:/var/lib/mysql
+      - ./src/main/resources/db/bootstrap-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/mysql_import.sql:/docker-entrypoint-initdb.d/02-dataset.sql:ro
+      - ${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/03-map.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - nyc-review-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis-seed:
+    image: redis:7.4-alpine
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/redis_seed.resp:/seed/redis_seed.resp:ro
+    command: ["sh", "-c", "redis-cli -h redis --pipe < /seed/redis_seed.resp"]
+    restart: "no"
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${NYC_REVIEW_RABBITMQ_USERNAME:-nyc-review}
+      RABBITMQ_DEFAULT_PASS: ${NYC_REVIEW_RABBITMQ_PASSWORD:-nyc-review-local}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - nyc-review-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.3
+    ports:
+      - "6333:6333"
+    volumes:
+      - nyc-review-qdrant:/qdrant/storage
+
+  spring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NYC_REVIEW_DB_URL: "jdbc:mysql://mysql:3306/nyc_review?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      NYC_REVIEW_DB_USERNAME: root
+      NYC_REVIEW_DB_PASSWORD: ${NYC_REVIEW_DB_PASSWORD:-nyc-review-local}
+      NYC_REVIEW_REDIS_HOST: redis
+      NYC_REVIEW_REDIS_PORT: 6379
+      NYC_REVIEW_RABBITMQ_HOST: rabbitmq
+      NYC_REVIEW_RABBITMQ_PORT: 5672
+      NYC_REVIEW_RABBITMQ_USERNAME: ${NYC_REVIEW_RABBITMQ_USERNAME:-nyc-review}
+      NYC_REVIEW_RABBITMQ_PASSWORD: ${NYC_REVIEW_RABBITMQ_PASSWORD:-nyc-review-local}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      NYC_REVIEW_IMAGE_UPLOAD_DIR: /data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-seed:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    volumes:
+      - nyc-review-uploads:/data/uploads
+
+  agent-service:
+    build:
+      context: ./agent-service
+    environment:
+      NYC_REVIEW_AGENT_ADAPTER: http
+      NYC_REVIEW_AGENT_BACKEND_BASE_URL: http://spring:8081
+      NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN: ${NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN:-}
+      NYC_REVIEW_AGENT_RAG_ADAPTER: qdrant
+      NYC_REVIEW_AGENT_QDRANT_LOCATION: http://qdrant:6333
+      NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY: /data/dataset
+      NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE: ${NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE:-128}
+      NYC_REVIEW_AGENT_MODEL_PROVIDER: ${NYC_REVIEW_AGENT_MODEL_PROVIDER:-deepseek}
+      NYC_REVIEW_AGENT_MODEL_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      NYC_REVIEW_AGENT_RUN_STORE_PATH: ${NYC_REVIEW_AGENT_RUN_STORE_PATH:-/data/runs/agent-runs.sqlite3}
+      NYC_REVIEW_AGENT_METRICS_TOKEN: ${NYC_REVIEW_AGENT_METRICS_TOKEN:-}
+      NYC_REVIEW_AGENT_MCP_API_KEY: ${NYC_REVIEW_AGENT_MCP_API_KEY:-}
+    depends_on:
+      - spring
+      - qdrant
+    ports:
+      - "8090:8090"
+    volumes:
+      - ${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}:/data/dataset:ro
+      - nyc-review-agent-runs:/data/runs
+
+  web:
+    build:
+      context: ./nyc-review-web
+    depends_on:
+      - spring
+      - agent-service
+    ports:
+      - "8080:80"
+
+volumes:
+  nyc-review-mysql:
+  nyc-review-redis:
+  nyc-review-rabbitmq:
+  nyc-review-qdrant:
+  nyc-review-uploads:
+  nyc-review-agent-runs:

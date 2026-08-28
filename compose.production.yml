@@ -179,22 +179,9 @@ services:
       - "3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./src/main/resources/db/nyc_review.sql:/docker-entrypoint-initdb.d/01-base.sql:ro
-      - ./src/main/resources/db/p2_redis_stream_order.sql:/docker-entrypoint-initdb.d/02-order-unique-index.sql:ro
-      - ./src/main/resources/db/p3_nyc_compatibility.sql:/docker-entrypoint-initdb.d/03-nyc-compatibility.sql:ro
-      - ./src/main/resources/db/p4_nyc_domain.sql:/docker-entrypoint-initdb.d/04-nyc-domain.sql:ro
-      - ./src/main/resources/db/p5_agent_actions.sql:/docker-entrypoint-initdb.d/05-agent-actions.sql:ro
-      - ./src/main/resources/db/p6_rabbitmq_profile_memory.sql:/docker-entrypoint-initdb.d/06-agent-memory.sql:ro
-      - ./src/main/resources/db/p7_p5_mcp_ui.sql:/docker-entrypoint-initdb.d/07-p5-ui.sql:ro
-      - ./src/main/resources/db/p8_p6_data_provenance.sql:/docker-entrypoint-initdb.d/08-p6-provenance.sql:ro
-      - ./src/main/resources/db/p9_p7_map_geospatial.sql:/docker-entrypoint-initdb.d/09-p7-map-schema.sql:ro
-      - ./src/main/resources/db/p10_p8_real_content.sql:/docker-entrypoint-initdb.d/10-p8-real-content.sql:ro
-      - ./src/main/resources/db/p11_p2_p3_shop_enrichment.sql:/docker-entrypoint-initdb.d/11-shop-enrichment.sql:ro
-      - ./src/main/resources/db/p12_p13_data_quality.sql:/docker-entrypoint-initdb.d/12-data-quality.sql:ro
-      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/mysql_import.sql:/docker-entrypoint-initdb.d/13-p13-data.sql:ro"
-      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/14-map-data.sql:ro"
-      - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/15-cleanup.sql:ro
-      - ./src/main/resources/db/auth_password_registration.sql:/docker-entrypoint-initdb.d/16-password-auth.sql:ro
+      - ./src/main/resources/db/bootstrap-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/mysql_import.sql:/docker-entrypoint-initdb.d/02-dataset.sql:ro"
+      - "${NYC_REVIEW_DATA_DIR:?NYC_REVIEW_DATA_DIR is required}/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/03-map.sql:ro"
     healthcheck:
       test:
         - CMD-SHELL

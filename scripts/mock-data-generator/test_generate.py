@@ -336,7 +336,7 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertEqual(len(shops), import_manifest["provenance"]["realShops"])
             self.assertIn("INSERT INTO `tb_shop_image`", mysql_sql)
             self.assertIn("`source_type`, `data_version`", mysql_sql)
-            self.assertIn("p10_p8_real_content.sql", mysql_sql)
+            self.assertIn("bootstrap-schema.sql", mysql_sql)
             for table in (
                 "tb_agent_action_audit",
                 "tb_seckill_reminder",

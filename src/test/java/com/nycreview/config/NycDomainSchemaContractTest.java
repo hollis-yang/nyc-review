@@ -17,13 +17,14 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NycDomainSchemaContractTest {
 
     @Test
     void baseFixturePinsUtcWhileImportingDstSensitiveTimestamps() throws IOException {
-        try (InputStream input = getClass().getResourceAsStream("/db/nyc_review.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/001_legacy_baseline.sql")) {
             assertNotNull(input);
             String fixture = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -37,7 +38,7 @@ class NycDomainSchemaContractTest {
 
     @Test
     void p4MigrationDefinesNycEnrichmentAndDatasetIdentityTables() throws IOException {
-        try (InputStream input = getClass().getResourceAsStream("/db/p4_nyc_domain.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/005_nyc_domain.sql")) {
             assertNotNull(input);
             String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -82,7 +83,7 @@ class NycDomainSchemaContractTest {
 
     @Test
     void p11MigrationDefinesFieldObservationsAndImageResolution() throws Exception {
-        try (InputStream input = getClass().getResourceAsStream("/db/p11_p2_p3_shop_enrichment.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/012_shop_enrichment.sql")) {
             assertNotNull(input);
             String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -109,7 +110,7 @@ class NycDomainSchemaContractTest {
 
     @Test
     void p13MigrationSeparatesLocalAndExternalReviewAggregates() throws Exception {
-        try (InputStream input = getClass().getResourceAsStream("/db/p12_p13_data_quality.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/013_data_quality.sql")) {
             assertNotNull(input);
             String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -129,7 +130,7 @@ class NycDomainSchemaContractTest {
 
     @Test
     void p8MigrationDefinesShopProvenanceContract() throws IOException {
-        try (InputStream input = getClass().getResourceAsStream("/db/p8_p6_data_provenance.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/009_data_provenance.sql")) {
             assertNotNull(input);
             String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -144,7 +145,7 @@ class NycDomainSchemaContractTest {
 
     @Test
     void p9MigrationPinsAndRepairsLegacyCompatibleCollation() throws IOException {
-        try (InputStream input = getClass().getResourceAsStream("/db/p9_p7_map_geospatial.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/010_map_geospatial.sql")) {
             assertNotNull(input);
             String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -159,7 +160,7 @@ class NycDomainSchemaContractTest {
 
     @Test
     void p10MigrationDefinesIllustrativeImagesAndThreeLevelReviewThreads() throws Exception {
-        try (InputStream input = getClass().getResourceAsStream("/db/p10_p8_real_content.sql")) {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/011_real_content.sql")) {
             assertNotNull(input);
             String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
 
@@ -202,6 +203,23 @@ class NycDomainSchemaContractTest {
 
             assertTrue(mapper.contains("v.`source_type`"));
             assertTrue(mapper.contains("v.`data_version`"));
+        }
+    }
+
+    @Test
+    void bootstrapSchemaIsCurrentEmptyAndFreeOfLegacyTables() throws IOException {
+        try (InputStream input = getClass().getResourceAsStream("/db/bootstrap-schema.sql")) {
+            assertNotNull(input);
+            String schema = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertTrue(schema.contains("CREATE TABLE `tb_shop`"));
+            assertTrue(schema.contains("CREATE TABLE `tb_shop_map_location`"));
+            assertTrue(schema.contains("CREATE TABLE `tb_agent_action_audit`"));
+            assertTrue(schema.contains("UNIQUE KEY `uk_user_phone` (`phone`)"));
+            assertTrue(schema.contains("UNIQUE KEY `uk_voucher_order_user_voucher` (`user_id`,`voucher_id`)"));
+            assertFalse(schema.contains("legacy_hangzhou_"));
+            assertFalse(schema.contains("CREATE TABLE `tb_sign`"));
+            assertFalse(schema.contains("INSERT INTO"));
         }
     }
 }

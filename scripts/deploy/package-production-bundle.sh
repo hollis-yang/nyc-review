@@ -13,7 +13,6 @@ tar -czf "$OUTPUT" \
   compose.production.yml \
   .env.production.example \
   deploy/production \
-  docs/password-auth-registration-runbook.md \
   scripts/deploy/check-production-config.sh \
   scripts/deploy/update-production.sh \
   src/main/resources/db

@@ -126,7 +126,7 @@ def build_sql(
 ) -> str:
     lines = [
         f"-- {SQL_MARKER}",
-        "-- Derived map data only. Apply after p9_p7_map_geospatial.sql and the matching NYC dataset import.",
+        "-- Derived map data only. Apply after bootstrap-schema.sql and the matching NYC dataset import.",
         "-- Point-in-polygon assignments use the pinned official NYC 2020 NTA snapshot.",
         "-- Unmatched coordinates remain UNASSIGNED; the importer never fabricates a nearest NTA.",
         "-- tb_shop.area is intentionally preserved because Agent constraints use the legacy friendly area names.",

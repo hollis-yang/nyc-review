@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -35,6 +36,25 @@ DATASET_SCOPED_OPTIONAL_TABLES = (
     "tb_saved_itinerary",
     "tb_shop_favorite",
     "tb_agent_user_memory",
+)
+REQUIRED_DATASET_FILES = (
+    "shop_types.json",
+    "shop_subcategories.json",
+    "shops.json",
+    "shop_business_hours.json",
+    "users.json",
+    "shop_reviews.json",
+    "blogs.json",
+    "blog_comments.json",
+    "follows.json",
+    "vouchers.json",
+    "seckill_vouchers.json",
+)
+OPTIONAL_DATASET_FILES = (
+    "shop_images.json",
+    "shop_source_matches.json",
+    "shop_field_observations.json",
+    "image_credits.json",
 )
 
 
@@ -157,18 +177,7 @@ def build_mysql_sql(
             if real_only
             else "-- NYC Review content is synthetic; some establishment identity fields may come from NYC Open Data."
         ),
-        (
-            "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, "
-            "p11_p2_p3_shop_enrichment.sql, and p12_p13_data_quality.sql. Run p9 plus the "
-            "matching neighborhood import afterward to rebuild map projections."
-            if data_version.startswith("nyc-real-v5-")
-            else
-            "-- Run only after p3, p4, p8 provenance, p10_p8_real_content.sql, and "
-            "p11_p2_p3_shop_enrichment.sql. Run p9 plus the matching neighborhood import "
-            "afterward to rebuild map projections."
-            if real_only
-            else "-- Run only after p3_nyc_compatibility.sql, p4_nyc_domain.sql, and p8_p6_data_provenance.sql."
-        ),
+        "-- Run after src/main/resources/db/bootstrap-schema.sql; apply the matching neighborhood import afterward.",
         "-- Stop the application before importing. This bundle replaces the active development dataset.",
         "SET NAMES utf8mb4;",
         "SET @NYC_REVIEW_OLD_TIME_ZONE = @@SESSION.time_zone;",
@@ -322,7 +331,8 @@ def build_mysql_sql(
                 (
                     item["shopId"], item["fieldName"],
                     json.dumps(item.get("value"), ensure_ascii=False, separators=(",", ":")),
-                    item["provider"], item.get("externalId"), _mysql_datetime(item["observedAt"]),
+                    "NYC_REVIEW_GENERATED" if item["provider"] == "HMDP_GENERATED" else item["provider"],
+                    item.get("externalId"), _mysql_datetime(item["observedAt"]),
                     _mysql_datetime(item.get("expiresAt")), item["matchScore"], item["sourcePriority"],
                     item["contentSha256"], item["snapshotVersion"],
                 )
@@ -648,3 +658,57 @@ def build_import_bundle(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
     )
     return manifest
+
+
+def rebuild_existing_bundle(output: Path) -> dict[str, Any]:
+    """Rebuild import artifacts from an existing generated JSON dataset."""
+    manifest_path = output / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"missing dataset manifest: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    datasets: dict[str, list[dict[str, Any]]] = {}
+    missing: list[str] = []
+    counted_files = {
+        f"{name}.json" for name in (manifest.get("counts") or {})
+    }
+    filenames = sorted(counted_files | set(REQUIRED_DATASET_FILES))
+    for filename in filenames:
+        path = output / filename
+        if not path.is_file():
+            missing.append(filename)
+            continue
+        datasets[filename] = json.loads(path.read_text(encoding="utf-8"))
+    for filename in OPTIONAL_DATASET_FILES:
+        path = output / filename
+        if path.is_file() and filename not in datasets:
+            datasets[filename] = json.loads(path.read_text(encoding="utf-8"))
+    if missing:
+        raise FileNotFoundError(f"dataset is incomplete: {', '.join(missing)}")
+    return build_import_bundle(
+        output,
+        datasets,
+        str(manifest["profile"]),
+        int(manifest.get("seed") or 20260817),
+        str(manifest["datasetSha256"]),
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Rebuild MySQL and Redis import artifacts.")
+    parser.add_argument("dataset", type=Path, help="Existing generated dataset directory")
+    args = parser.parse_args()
+    result = rebuild_existing_bundle(args.dataset.resolve())
+    print(json.dumps({
+        "dataset": str(args.dataset),
+        "mysql": result["mysql"],
+        "redis": {
+            "file": result["redis"]["file"],
+            "sha256": result["redis"]["sha256"],
+            "geoKeys": len(result["redis"]["geoKeys"]),
+            "seckillStockKeys": len(result["redis"]["seckillStockKeys"]),
+        },
+    }, indent=2))
+
+
+if __name__ == "__main__":
+    main()

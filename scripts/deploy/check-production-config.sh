@@ -92,6 +92,23 @@ mysql_healthcheck = " ".join(
 if "tb_data_import" not in mysql_healthcheck or "p13-full" not in mysql_healthcheck:
     raise SystemExit("MySQL healthcheck must verify that the P13 full import completed.")
 
+mysql_init_targets = sorted(
+    str(volume.get("target"))
+    for volume in services["mysql"].get("volumes", [])
+    if isinstance(volume, dict)
+    and str(volume.get("target", "")).startswith("/docker-entrypoint-initdb.d/")
+)
+expected_mysql_init_targets = [
+    "/docker-entrypoint-initdb.d/01-schema.sql",
+    "/docker-entrypoint-initdb.d/02-dataset.sql",
+    "/docker-entrypoint-initdb.d/03-map.sql",
+]
+if mysql_init_targets != expected_mysql_init_targets:
+    raise SystemExit(
+        "MySQL initialization must contain exactly schema, dataset, and map SQL: "
+        + repr(mysql_init_targets)
+    )
+
 def parse_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():

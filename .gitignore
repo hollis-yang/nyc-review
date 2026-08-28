@@ -57,23 +57,16 @@ build/
 ### VS Code ###
 .vscode/
 
-### Python Agent service / generated demo data ###
+### Python Agent service ###
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
 .venv/
-data/generated/
-data/sources/nyc-nta-2020-26b.geojson
-# Raw OpenStreetMap snapshots are reproducible and can be large. Keep the
-# compact provenance sidecar so a generated bundle remains auditable.
-data/sources/osm-nyc-places-*.json
-data/sources/osm-nyc-enrichment-*.json
-data/sources/official-site-jsonld-*.json
-data/sources/official-site-merchant-images-*.json
-data/sources/wikimedia-merchant-images-*.json
-!data/sources/osm-nyc-places-*.manifest.json
 agent-service/.local/
 
-# P14.1 isolated load-test credentials are generated locally.
-reports/p14-1/runtime/
+### Local datasets, planning docs and generated reports ###
+/data/
+/docs/
+/reports/
+/nyc-review-web/reports/

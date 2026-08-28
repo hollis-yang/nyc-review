@@ -74,8 +74,8 @@ class VoucherOrderRabbitContractTest {
     @Test
     void uniqueIndexMigrationStillProvidesTheFinalIdempotencyBoundary() throws IOException {
         try (InputStream stream = getClass().getClassLoader()
-                .getResourceAsStream("db/p2_redis_stream_order.sql")) {
-            assertNotNull(stream, "P2 unique-index migration must exist");
+                .getResourceAsStream("db/migrations/003_voucher_order_uniqueness.sql")) {
+            assertNotNull(stream, "Voucher-order uniqueness migration must exist");
             String migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
 
             assertTrue(migration.contains("tmp_voucher_order_conflicts"));

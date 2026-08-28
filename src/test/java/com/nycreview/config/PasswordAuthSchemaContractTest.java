@@ -15,7 +15,7 @@ class PasswordAuthSchemaContractTest {
     @Test
     void migrationKeepsE164UniqueAndConvertsBlankPasswordsToNull() throws IOException {
         try (InputStream stream = getClass().getClassLoader()
-                .getResourceAsStream("db/auth_password_registration.sql")) {
+                .getResourceAsStream("db/migrations/015_password_auth_registration.sql")) {
             assertNotNull(stream);
             String migration = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
 

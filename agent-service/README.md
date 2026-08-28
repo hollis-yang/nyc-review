@@ -49,7 +49,7 @@ curl -H 'authorization: <current-user-token>' '/v1/agent/runs?limit=5'
 curl /v1/agent/metrics
 ```
 
-前端产品入口只暴露 Multi Agent；Single Agent 继续保留在 Eval 中用于质量和延迟对照。完整步骤见 [P3 Runbook](../docs/p3-agent-actions-runbook.md)。
+前端产品入口只暴露 Multi Agent；Single Agent 继续保留在 Eval 中用于质量和延迟对照。
 
 ## P4 Observability、恢复与安全
 
@@ -114,16 +114,17 @@ RAG 将每个根评论及其一、二级回复组合成一份 `shop_review_threa
 
 本地磁盘模式 `NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant` 只适合单进程小型验证，同一路径不能被多个 Qdrant Client 同时打开。默认 Hash Embedding 仅用于离线开发；部署时使用 `.env.example` 中的 OpenAI-compatible Embedding 配置。
 
-使用根目录 `docker-compose.p4.yml` 时，也必须在启动前把当前登录 token 传给 Agent 的 HTTP Adapter，否则预览、Run 和直接 MCP 调用 Spring Tool API 都会收到 401：
+使用根目录 `compose.local.yml` 时，也必须在启动前把当前登录 token 传给 Agent 的 HTTP Adapter，并用 `NYC_REVIEW_DATA_DIR` 指向有效数据包，否则 Compose 或 Spring Tool API 会拒绝请求：
 
 ```bash
 export NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN='<current-user-token>'
-docker compose -f docker-compose.p4.yml up --build
+export NYC_REVIEW_DATA_DIR="$PWD/data/generated/nyc-real-p13-full"
+docker compose -f compose.local.yml up --build
 ```
 
 Compose 的 MySQL init 脚本只适用于全新空 volume；已有 P6/P7 数据库应按 Runbook 手工执行 P10 和数据切换，不得重复执行非幂等的 P8 迁移。该 token 只应存在于本地环境或 Secret 管理系统，不要提交到仓库。
 
-数据生成、现有 P6/P7 环境升级、全新库初始化和验收步骤见 [P8 Real Data Runbook](../docs/p8-real-data-runbook.md)。
+数据生成和校验命令见根目录的 [数据生成器 README](../scripts/mock-data-generator/README.md)。
 
 如果只做离线工作流测试，可将 `NYC_REVIEW_AGENT_ADAPTER` 改回 `mock`；接入 Spring Boot Tool API 时必须配置：
 
@@ -144,7 +145,7 @@ NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN=<current-user-token>
 
 Agent Service 同时在 `http://127.0.0.1:8090/mcp` 提供 Streamable HTTP MCP。它复用 AI Guide 的领域服务，只发布 `search_shops`、`get_shop_detail`、`get_shop_evidence`、`get_available_vouchers`、`calculate_route` 和 `validate_itinerary`。MCP Tool Catalog 不包含任何写操作。
 
-本地可设置 `NYC_REVIEW_AGENT_MCP_API_KEY`，客户端随后使用 `Authorization: Bearer <key>`。HTTP Adapter 访问 Spring 时仍使用独立的 `NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN`；不要把用户登录 token 当作 MCP 服务密钥。完整接入和测试步骤见 [P5 Runbook](../docs/p5-mcp-runbook.md)。
+本地可设置 `NYC_REVIEW_AGENT_MCP_API_KEY`，客户端随后使用 `Authorization: Bearer <key>`。HTTP Adapter 访问 Spring 时仍使用独立的 `NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN`；不要把用户登录 token 当作 MCP 服务密钥。
 
 ## Eval
 
@@ -163,4 +164,4 @@ uv run python -m evals.p12.run_retrieval_eval \
   --output ./.local/p12-eval-report.json
 ```
 
-完整配置、验收指标以及未来数据版本的双基准方式见 [P12 RAG Quality Runbook](../docs/p12-rag-quality-runbook.md)。
+质量门禁配置保存在 `evals/p12/cases.json` 与 `evals/p12/quality_gate.json`，生成的评测报告只保留在本地。

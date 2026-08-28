@@ -40,7 +40,7 @@ python3 scripts/mock-data-generator/build_neighborhood_import.py \
   --output data/generated/nyc-real-medium/p7_neighborhood_import.sql
 ```
 
-最后一条命令是导入的必要前置步骤，不是可选的地图演示：它会生成手动 SQL 流程和 `docker-compose.p4.yml` 共同读取的 P7 投影。如果本机缺少固定的 NTA 快照，请先按 [P8 Runbook](../../docs/p8-real-data-runbook.md) 获取。
+最后一条命令是导入的必要前置步骤，不是可选的地图演示：它会生成手动 SQL 流程和 `compose.local.yml` 共同读取的 P7 投影。如果本机缺少固定的 NTA 快照，请先使用下方 `nyc_nta.py fetch` 命令获取。
 
 `validate_dataset.py` 会失败关闭地校验 `merchantIdentityMode=REAL_ONLY`、`mockShops=0`、六分类覆盖、外部 ID 和显示身份唯一性、五区/官方 NTA 归属、来源字段、图片署名与许可、评论树完整性、1–5 星覆盖、价格/评分/检索标签完整性、每家 7 天营业时间、根评论计数、博客/博客评论/优惠券的内部来源类型和字段长度。
 
@@ -69,21 +69,20 @@ python3 scripts/mock-data-generator/wikimedia_images.py \
 
 数据生成器会输出前两项；地图构建脚本会输出第三项：
 
-- `mysql_import.sql`：首次运行时归档传统活动表，然后事务化替换为 NYC 数据；重复导入同一数据集是安全的。
+- `mysql_import.sql`：事务化替换 NYC 业务数据；重复导入同一数据集是安全的，不负责创建或升级表结构。
 - `redis_seed.resp`：只清理本项目的旧 GEO、缓存、Feed、点赞、秒杀派生键，以及会因实体 ID 复用而失效的商户/评价/博客翻译缓存，再重建 `shop:geo:*` 与 `seckill:stock:*`；不执行 `FLUSHDB`，并保留以内容 SHA-256 为键的任意文本翻译缓存。
 - `p7_neighborhood_import.sql`：从固定 NTA polygon 重建地图位置和聚合投影。
 
-应用导入包前先阻止新的秒杀流量，同时保持 Spring RabbitMQ consumer 运行，直到订单/错误队列和 Redis pending 索引均为空；随后停止 Spring Boot 与 Agent Service，并确认当前连接的是可替换数据的开发数据库。已经完成 P6/P7 的现有环境只执行 P10、真实数据导入、P7 投影和 Redis seed：
+应用导入包前先阻止新的秒杀流量，同时保持 Spring RabbitMQ consumer 运行，直到订单/错误队列和 Redis pending 索引均为空；随后停止 Spring Boot 与 Agent Service，并确认当前连接的是可替换数据的开发数据库。已有环境先备份并执行 `src/main/resources/db/migrations/` 中尚未应用的迁移，再导入数据、地图投影和 Redis seed：
 
 ```bash
-mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
 mysql -u root -p nyc_review < data/generated/nyc-real-medium/mysql_import.sql
 mysql -u root -p nyc_review < data/generated/nyc-real-medium/p7_neighborhood_import.sql
 redis-cli --pipe < data/generated/nyc-real-medium/redis_seed.resp
 redis-cli DEL cache:shopType:list
 ```
 
-`p8_p6_data_provenance.sql` 不是幂等迁移，P6/P7 已执行的库不得重复运行。全新数据库才在所有更早迁移之后依次执行 P8、P9、P10，再导入 real-medium SQL、P7 投影和 Redis seed。完整步骤见 [P8 Real Data Runbook](../../docs/p8-real-data-runbook.md)，基础迁移和首次归档背景见 [P1 NYC 数据 Runbook](../../docs/p1-nyc-data-runbook.md)。
+全新数据库无需逐条重放历史迁移，依次导入 `bootstrap-schema.sql`、数据 SQL、地图 SQL，并执行 Redis seed。`bootstrap-schema.sql` 仅适用于空数据库；已有数据库不得覆盖导入。
 
 ## P6 Hybrid 历史 Profile
 
@@ -103,7 +102,7 @@ python3 scripts/mock-data-generator/validate_dataset.py \
   data/generated/nyc-medium-hybrid
 ```
 
-`nyc-hybrid-v1` 只有部分餐厅身份来自 NYC Open Data，其余商户和全部业务内容是合成数据；它不满足 P8 的 `REAL_ONLY` 门禁。历史流程见 [P6 Runbook](../../docs/p6-hybrid-data-runbook.md)。
+`nyc-hybrid-v1` 只有部分餐厅身份来自 NYC Open Data，其余商户和全部业务内容是合成数据；它不满足 P8 的 `REAL_ONLY` 门禁。
 
 ## P7 官方 NTA 地理派生数据
 
@@ -119,4 +118,4 @@ python3 scripts/mock-data-generator/build_neighborhood_import.py \
   --output data/generated/nyc-real-medium/p7_neighborhood_import.sql
 ```
 
-该导入包只重建可派生地图数据，不覆盖 `tb_shop.area`。完整表契约与验收步骤见 [P7 Map Runbook](../../docs/p7-map-geospatial-runbook.md)。
+该导入包只重建可派生地图数据，不覆盖 `tb_shop.area`。
