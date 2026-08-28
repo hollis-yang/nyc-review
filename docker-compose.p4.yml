@@ -23,6 +23,7 @@ services:
       - ./data/generated/nyc-real-medium/mysql_import.sql:/docker-entrypoint-initdb.d/11-nyc-data.sql:ro
       - ./data/generated/nyc-real-medium/p7_neighborhood_import.sql:/docker-entrypoint-initdb.d/12-nyc-map-data.sql:ro
       - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/13-cleanup.sql:ro
+      - ./src/main/resources/db/auth_password_registration.sql:/docker-entrypoint-initdb.d/14-password-auth.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s

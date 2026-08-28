@@ -90,6 +90,11 @@ docker compose --env-file .env.production -f compose.production.yml up -d --wait
 生产数据库增加或修改结构时，必须先创建 Lightsail 快照或数据库备份，再
 单独执行可重复、向后兼容的迁移脚本。不要通过删除 MySQL 数据卷来应用迁移。
 
+密码登录和国际手机号注册的这次升级必须先执行
+`src/main/resources/db/auth_password_registration.sql`，再同时更新 Spring 与
+Web 镜像；备份、导入、SQL 审计和接口验收命令见
+[`docs/password-auth-registration-runbook.md`](../../docs/password-auth-registration-runbook.md)。
+
 ## E. P13 数据更新
 
 P13 是独立的数据发布，不属于普通代码更新：重新生成数据包、上传服务器、

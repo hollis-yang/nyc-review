@@ -40,7 +40,8 @@ class LoginInterceptorTest {
             "GET, /user/info/1",
             "HEAD, /blog/1",
             "POST, /user/code",
-            "POST, /user/login"
+            "POST, /user/login",
+            "POST, /user/register"
     })
     void allowsPublicRequests(String method, String path) throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();

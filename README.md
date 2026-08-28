@@ -3,7 +3,7 @@
 NYC Review（纽约点评）是面向纽约本地生活的 AI 全栈项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
 
 架构边界与不可回退能力见 [目标架构](docs/target-architecture.md) 和 [验收标准](docs/acceptance-criteria.md)。
-当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md)、[P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md) 和 [P14.1 后端压测 Runbook](docs/p14-1-backend-load-runbook.md)。
+当前完成状态与后续实施顺序见 [实施路线](docs/implementation-roadmap.md)、[P10–P17 路线图](docs/p10-p17-roadmap.md)、[P10/P11 全量数据 Runbook](docs/p10-p11-full-enrichment-runbook.md)、[P11.5 官网深层内容 Runbook](docs/p11-5-deep-content-runbook.md)、[P12 RAG 质量 Runbook](docs/p12-rag-quality-runbook.md)、[P13 5K 数据质量 Runbook](docs/p13-data-quality-runbook.md)、[P14.1 后端压测 Runbook](docs/p14-1-backend-load-runbook.md) 和 [密码登录与国际手机号注册 Runbook](docs/password-auth-registration-runbook.md)。
 工程重命名后的本地迁移步骤见 [NYC Review 重命名迁移指南](docs/nyc-review-rename-guide.md)。
 
 面向 4 GB AWS Lightsail 的单机生产部署使用预构建 GHCR 镜像、单 Agent、
@@ -112,6 +112,7 @@ mysql -u root -p nyc_review < src/main/resources/db/p10_p8_real_content.sql
 mysql -u root -p nyc_review < data/generated/nyc-real-medium/mysql_import.sql
 mysql -u root -p nyc_review < data/generated/nyc-real-medium/p7_neighborhood_import.sql
 mysql -u root -p nyc_review < src/main/resources/db/cleanup_nyc_review_legacy.sql
+mysql -u root -p nyc_review < src/main/resources/db/auth_password_registration.sql
 redis-cli --pipe < data/generated/nyc-real-medium/redis_seed.resp
 redis-cli DEL cache:shopType:list
 ```
@@ -135,6 +136,8 @@ mvn spring-boot:run
 ```
 
 后端默认监听 `http://127.0.0.1:8081`。
+
+认证采用密码登录与独立注册页，手机号在后端校验并规范化为 E.164，新增密码使用 BCrypt；短信验证码入口已停用。已有数据库升级和生产验收步骤见 [Password Auth Runbook](docs/password-auth-registration-runbook.md)。
 
 ## 启动多 Agent 与 RAG
 

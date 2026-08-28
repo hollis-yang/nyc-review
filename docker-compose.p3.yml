@@ -17,6 +17,7 @@ services:
       - ./src/main/resources/db/p5_agent_actions.sql:/docker-entrypoint-initdb.d/05-agent-actions.sql:ro
       - ./data/generated/nyc-small/mysql_import.sql:/docker-entrypoint-initdb.d/06-nyc-mock.sql:ro
       - ./src/main/resources/db/cleanup_nyc_review_legacy.sql:/docker-entrypoint-initdb.d/07-cleanup.sql:ro
+      - ./src/main/resources/db/auth_password_registration.sql:/docker-entrypoint-initdb.d/08-password-auth.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s

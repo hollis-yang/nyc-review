@@ -2,16 +2,15 @@ package com.nycreview.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.nycreview.dto.LoginFormDTO;
+import com.nycreview.dto.RegisterFormDTO;
 import com.nycreview.dto.Result;
 import com.nycreview.entity.User;
 
-import jakarta.servlet.http.HttpSession;
-
 public interface IUserService extends IService<User> {
 
-    Result sendCode(String phone, HttpSession session);
+    Result login(LoginFormDTO loginForm, String clientAddress);
 
-    Result login(LoginFormDTO loginForm, HttpSession session);
+    Result register(RegisterFormDTO registerForm, String clientAddress);
 
     Result sign();
 

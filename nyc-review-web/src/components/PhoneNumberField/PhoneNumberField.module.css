@@ -1,0 +1,68 @@
+.phoneRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+
+.regionPicker {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  border-right: 1px solid #eee;
+  padding-right: 10px;
+}
+
+.regionValue {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #333;
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.regionChevron {
+  width: 10px;
+  height: 7px;
+  flex: 0 0 10px;
+  fill: none;
+  stroke: #555;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.regionSelect {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.regionPicker:focus-within {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgb(255 102 51 / 18%);
+}
+
+.phoneInput {
+  flex: 1;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+.phoneInput :global(.adm-input) {
+  width: 100%;
+  min-width: 0;
+}

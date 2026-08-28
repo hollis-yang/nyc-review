@@ -16,11 +16,15 @@
 
 .backBtn {
   width: 10%;
+  height: 100%;
   font-size: 22px;
   cursor: pointer;
   display: flex;
   justify-content: center;
   align-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
   transition: transform var(--transition-fast);
 }
 
@@ -72,41 +76,46 @@
 }
 
 .fieldGroup {
-  padding: 4px 0;
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .fieldDivider {
+  width: 100%;
   height: 1px;
-  background: #f0f0f0;
-}
-
-.codeBtn {
+  min-height: 1px;
   flex-shrink: 0;
-  background: #fff;
-  border: 1px solid #07c160;
-  color: #07c160;
-  padding: 4px 12px;
-  border-radius: 16px;
+  background: #e7e7e7;
+}
+
+.passwordRow {
+  gap: 8px;
+}
+
+.textInput {
+  width: 100%;
+  min-width: 0;
+}
+
+.passwordInput {
+  width: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.passwordToggle {
+  flex-shrink: 0;
+  min-width: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-short);
   font-size: 12px;
+  padding: 8px 0 8px 8px;
+  text-align: right;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.codeBtn:active {
-  background: #07c160;
-  color: #fff;
-}
-
-.codeBtnDisabled {
-  border-color: #ddd;
-  color: #999;
-  cursor: not-allowed;
-}
-
-.codeBtnDisabled:active {
-  background: #fff;
-  color: #999;
 }
 
 .hint {
@@ -118,6 +127,7 @@
 
 .loginBtn {
   width: 100%;
+  margin-top: 16px;
   background: linear-gradient(135deg, #ff6633, #ff7a4d);
   color: #fff;
   border: none;
@@ -129,8 +139,18 @@
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+.hint + .loginBtn {
+  margin-top: 0;
+}
+
 .loginBtn:active {
   transform: scale(0.97);
+}
+
+.loginBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .switchLink {
@@ -142,6 +162,11 @@
   color: var(--color-primary-short);
   font-size: 13px;
   text-decoration: none;
+}
+
+.switchLink span {
+  color: #8c939d;
+  font-size: 13px;
 }
 
 .agreement {
@@ -161,6 +186,7 @@
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
+  padding: 0;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 

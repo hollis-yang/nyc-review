@@ -106,6 +106,14 @@
 
 P10/P11/P11.5/P12/P13/P13.5/P14/P14.1 已完成。P13 保持 5,000 家真实来源商户身份和 shop ID 不变，修复了“外部评分人数被显示为本地可浏览评论数”的数据契约，重构了评分、评论线程、笔记和笔记评论，并以免费官网/Wikimedia/NYC 来源继续提升图片和商户字段覆盖率。最终数据检查点仍为 `nyc-real-v5-8b645404-m20260824`；100,000 条根评论和 63,500 条回复通过重复、评分、计数与线程门禁，独立 P13 RAG 的 Recall@10 为 99.54%。P13.5 在不改变该数据检查点的前提下完成了前端视觉覆盖。P14 不改数据，完成 Redis Lua/RabbitMQ 可靠性、Agent 并发恢复与 Trace、地图/列表性能、双语和前端回归门禁；P14.1 再以完全隔离的 5,000 商户 Compose 环境固化读取、秒杀、重复下单、混合、长稳和故障恢复基线，并验证 MySQL、Redis、RabbitMQ 最终一致。后续按 P15 Qdrant Server、P16 发布候选一致性与回滚、P17 项目包装推进；正式范围见 [P10–P17 Delivery Roadmap](p10-p17-roadmap.md)，P14 正确性结果见 [P14 Stability and Performance Runbook](p14-stability-performance-runbook.md)，P14.1 全栈压测见 [P14.1 Backend Load and Failure-Recovery Runbook](p14-1-backend-load-runbook.md)。
 
+## 部署后认证改造（已完成）
+
+- 删除前端短信验证码登录路径，`/user/code` 固定返回 `410 Gone`，保留明确的旧客户端失败边界。
+- 新增 `/register` 与 `/user/register`，登录和注册均支持国家/地区选择，后端统一校验并保存 E.164 手机号。
+- 新密码使用 BCrypt；旧 salted-MD5 仅允许正确密码登录后自动升级，空密码内容作者不能登录。
+- 增加手机号/IP 登录限流、IP 注册限流、唯一手机号并发保护和国际号码/密码/控制器契约测试。
+- 生产迁移、代理真实客户端 IP、安全回滚和中英文验收步骤见 [Password Auth Runbook](password-auth-registration-runbook.md)。
+
 ### P13.5：前端商户与笔记视觉覆盖（已完成）
 
 P13.5 不改变 P13 数据检查点，也不把场景相关图片声明成对应商户实景。当前 1,906/5,000（38.12%）家商户的专属图片覆盖率作为独立真实性指标保留；本阶段要把“具有照片的商户”提升到至少 4,000/5,000（80%），并以确定性程序化封面使全部商户和笔记都不再使用统一默认图。

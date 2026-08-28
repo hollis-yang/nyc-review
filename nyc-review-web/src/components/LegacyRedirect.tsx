@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 const redirectMap: Record<string, (params: URLSearchParams) => string> = {
   '/index.html': () => '/',
   '/login.html': () => '/login',
-  '/login2.html': () => '/login2',
+  '/login2.html': () => '/login',
   '/info.html': () => '/profile',
   '/info-edit.html': () => '/profile-edit',
   '/blog-edit.html': () => '/blog-edit',

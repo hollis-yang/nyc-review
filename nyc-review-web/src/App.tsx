@@ -1,5 +1,5 @@
 import './i18n';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd-mobile';
 import enUS from 'antd-mobile/es/locales/en-US';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './contexts/AuthContext';
 import Home from './pages/Home';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import ShopList from './pages/ShopList';
 import ShopDetail from './pages/ShopDetail';
 import ShopReviews from './pages/ShopReviews';
@@ -32,7 +33,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/login2" element={<Login mode="password" />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/login2" element={<Navigate to="/login" replace />} />
           <Route path="/shop-list" element={<ShopList />} />
           <Route path="/shop-detail/:id" element={<ShopDetail />} />
           <Route path="/shop-reviews/:id" element={<ShopReviews />} />

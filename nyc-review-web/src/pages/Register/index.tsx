@@ -1,23 +1,24 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Input, Toast } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
-import { useAuth } from '../../hooks/useAuth';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { loginByPassword } from '../../api/auth';
+import { register } from '../../api/auth';
 import PhoneNumberField from '../../components/PhoneNumberField';
 import { initialPhoneRegion } from '../../constants/phoneRegions';
+import { useAuth } from '../../hooks/useAuth';
 import { localizedAuthError } from '../../utils/authError';
-import styles from './Login.module.css';
+import { isStrongRegistrationPassword } from '../../utils/passwordPolicy';
+import styles from '../Login/Login.module.css';
 
-function BrandIcon({ size = 36 }: { size?: number }) {
+function BrandIcon() {
   return (
-    <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="url(#login-brand-bg)" />
-      <path d="M14 45c2-15 11-26 25-26 8 0 15 4 20 11" stroke="#fff" strokeWidth="3" fill="none" />
-      <circle cx="26" cy="35" r="5" stroke="#fff" strokeWidth="3" />
+    <svg viewBox="0 0 64 64" width="48" height="48" fill="none" aria-hidden="true">
+      <rect width="64" height="64" rx="16" fill="url(#register-brand-bg)" />
+      <circle cx="25" cy="27" r="8" stroke="#fff" strokeWidth="3" />
+      <path d="M12 50c2-10 7-15 13-15s11 5 13 15M47 24v18M38 33h18" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
       <defs>
-        <linearGradient id="login-brand-bg" x1="0" y1="0" x2="64" y2="64">
+        <linearGradient id="register-brand-bg" x1="0" y1="0" x2="64" y2="64">
           <stop stopColor="#ff6633" />
           <stop offset="1" stopColor="#ff8a5c" />
         </linearGradient>
@@ -26,41 +27,56 @@ function BrandIcon({ size = 36 }: { size?: number }) {
   );
 }
 
-export default function Login() {
+export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
   const { login } = useAuth();
   const [regionCode, setRegionCode] = useState(() => initialPhoneRegion(i18n.resolvedLanguage));
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [nickName, setNickName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
   const redirect = searchParams.get('redirect') || '/';
-  const registerUrl = `/register?redirect=${encodeURIComponent(redirect)}`;
+  const loginUrl = `/login?redirect=${encodeURIComponent(redirect)}`;
 
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);
     else navigate('/');
   };
 
-  const handleLogin = async () => {
+  const handleRegister = async () => {
     if (!agreed) {
       Toast.show({ icon: 'fail', content: t('auth.agreeRequired') });
       return;
     }
-    if (!phoneNumber.trim() || !password) {
-      Toast.show({ icon: 'fail', content: t('auth.phonePasswordRequired') });
+    if (!phoneNumber.trim() || !password || !confirmPassword) {
+      Toast.show({ icon: 'fail', content: t('register.required') });
+      return;
+    }
+    if (password !== confirmPassword) {
+      Toast.show({ icon: 'fail', content: t('register.passwordMismatch') });
+      return;
+    }
+    if (!isStrongRegistrationPassword(password)) {
+      Toast.show({ icon: 'fail', content: t('auth.errors.passwordPolicy') });
       return;
     }
     setSubmitting(true);
     try {
-      const res = await loginByPassword({ regionCode, phoneNumber: phoneNumber.trim(), password });
+      const res = await register({
+        regionCode,
+        phoneNumber: phoneNumber.trim(),
+        password,
+        nickName: nickName.trim() || undefined,
+      });
       const token = res.data ?? res;
       if (token) {
         login(String(token));
+        Toast.show({ icon: 'success', content: t('register.success') });
         navigate(redirect, { replace: true });
       }
     } catch (error: unknown) {
@@ -76,13 +92,13 @@ export default function Login() {
         <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={22} color="white" />
         </button>
-        <div className={styles.headerTitle}>{t('login.title')}</div>
+        <div className={styles.headerTitle}>{t('register.title')}</div>
       </div>
       <div className={styles.scroll}>
         <div className={styles.brand}>
-          <BrandIcon size={48} />
-          <div className={styles.brandName}>{t('login.brand')}</div>
-          <div className={styles.brandSlogan}>{t('login.slogan')}</div>
+          <BrandIcon />
+          <div className={styles.brandName}>{t('register.heading')}</div>
+          <div className={styles.brandSlogan}>{t('register.subtitle')}</div>
         </div>
 
         <div className={styles.formCard}>
@@ -95,6 +111,18 @@ export default function Login() {
             />
           </div>
           <div className={styles.fieldDivider} />
+          <div className={styles.fieldGroup}>
+            <Input
+              className={styles.textInput}
+              placeholder={t('register.nicknamePlaceholder')}
+              value={nickName}
+              onChange={setNickName}
+              maxLength={32}
+              autoComplete="nickname"
+              style={{ '--font-size': '15px' } as React.CSSProperties}
+            />
+          </div>
+          <div className={styles.fieldDivider} />
           <div className={`${styles.fieldGroup} ${styles.passwordRow}`}>
             <Input
               className={styles.passwordInput}
@@ -102,7 +130,7 @@ export default function Login() {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={setPassword}
-              autoComplete="current-password"
+              autoComplete="new-password"
               style={{ '--font-size': '15px' } as React.CSSProperties}
             />
             <button type="button" className={styles.passwordToggle} onClick={() => setShowPassword(!showPassword)}>
@@ -110,12 +138,25 @@ export default function Login() {
             </button>
           </div>
           <div className={styles.fieldDivider} />
-          <button className={styles.loginBtn} onClick={handleLogin} disabled={submitting}>
-            {submitting ? t('auth.submitting') : t('login.loginBtn')}
+          <div className={styles.fieldGroup}>
+            <Input
+              className={styles.textInput}
+              placeholder={t('register.confirmPasswordPlaceholder')}
+              type={showPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              autoComplete="new-password"
+              style={{ '--font-size': '15px' } as React.CSSProperties}
+            />
+          </div>
+          <div className={styles.fieldDivider} />
+          <div className={styles.hint}>{t('register.passwordHint')}</div>
+          <button className={styles.loginBtn} onClick={handleRegister} disabled={submitting}>
+            {submitting ? t('auth.submitting') : t('register.registerBtn')}
           </button>
           <div className={styles.switchLink}>
-            <span>{t('login.noAccount')} </span>
-            <Link to={registerUrl}>{t('login.createAccount')}</Link>
+            <span>{t('register.hasAccount')} </span>
+            <Link to={loginUrl}>{t('register.signIn')}</Link>
           </div>
         </div>
 

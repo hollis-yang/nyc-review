@@ -6,24 +6,27 @@ import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.nycreview.dto.LoginFormDTO;
+import com.nycreview.dto.RegisterFormDTO;
 import com.nycreview.dto.Result;
 import com.nycreview.dto.UserDTO;
 import com.nycreview.entity.User;
 import com.nycreview.mapper.UserMapper;
 import com.nycreview.entity.UserInfo;
+import com.nycreview.service.AuthRateLimiter;
 import com.nycreview.service.IUserInfoService;
 import com.nycreview.service.IUserService;
-import com.nycreview.utils.RegexUtils;
+import com.nycreview.utils.PasswordEncoder;
+import com.nycreview.utils.PasswordPolicy;
+import com.nycreview.utils.PhoneNumberNormalizer;
 import com.nycreview.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpSession;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -42,6 +45,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Resource
     private IUserInfoService userInfoService;
+
+    @Resource
+    private PhoneNumberNormalizer phoneNumberNormalizer;
+
+    @Resource
+    private PasswordEncoder passwordEncoder;
+
+    @Resource
+    private AuthRateLimiter authRateLimiter;
 
     @Override
     public Result sign() {
@@ -106,74 +118,84 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
-    public Result sendCode(String phone, HttpSession session) {
-        // 1.校验手机号
-        if (RegexUtils.isPhoneInvalid(phone)) {
-            // 2.如果不符合，返回错误信息
-            return Result.fail("Invalid phone number format");
+    public Result login(LoginFormDTO loginForm, String clientAddress) {
+        if (loginForm == null) {
+            throw new IllegalArgumentException("Login request is required");
+        }
+        PasswordPolicy.validateLoginInput(loginForm.getPassword());
+        String phone = phoneNumberNormalizer.normalize(
+                loginForm.getRegionCode(),
+                loginForm.getPhoneNumber(),
+                loginForm.getPhone()
+        );
+        if (!authRateLimiter.allowLoginAttempt(phone, clientAddress)) {
+            return Result.fail("Too many login attempts. Please try again later");
         }
 
-        // 3.符合，生成验证码
-        String code = RandomUtil.randomNumbers(6);
+        User user = query().eq("phone", phone).one();
+        if (user == null || !passwordEncoder.matches(user.getPassword(), loginForm.getPassword())) {
+            authRateLimiter.recordLoginFailure(phone);
+            return Result.fail("Invalid phone number or password");
+        }
 
-        // 4.保存验证码到 redis -> string
-        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
-
-        // 5.发送验证码【模拟】
-        log.debug("发送短信验证码成功，验证码: {}", code);
-
-        // 返回ok
-        return Result.ok();
+        if (passwordEncoder.needsUpgrade(user.getPassword())) {
+            update().eq("id", user.getId())
+                    .set("password", passwordEncoder.encode(loginForm.getPassword()))
+                    .update();
+        }
+        authRateLimiter.recordLoginSuccess(phone);
+        return issueToken(user);
     }
 
     @Override
     @Transactional
-    public Result login(LoginFormDTO loginForm, HttpSession session) {
-        // 1.校验手机号
-        String phone = loginForm.getPhone();
-        if (RegexUtils.isPhoneInvalid(phone)) {
-            return Result.fail("Invalid phone number format");
+    public Result register(RegisterFormDTO registerForm, String clientAddress) {
+        if (registerForm == null) {
+            throw new IllegalArgumentException("Registration request is required");
+        }
+        if (!authRateLimiter.allowRegistration(clientAddress)) {
+            return Result.fail("Too many registration attempts. Please try again later");
+        }
+        PasswordPolicy.validate(registerForm.getPassword());
+        String phone = phoneNumberNormalizer.normalize(
+                registerForm.getRegionCode(),
+                registerForm.getPhoneNumber(),
+                registerForm.getPhone()
+        );
+        if (query().eq("phone", phone).count() > 0) {
+            return Result.fail("This phone number is already registered");
         }
 
-        // 2.校验验证码
-        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
-        String code = loginForm.getCode();
-        if (cacheCode == null || !cacheCode.equals(code)) {
-            // 3.不一致，报错
-            return Result.fail("Invalid verification code");
+        try {
+            User user = createUserWithPhone(
+                    phone,
+                    passwordEncoder.encode(registerForm.getPassword()),
+                    registerForm.getNickName()
+            );
+            return issueToken(user);
+        } catch (DuplicateKeyException e) {
+            throw new IllegalArgumentException("This phone number is already registered");
         }
+    }
 
-        // 4.一致，根据手机号查询用户
-        User user = query().eq("phone", phone).one();
-
-        // 5.不存在，创建新用户并保存
-        if (user == null) {
-            user = createUserWithPhone(phone);
-        }
-
-        // 6.保存用户信息到redis
-        // 1) 生成token作为登录令牌
+    private Result issueToken(User user) {
         String token = UUID.randomUUID().toString(true);
-        // 2) 将User转为Hash存储
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
         Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
                 CopyOptions.create()
                         .setIgnoreNullValue(true)
                         .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString()));
-        // 3) 存储到redis
         stringRedisTemplate.opsForHash().putAll(LOGIN_USER_KEY + token, userMap);
         stringRedisTemplate.expire(LOGIN_USER_KEY + token, LOGIN_USER_TTL, TimeUnit.SECONDS);
-        // 4) 返回token给前端
         return Result.ok(token);
     }
 
-    private User createUserWithPhone(String phone) {
-        // 1.创建用户
+    private User createUserWithPhone(String phone, String encodedPassword, String requestedNickName) {
         User user = new User();
         user.setPhone(phone);
-        user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
+        user.setPassword(encodedPassword);
+        user.setNickName(normalizeNickName(requestedNickName));
 
-        // 2.保存用户
         save(user);
         UserInfo userInfo = new UserInfo();
         userInfo.setUserId(user.getId());
@@ -185,5 +207,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             throw new IllegalStateException("Failed to initialize the user profile");
         }
         return user;
+    }
+
+    private String normalizeNickName(String requestedNickName) {
+        if (requestedNickName == null || requestedNickName.isBlank()) {
+            return USER_NICK_NAME_PREFIX + RandomUtil.randomString(10);
+        }
+        String nickName = requestedNickName.trim();
+        if (nickName.codePointCount(0, nickName.length()) > 32) {
+            throw new IllegalArgumentException("Nickname cannot exceed 32 characters");
+        }
+        return nickName;
     }
 }

@@ -348,7 +348,7 @@ def build_mysql_sql(
     statements += _insert_statements(
         "tb_user",
         ("id", "phone", "password", "nick_name", "icon", "create_time", "update_time"),
-        ((item["id"], item["phone"], "", item["nickName"], item["icon"], FIXED_TIME, FIXED_TIME) for item in users),
+        ((item["id"], item["phone"], None, item["nickName"], item["icon"], FIXED_TIME, FIXED_TIME) for item in users),
     )
     statements += _insert_statements(
         "tb_user_info",

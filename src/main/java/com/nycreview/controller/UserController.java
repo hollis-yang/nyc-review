@@ -3,6 +3,7 @@ package com.nycreview.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.nycreview.dto.LoginFormDTO;
+import com.nycreview.dto.RegisterFormDTO;
 import com.nycreview.dto.Result;
 import com.nycreview.dto.UserDTO;
 import com.nycreview.entity.User;
@@ -13,11 +14,11 @@ import com.nycreview.utils.RedisConstants;
 import com.nycreview.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 
 @Slf4j
 @RestController
@@ -33,21 +34,20 @@ public class UserController {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    /**
-     * 发送手机验证码
-     */
     @PostMapping("code")
-    public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
-        return userService.sendCode(phone, session);
+    @ResponseStatus(HttpStatus.GONE)
+    public Result sendCodeDisabled() {
+        return Result.fail("SMS login is disabled");
     }
 
-    /**
-     * 登录功能
-     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
-     */
     @PostMapping("/login")
-    public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session){
-        return userService.login(loginForm, session);
+    public Result login(@RequestBody LoginFormDTO loginForm, HttpServletRequest request){
+        return userService.login(loginForm, clientAddress(request));
+    }
+
+    @PostMapping("/register")
+    public Result register(@RequestBody RegisterFormDTO registerForm, HttpServletRequest request) {
+        return userService.register(registerForm, clientAddress(request));
     }
 
     /**
@@ -151,5 +151,10 @@ public class UserController {
         userInfo.setUserId(userDTO.getId());
         boolean saved = userInfoService.saveOrUpdate(userInfo);
         return saved ? Result.ok() : Result.fail("Failed to save the user profile");
+    }
+
+    private String clientAddress(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Real-IP");
+        return forwarded == null || forwarded.isBlank() ? request.getRemoteAddr() : forwarded.trim();
     }
 }

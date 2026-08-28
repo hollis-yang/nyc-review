@@ -34,7 +34,8 @@ public class LoginInterceptor implements HandlerInterceptor {
 
     private static final Set<String> PUBLIC_POST_PATHS = Set.of(
             "/user/code",
-            "/user/login"
+            "/user/login",
+            "/user/register"
     );
 
     @Override
