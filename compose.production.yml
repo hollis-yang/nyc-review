@@ -39,7 +39,7 @@ services:
     expose:
       - "80"
     volumes:
-      - uploads:/usr/share/nginx/html/imgs:ro
+      - uploads:/data/imgs:ro
     depends_on:
       spring:
         condition: service_healthy

@@ -109,6 +109,29 @@ if mysql_init_targets != expected_mysql_init_targets:
         + repr(mysql_init_targets)
     )
 
+web_volumes = {
+    str(volume.get("target")): volume
+    for volume in services["web"].get("volumes", [])
+    if isinstance(volume, dict)
+}
+spring_volumes = {
+    str(volume.get("target")): volume
+    for volume in services["spring"].get("volumes", [])
+    if isinstance(volume, dict)
+}
+if "/usr/share/nginx/html/imgs" in web_volumes:
+    raise SystemExit(
+        "The upload volume must not hide static Web image assets under /usr/share/nginx/html/imgs."
+    )
+web_uploads = web_volumes.get("/data/imgs")
+spring_uploads = spring_volumes.get("/data/uploads")
+if not web_uploads or not spring_uploads:
+    raise SystemExit("Web and Spring must both mount the persistent uploads volume.")
+if not web_uploads.get("read_only"):
+    raise SystemExit("The Web uploads volume must be read-only.")
+if web_uploads.get("source") != spring_uploads.get("source"):
+    raise SystemExit("Web and Spring must use the same persistent uploads volume.")
+
 def parse_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
