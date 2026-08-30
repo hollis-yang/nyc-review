@@ -40,6 +40,8 @@ import static com.nycreview.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 @Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
+    private static final int DEFAULT_AVATAR_COUNT = 12;
+
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
@@ -195,6 +197,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setPhone(phone);
         user.setPassword(encodedPassword);
         user.setNickName(normalizeNickName(requestedNickName));
+        int avatarNumber = Math.floorMod(phone.hashCode(), DEFAULT_AVATAR_COUNT) + 1;
+        user.setIcon(String.format("/imgs/avatars/avatar-%02d.svg", avatarNumber));
 
         save(user);
         UserInfo userInfo = new UserInfo();

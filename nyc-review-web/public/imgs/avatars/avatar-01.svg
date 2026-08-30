@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Orange portrait avatar">
+  <rect width="120" height="120" rx="60" fill="#FFE1D6"/>
+  <path d="M18 120c4-29 19-42 42-42s38 13 42 42" fill="#FF6B45"/>
+  <circle cx="60" cy="54" r="31" fill="#F2B58F"/>
+  <path d="M31 50c1-25 13-37 31-37 20 0 31 15 30 38-8-3-16-10-21-18-7 9-20 15-40 17Z" fill="#3C2925"/>
+  <circle cx="49" cy="56" r="3" fill="#3C2925"/><circle cx="72" cy="56" r="3" fill="#3C2925"/>
+  <path d="M51 69c6 5 13 5 19 0" fill="none" stroke="#9B4E43" stroke-width="3" stroke-linecap="round"/>
+</svg>

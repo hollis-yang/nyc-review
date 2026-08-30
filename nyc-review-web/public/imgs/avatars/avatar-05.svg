@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Yellow portrait avatar">
+  <rect width="120" height="120" rx="60" fill="#FFF1C9"/>
+  <path d="M17 120c4-29 20-42 43-42s39 13 43 42" fill="#E2A52F"/>
+  <circle cx="60" cy="54" r="30" fill="#A9674B"/>
+  <path d="M30 48c1-23 13-36 31-36 18 0 30 13 31 36-7-4-12-10-14-18-10 10-27 16-48 18Z" fill="#281C1A"/>
+  <circle cx="49" cy="56" r="3" fill="#281C1A"/><circle cx="71" cy="56" r="3" fill="#281C1A"/>
+  <path d="M50 68c7 5 14 5 21 0" fill="none" stroke="#754037" stroke-width="3" stroke-linecap="round"/>
+  <path d="M45 45c4-3 8-3 12-1M65 44c4-2 8-1 11 1" fill="none" stroke="#281C1A" stroke-width="2" stroke-linecap="round"/>
+</svg>

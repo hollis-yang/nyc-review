@@ -69,11 +69,12 @@
     "logout": "Log Out",
     "notes": "Notes",
     "following": "Following",
-    "fans": "Fans",
+    "fans": "Followers",
     "signedIn": "Checked in {{n}} days",
     "signIn": "Check In",
     "signSuccess": "Check-in successful!",
     "city": "New York City",
+    "activity": "Your activity",
     "favorites": "Favorites",
     "itineraries": "Trips",
     "myVouchers": "Coupons",
@@ -85,6 +86,7 @@
     "noVouchers": "Claim or purchase a coupon and it will appear here.",
     "noReminders": "Flash-sale reminders will appear here.",
     "noMemory": "No long-term preferences have been learned yet.",
+    "noFollowingNotes": "Notes from people you follow will appear here.",
     "stops": "{{n}} stops",
     "paid": "Paid ${{amount}}",
     "shopUnavailable": "Shop unavailable",
@@ -471,13 +473,6 @@
       "actionFailed": "The approved action failed safely.",
       "actionRejected": "You rejected an action; no write was performed."
     }
-  },
-  "imageCredits": {
-    "title": "Image credits",
-    "intro": "{{count}} contextual images are used when a merchant-specific photo is unavailable. They are category-matched visuals, not claims about a specific storefront.",
-    "source": "Source",
-    "license": "License",
-    "profileLink": "Image credits"
   },
   "agentActions": {
     "favorite_shop": {

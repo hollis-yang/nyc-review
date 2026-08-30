@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Pink portrait avatar">
+  <rect width="120" height="120" rx="60" fill="#FFE0ED"/>
+  <path d="M16 120c5-29 21-42 44-42s39 13 44 42" fill="#DD5F91"/>
+  <circle cx="60" cy="54" r="30" fill="#7B4938"/>
+  <path d="M29 52c0-26 12-41 31-41s31 15 31 41c-7-9-15-15-23-19-7 9-20 15-39 19Z" fill="#191820"/>
+  <circle cx="49" cy="56" r="3" fill="#191820"/><circle cx="71" cy="56" r="3" fill="#191820"/>
+  <path d="M51 68c6 5 13 5 19 0" fill="none" stroke="#512B2C" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="88" cy="25" r="7" fill="#F6A8C5"/>
+</svg>

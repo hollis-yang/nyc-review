@@ -343,7 +343,9 @@ def generate_realistic_notes(
         )
         notes.append({
             "id": offset + 1, "shopId": shop["id"],
-            "userId": users[(offset * 5 + 1) % len(users)]["id"],
+            # 37 is coprime with all bundled profile sizes, so note authorship
+            # reaches the full persona set instead of only every fifth user.
+            "userId": users[(offset * 37 + 1) % len(users)]["id"],
             "title": title_template.format(name=shop["name"], area=shop["area"]),
             "images": str(shop.get("images") or "/imgs/icons/default-icon.png").split(",")[0],
             "content": content_shapes[(occurrence + int(shop["id"])) % len(content_shapes)],

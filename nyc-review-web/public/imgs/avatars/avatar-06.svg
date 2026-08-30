@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Teal portrait avatar">
+  <rect width="120" height="120" rx="60" fill="#D8F3F3"/>
+  <path d="M16 120c5-28 21-42 44-42s39 14 44 42" fill="#269B9B"/>
+  <circle cx="60" cy="54" r="30" fill="#E9B88F"/>
+  <path d="M31 49c2-23 13-36 30-36 18 0 29 12 31 34-15-1-26-7-32-17-4 9-14 15-29 19Z" fill="#272833"/>
+  <circle cx="49" cy="56" r="3" fill="#272833"/><circle cx="71" cy="56" r="3" fill="#272833"/>
+  <path d="M50 68c6 6 14 6 20 0" fill="none" stroke="#A55C50" stroke-width="3" stroke-linecap="round"/>
+  <path d="M78 21l10-8 4 16" fill="#269B9B"/>
+</svg>

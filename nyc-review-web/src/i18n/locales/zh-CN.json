@@ -74,6 +74,7 @@
     "signIn": "✍️ 签到",
     "signSuccess": "签到成功！",
     "city": "纽约市",
+    "activity": "我的内容与资产",
     "favorites": "收藏",
     "itineraries": "行程",
     "myVouchers": "优惠券",
@@ -85,6 +86,7 @@
     "noVouchers": "领取或购买的优惠券会显示在这里。",
     "noReminders": "秒杀提醒会显示在这里。",
     "noMemory": "AI 尚未学习到长期偏好。",
+    "noFollowingNotes": "关注用户发布的笔记会显示在这里。",
     "stops": "{{n}} 个地点",
     "paid": "支付 ${{amount}}",
     "shopUnavailable": "商铺不可用",
@@ -471,13 +473,6 @@
       "actionFailed": "操作安全失败，未产生未知写入。",
       "actionRejected": "你已拒绝操作，没有执行写入。"
     }
-  },
-  "imageCredits": {
-    "title": "图片署名",
-    "intro": "当商户专属图片不可用时，将使用 {{count}} 张按类别匹配的场景图片；这些图片不代表具体商户实景。",
-    "source": "来源",
-    "license": "许可",
-    "profileLink": "图片署名"
   },
   "agentActions": {
     "favorite_shop": {

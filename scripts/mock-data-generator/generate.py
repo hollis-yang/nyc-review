@@ -240,6 +240,30 @@ NAME_SUFFIXES = {
     6: ["Salon", "Grooming", "Nails", "Beauty Lab", "Studio"],
 }
 
+USER_AVATARS = tuple(f"/imgs/avatars/avatar-{index:02d}.svg" for index in range(1, 13))
+USER_INTERESTS = (
+    "independent coffee shops",
+    "affordable neighborhood dinners",
+    "accessible arts and culture",
+    "late-night food finds",
+    "weekend fitness classes",
+    "small live-music venues",
+    "family-friendly outings",
+    "quiet places to read",
+    "local bakeries and dessert stops",
+    "parks, walks, and waterfront routes",
+    "new beauty and wellness spots",
+    "group-friendly hidden gems",
+)
+USER_BIO_STYLES = (
+    "Always comparing practical details before making a plan.",
+    "Sharing honest notes from everyday trips around the city.",
+    "Usually planning for friends with different budgets and needs.",
+    "I save the places that feel useful enough to visit twice.",
+    "Here for thoughtful recommendations beyond the usual lists.",
+    "I like routes that leave room for one unexpected stop.",
+)
+
 
 POSITIVE_REVIEW_TEMPLATES = [
     "The staff was welcoming and the space felt {quality}. {feature} made the visit especially easy.",
@@ -894,24 +918,29 @@ def _nearest_neighborhood(borough: str, latitude: float, longitude: float) -> st
 
 
 def generate_users(rng: random.Random, count: int) -> list[dict[str, Any]]:
+    del rng  # User identities are stable even when other generator streams change.
     adjectives = ["Curious", "Local", "Hungry", "Urban", "Weekend", "Friendly", "Roaming", "Tasting"]
     nouns = ["Owl", "Fox", "Panda", "Nomad", "Neighbor", "Explorer", "Reader", "Planner"]
     users = []
     for user_id in range(1, count + 1):
+        community = NEIGHBORHOODS[(user_id * 7 + user_id // 11) % len(NEIGHBORHOODS)][1]
+        interest = USER_INTERESTS[(user_id * 5 + user_id // 7) % len(USER_INTERESTS)]
+        bio_style = USER_BIO_STYLES[(user_id * 11 + user_id // 13) % len(USER_BIO_STYLES)]
+        birth_year = 1978 + (user_id * 7) % 25
+        birth_month = 1 + (user_id * 5) % 12
+        birth_day = 1 + (user_id * 11) % 28
         users.append(
             {
                 "id": user_id,
                 "phone": f"+1212{user_id:07d}",
                 "nickName": f"{adjectives[user_id % len(adjectives)]}{nouns[(user_id * 3) % len(nouns)]}{user_id}",
-                "icon": "/imgs/icons/default-icon.png",
-                "city": "New York City",
-                "introduce": rng.choice(
-                    [
-                        "Finding thoughtful neighborhood places across NYC.",
-                        "Coffee, culture, and practical accessibility notes.",
-                        "Sharing honest group-friendly and budget-friendly discoveries.",
-                    ]
-                ),
+                "icon": USER_AVATARS[(user_id - 1) % len(USER_AVATARS)],
+                "city": community,
+                "introduce": f"Exploring {interest} from {community}. {bio_style}",
+                "gender": user_id % 2,
+                "birthday": f"{birth_year:04d}-{birth_month:02d}-{birth_day:02d}",
+                "fans": 0,
+                "followee": 0,
             }
         )
     return users
@@ -1314,7 +1343,42 @@ def generate_blog_comments(
 
 
 def generate_follows(rng: random.Random, count: int, user_count: int) -> list[dict[str, Any]]:
+    if user_count < 2 and count:
+        raise ValueError("at least two users are required for follows")
+    if count > user_count * (user_count - 1):
+        raise ValueError("follow count exceeds the number of directed user pairs")
+
     pairs: set[tuple[int, int]] = set()
+    undirected: set[tuple[int, int]] = set()
+
+    # Roughly one third of the generated edges form reciprocal friendships.
+    mutual_pairs = count // 6
+    delta = 1
+    while len(undirected) < mutual_pairs and delta < user_count:
+        for source in range(1, user_count + 1):
+            target = ((source + delta - 1) % user_count) + 1
+            edge = (min(source, target), max(source, target))
+            if source == target or edge in undirected:
+                continue
+            undirected.add(edge)
+            pairs.add((source, target))
+            pairs.add((target, source))
+            if len(undirected) >= mutual_pairs:
+                break
+        delta += 1
+
+    # Give every persona at least one outgoing connection before filling the
+    # wider graph. This makes profile statistics useful even in small profiles.
+    sources_with_outgoing = {source for source, _ in pairs}
+    for source in range(1, user_count + 1):
+        if len(pairs) >= count:
+            break
+        if source in sources_with_outgoing:
+            continue
+        target = (source % user_count) + 1
+        pairs.add((source, target))
+        sources_with_outgoing.add(source)
+
     attempts = 0
     while len(pairs) < count and attempts < count * 20:
         attempts += 1
@@ -1322,10 +1386,74 @@ def generate_follows(rng: random.Random, count: int, user_count: int) -> list[di
         target = rng.randint(1, user_count)
         if source != target:
             pairs.add((source, target))
+    if len(pairs) != count:
+        raise ValueError("unable to generate the requested follow graph")
     return [
         {"id": index, "userId": source, "followUserId": target}
         for index, (source, target) in enumerate(sorted(pairs), start=1)
     ]
+
+
+def update_user_social_counts(
+    users: list[dict[str, Any]], follows: Iterable[dict[str, Any]]
+) -> None:
+    by_id = {user["id"]: user for user in users}
+    for user in users:
+        user["fans"] = 0
+        user["followee"] = 0
+    for follow in follows:
+        source = by_id.get(follow["userId"])
+        target = by_id.get(follow["followUserId"])
+        if source is not None:
+            source["followee"] += 1
+        if target is not None:
+            target["fans"] += 1
+
+
+def generate_blog_likes(
+    users: list[dict[str, Any]],
+    blogs: list[dict[str, Any]],
+    follows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not users or not blogs:
+        return []
+    followed_by_user: dict[int, list[int]] = {}
+    for follow in follows:
+        followed_by_user.setdefault(follow["userId"], []).append(follow["followUserId"])
+    blogs_by_author: dict[int, list[dict[str, Any]]] = {}
+    for blog in blogs:
+        blogs_by_author.setdefault(blog["userId"], []).append(blog)
+
+    average_blogs = max(1, len(blogs) // len(users))
+    likes_per_user = min(32, max(8, average_blogs * 3))
+    relationships: list[dict[str, Any]] = []
+    for user in users:
+        user_id = user["id"]
+        selected: set[int] = set()
+        followed_authors = followed_by_user.get(user_id, [])
+        for offset, author_id in enumerate(followed_authors):
+            authored = blogs_by_author.get(author_id) or []
+            if not authored:
+                continue
+            blog = authored[(user_id * 7 + offset * 3) % len(authored)]
+            if blog["userId"] != user_id:
+                selected.add(blog["id"])
+            if len(selected) >= likes_per_user * 2 // 3:
+                break
+
+        step = 0
+        while len(selected) < likes_per_user and step < likes_per_user * 20:
+            blog = blogs[(user_id * 997 + step * 7919) % len(blogs)]
+            if blog["userId"] != user_id:
+                selected.add(blog["id"])
+            step += 1
+        for offset, blog_id in enumerate(sorted(selected)):
+            relationships.append({
+                "blogId": blog_id,
+                "userId": user_id,
+                "score": 1_760_000_000_000 + user_id * 10_000 + offset,
+            })
+    return sorted(relationships, key=lambda item: (item["blogId"], item["userId"]))
 
 
 def generate_vouchers(
@@ -1554,6 +1682,8 @@ def generate_dataset(
         else generate_blog_comments(rng, profile.blog_comments, blogs, users)
     )
     follows = generate_follows(rng, profile.follows, profile.users)
+    update_user_social_counts(users, follows)
+    blog_likes = generate_blog_likes(users, blogs, follows)
     vouchers, seckill_vouchers = generate_vouchers(
         rng,
         profile.standard_vouchers,
@@ -1584,6 +1714,7 @@ def generate_dataset(
         "blogs.json": blogs,
         "blog_comments.json": blog_comments,
         "follows.json": follows,
+        "blog_likes.json": blog_likes,
         "vouchers.json": vouchers,
         "seckill_vouchers.json": seckill_vouchers,
     }
@@ -1626,6 +1757,7 @@ def generate_dataset(
             "syntheticReviewRoots": depth_counts.get("0", 0),
             "syntheticBlogs": len(blogs),
             "syntheticBlogComments": len(blog_comments),
+            "syntheticBlogLikes": len(blog_likes),
             "syntheticVouchers": len(vouchers),
             "reviewDepthCounts": dict(sorted(depth_counts.items())),
             "contentGeneratorVersion": (

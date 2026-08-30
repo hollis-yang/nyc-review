@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Blue portrait avatar">
+  <rect width="120" height="120" rx="60" fill="#DDEBFF"/>
+  <path d="M16 120c5-28 21-42 44-42s39 14 44 42" fill="#407BCE"/>
+  <circle cx="60" cy="53" r="30" fill="#8C573F"/>
+  <path d="M30 47c2-23 14-35 31-35 19 0 31 14 31 36-9-8-18-11-31-11-12 0-22 3-31 10Z" fill="#1E1C24"/>
+  <circle cx="49" cy="55" r="3" fill="#1E1C24"/><circle cx="71" cy="55" r="3" fill="#1E1C24"/>
+  <path d="M51 68c5 4 13 4 18 0" fill="none" stroke="#5A2D2B" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -51,6 +51,7 @@ REQUIRED_DATASET_FILES = (
     "seckill_vouchers.json",
 )
 OPTIONAL_DATASET_FILES = (
+    "blog_likes.json",
     "shop_images.json",
     "shop_source_matches.json",
     "shop_field_observations.json",
@@ -363,7 +364,14 @@ def build_mysql_sql(
     statements += _insert_statements(
         "tb_user_info",
         ("user_id", "city", "introduce", "fans", "followee", "gender", "birthday", "credits", "level", "create_time", "update_time"),
-        ((item["id"], item["city"], item["introduce"], 0, 0, 0, None, 0, 0, FIXED_TIME, FIXED_TIME) for item in users),
+        (
+            (
+                item["id"], item["city"], item["introduce"], item.get("fans", 0),
+                item.get("followee", 0), item.get("gender", 0), item.get("birthday"),
+                0, 0, FIXED_TIME, FIXED_TIME,
+            )
+            for item in users
+        ),
     )
     if any("rootId" in item for item in reviews):
         statements += _insert_statements(
@@ -527,6 +535,7 @@ def _resp_command(*arguments: Any) -> bytes:
 def build_redis_resp(datasets: dict[str, list[dict[str, Any]]]) -> bytes:
     shops = datasets["shops.json"]
     seckill = datasets["seckill_vouchers.json"]
+    blog_likes = datasets.get("blog_likes.json", [])
     cleanup_script = """local total=0 for _,pattern in ipairs(ARGV) do local removed=0 repeat removed=0 local cursor='0' repeat local result=redis.call('SCAN',cursor,'MATCH',pattern,'COUNT',1000) cursor=result[1] local keys=result[2] if #keys>0 then redis.call('DEL',unpack(keys)) removed=removed+#keys total=total+#keys end until cursor=='0' until removed==0 end return total"""
     commands = [
         _resp_command(
@@ -567,6 +576,16 @@ def build_redis_resp(datasets: dict[str, list[dict[str, Any]]]) -> bytes:
     for item in sorted(seckill, key=lambda entry: entry["voucherId"]):
         commands.append(_resp_command("SET", f"seckill:stock:{item['voucherId']}", item["stock"]))
         commands.append(_resp_command("DEL", f"seckill:order:{item['voucherId']}"))
+    likes_by_blog: dict[int, list[dict[str, Any]]] = {}
+    for item in blog_likes:
+        likes_by_blog.setdefault(item["blogId"], []).append(item)
+    for blog_id in sorted(likes_by_blog):
+        items = likes_by_blog[blog_id]
+        for offset in range(0, len(items), 100):
+            arguments: list[Any] = ["ZADD", f"blog:liked:{blog_id}"]
+            for item in items[offset : offset + 100]:
+                arguments.extend((item["score"], item["userId"]))
+            commands.append(_resp_command(*arguments))
     return b"".join(commands)
 
 
@@ -636,6 +655,7 @@ def build_import_bundle(
             "syntheticReviewRoots": review_depth_counts.get("0", 0),
             "syntheticBlogs": len(datasets.get("blogs.json", [])),
             "syntheticBlogComments": len(datasets.get("blog_comments.json", [])),
+            "syntheticBlogLikes": len(datasets.get("blog_likes.json", [])),
             "syntheticVouchers": len(datasets.get("vouchers.json", [])),
             "reviewDepthCounts": dict(sorted(review_depth_counts.items())),
             "illustrativeImages": len(images),

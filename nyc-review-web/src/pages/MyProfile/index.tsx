@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LeftOutline } from 'antd-mobile-icons';
-import { Tabs, Toast } from 'antd-mobile';
+import {
+  BellOutline,
+  ContentOutline,
+  CouponOutline,
+  FillinOutline,
+  HeartOutline,
+  LeftOutline,
+  TravelOutline,
+} from 'antd-mobile-icons';
+import { Toast } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo, sign, signCount } from '../../api/user';
@@ -18,6 +26,15 @@ import type { BlogData } from '../../components/BlogCard';
 import MerchantVisual, { NoteVisual } from '../../components/MerchantVisual';
 import styles from './MyProfile.module.css';
 
+type ProfileSection =
+  | 'notes'
+  | 'favorites'
+  | 'itineraries'
+  | 'vouchers'
+  | 'reminders'
+  | 'memory'
+  | 'following';
+
 export default function MyProfile() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -26,7 +43,7 @@ export default function MyProfile() {
   const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
   const [blogs, setBlogs] = useState<BlogData[]>([]);
   const [followBlogs, setFollowBlogs] = useState<BlogData[]>([]);
-  const [activeTab, setActiveTab] = useState('notes');
+  const [activeSection, setActiveSection] = useState<ProfileSection>('notes');
   const [params, setParams] = useState({ minTime: 0, offset: 0 });
   const [loading, setLoading] = useState(false);
   const [signDays, setSignDays] = useState(0);
@@ -116,8 +133,8 @@ export default function MyProfile() {
     }
   }, [params, loading]);
 
-  const handleTabChange = (key: string) => {
-    setActiveTab(key);
+  const handleSectionChange = (key: ProfileSection) => {
+    setActiveSection(key);
     if (key === 'following') loadFollowBlogs(true);
   };
 
@@ -198,6 +215,167 @@ export default function MyProfile() {
     </div>
   );
 
+  const activityItems: Array<{
+    key: Exclude<ProfileSection, 'notes' | 'following'>;
+    count: number;
+    label: string;
+    icon: ReactNode;
+  }> = [
+    { key: 'favorites', count: assets?.counts.favorites ?? 0, label: t('profile.favorites'), icon: <HeartOutline /> },
+    { key: 'itineraries', count: assets?.counts.itineraries ?? 0, label: t('profile.itineraries'), icon: <TravelOutline /> },
+    { key: 'vouchers', count: assets?.counts.vouchers ?? 0, label: t('profile.myVouchers'), icon: <CouponOutline /> },
+    { key: 'reminders', count: assets?.counts.reminders ?? 0, label: t('profile.reminders'), icon: <BellOutline /> },
+    { key: 'memory', count: assets?.counts.memories ?? 0, label: t('profile.aiMemory'), icon: <FillinOutline /> },
+  ];
+
+  const sectionMeta = activeSection === 'notes'
+    ? { label: t('profile.notes'), count: blogs.length, icon: <ContentOutline /> }
+    : activeSection === 'following'
+      ? { label: t('profile.following'), count: info.followee || 0, icon: <HeartOutline /> }
+      : activityItems.find((item) => item.key === activeSection)!;
+
+  const renderSelectedContent = () => {
+    if (activeSection === 'notes') {
+      return blogs.length ? blogs.map((blog) => (
+        <button key={blog.id} className={styles.blogItem}
+          onClick={() => navigate(`/blog-detail/${blog.id}`)}>
+          <span className={styles.blogItemImg}>
+            <NoteVisual
+              blogId={blog.id}
+              shopId={blog.shopId}
+              shopName={blog.shopName}
+              typeId={blog.typeId}
+              images={blog.images}
+              sourceType={blog.sourceType}
+              alt={blog.title}
+              loading="lazy"
+            />
+          </span>
+          <span className={styles.blogItemInfo}>
+            <span className={styles.blogItemTitle}>{blog.title}</span>
+            <span className={styles.blogItemMeta}>👍 {blog.liked} · 💬 {blog.comments ?? 0}</span>
+          </span>
+        </button>
+      )) : empty(t('profile.noNotes'));
+    }
+
+    if (activeSection === 'favorites') {
+      if (assetsLoading) return <div className={styles.loadingMore}>{t('home.loading')}</div>;
+      return assets?.favorites.length ? assets.favorites.map((favorite) => (
+        <button className={styles.assetCard} key={favorite.id}
+          onClick={() => navigate(`/shop-detail/${favorite.shopId}`)}>
+          <MerchantVisual
+            className={styles.assetImage}
+            shopId={favorite.shopId}
+            name={favorite.name}
+            images={favorite.images}
+            alt={favorite.name}
+            loading="lazy"
+          />
+          <span className={styles.assetBody}>
+            <strong>{favorite.name}</strong>
+            <small>{[favorite.neighborhood, favorite.borough].filter(Boolean).join(', ')}</small>
+            <small>{favorite.address}</small>
+          </span>
+          <span className={styles.assetArrow}>›</span>
+        </button>
+      )) : empty(t('profile.noFavorites'));
+    }
+
+    if (activeSection === 'itineraries') {
+      return assets?.itineraries.length ? assets.itineraries.map((trip) => (
+        <div className={styles.assetCard} key={trip.id}>
+          <span className={styles.assetGlyph}>⌖</span>
+          <span className={styles.assetBody}>
+            <strong>{trip.title}</strong>
+            <small>{trip.shopNames.join(' · ')}</small>
+            <span className={styles.assetMeta}>
+              {t('profile.stops', { n: trip.shopIds.length })}
+              {trip.itinerary.total_estimated_cost_cents != null &&
+                ` · $${(trip.itinerary.total_estimated_cost_cents / 100).toFixed(0)}`}
+              {' · '}{formatDate(trip.updatedAt)}
+            </span>
+          </span>
+        </div>
+      )) : empty(t('profile.noItineraries'));
+    }
+
+    if (activeSection === 'vouchers') {
+      return assets?.vouchers.length ? assets.vouchers.map((voucher) => (
+        <button className={styles.voucherAsset} key={voucher.orderId}
+          onClick={() => voucher.shopId && navigate(`/shop-detail/${voucher.shopId}`)}>
+          <span className={styles.voucherValue}>${(voucher.actualValue / 100).toFixed(0)}</span>
+          <span className={styles.assetBody}>
+            <strong>{voucher.title}</strong>
+            <small>{voucher.shopName || t('profile.shopUnavailable')}</small>
+            <span className={styles.assetMeta}>
+              {t('profile.paid', { amount: (voucher.payValue / 100).toFixed(2) })}
+              {' · '}{t(`profile.voucherStatus.${voucher.orderStatus}`, {
+                defaultValue: t('profile.voucherStatus.unknown'),
+              })}
+            </span>
+          </span>
+          <span className={styles.assetArrow}>›</span>
+        </button>
+      )) : empty(t('profile.noVouchers'));
+    }
+
+    if (activeSection === 'reminders') {
+      return assets?.reminders.length ? assets.reminders.map((reminder) => (
+        <button className={styles.assetCard} key={reminder.id}
+          onClick={() => reminder.shopId && navigate(`/shop-detail/${reminder.shopId}`)}>
+          <span className={styles.assetGlyph}>◷</span>
+          <span className={styles.assetBody}>
+            <strong>{reminder.voucherTitle}</strong>
+            <small>{reminder.shopName}</small>
+            <span className={styles.assetMeta}>
+              {t('profile.remindAt', { time: formatDate(reminder.remindAt) })}
+            </span>
+          </span>
+          <span className={styles.statusPill}>{t(
+            `profile.reminderStatus.${reminder.status.toLowerCase()}`,
+            { defaultValue: reminder.status }
+          )}</span>
+        </button>
+      )) : empty(t('profile.noReminders'));
+    }
+
+    if (activeSection === 'memory') {
+      return (
+        <>
+          <div className={styles.memoryNotice}>{t('profile.memoryNotice')}</div>
+          {assets?.memories.length ? assets.memories.map((memory) => (
+            <div className={styles.memoryCard} key={memory.id}>
+              <label>{t(`profile.memoryKeys.${memory.key}`, { defaultValue: memory.key })}</label>
+              <input value={memoryDrafts[memory.id] ?? memory.value}
+                onChange={(event) => setMemoryDrafts((previous) => ({
+                  ...previous,
+                  [memory.id]: event.target.value,
+                }))} />
+              <div className={styles.memoryActions}>
+                <span />
+                <button onClick={() => removeMemory(memory.id)}>{t('common.delete')}</button>
+                <button className={styles.memorySave} onClick={() => saveMemory(memory.id)}>
+                  {t('common.save')}
+                </button>
+              </div>
+            </div>
+          )) : empty(t('profile.noMemory'))}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {followBlogs.map((blog) => (
+          <FeedCard key={blog.id} blog={blog} onLikeUpdate={() => handleLikeUpdate(blog.id)} />
+        ))}
+        {loading && <div className={styles.loadingMore}>{t('home.loading')}</div>}
+        {!loading && !followBlogs.length && empty(t('profile.noFollowingNotes'))}
+      </>
+    );
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -228,15 +406,26 @@ export default function MyProfile() {
             </div>
           </div>
           <div className={styles.stats}>
-            <div className={styles.statItem}>
+            <button
+              className={`${styles.statItem} ${activeSection === 'notes' ? styles.statItemActive : ''}`}
+              onClick={() => handleSectionChange('notes')}
+            >
               <div className={styles.statNum}>{blogs.length}</div>
               <div className={styles.statLabel}>{t('profile.notes')}</div>
-            </div>
+            </button>
             <div className={styles.statDivider} />
             <div className={styles.statItem}>
+              <div className={styles.statNum}>{info.fans || 0}</div>
+              <div className={styles.statLabel}>{t('profile.fans')}</div>
+            </div>
+            <div className={styles.statDivider} />
+            <button
+              className={`${styles.statItem} ${activeSection === 'following' ? styles.statItemActive : ''}`}
+              onClick={() => handleSectionChange('following')}
+            >
               <div className={styles.statNum}>{info.followee || 0}</div>
               <div className={styles.statLabel}>{t('profile.following')}</div>
-            </div>
+            </button>
           </div>
           <div className={styles.signSection}>
             {signedToday ? (
@@ -245,180 +434,43 @@ export default function MyProfile() {
               <button className={styles.signBtn} onClick={handleSign}>{t('profile.signIn')}</button>
             )}
           </div>
-          <div className={styles.assetSummary}>
-            {[
-              ['favorites', assets?.counts.favorites ?? 0, t('profile.favorites')],
-              ['itineraries', assets?.counts.itineraries ?? 0, t('profile.itineraries')],
-              ['vouchers', assets?.counts.vouchers ?? 0, t('profile.myVouchers')],
-              ['reminders', assets?.counts.reminders ?? 0, t('profile.reminders')],
-            ].map(([key, count, label]) => (
-              <button key={String(key)} className={styles.assetSummaryItem}
-                onClick={() => setActiveTab(String(key))}>
-                <span>{count}</span>
-                <small>{label}</small>
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
+      <section className={styles.activityCard} aria-label={t('profile.activity')}>
+        <h2>{t('profile.activity')}</h2>
+        <div className={styles.activityGrid}>
+          {activityItems.map((item) => (
+            <button
+              key={item.key}
+              className={`${styles.activityItem} ${activeSection === item.key ? styles.activityItemActive : ''}`}
+              onClick={() => handleSectionChange(item.key)}
+            >
+              <span className={styles.activityIcon}>{item.icon}</span>
+              <span className={styles.activityText}>
+                <strong>{item.label}</strong>
+                <small>{item.count}</small>
+              </span>
+              <span className={styles.activityArrow}>›</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div className={styles.content}>
-        <Tabs activeKey={activeTab} onChange={handleTabChange} style={{
-          '--active-line-color': '#ff6633',
-          '--active-title-color': '#ff6633',
-        } as React.CSSProperties}>
-          <Tabs.Tab title={t('profile.notes')} key="notes">
-            <div className={styles.tabContent}>
-              {blogs.length ? blogs.map((blog) => (
-                <button key={blog.id} className={styles.blogItem}
-                  onClick={() => navigate(`/blog-detail/${blog.id}`)}>
-                  <span className={styles.blogItemImg}>
-                    <NoteVisual
-                      blogId={blog.id}
-                      shopId={blog.shopId}
-                      shopName={blog.shopName}
-                      typeId={blog.typeId}
-                      images={blog.images}
-                      sourceType={blog.sourceType}
-                      alt={blog.title}
-                      loading="lazy"
-                    />
-                  </span>
-                  <span className={styles.blogItemInfo}>
-                    <span className={styles.blogItemTitle}>{blog.title}</span>
-                    <span className={styles.blogItemMeta}>👍 {blog.liked} · 💬 {blog.comments ?? 0}</span>
-                  </span>
-                </button>
-              )) : empty(t('profile.noNotes'))}
-            </div>
-          </Tabs.Tab>
-
-          <Tabs.Tab title={`${t('profile.favorites')} ${assets?.counts.favorites ?? 0}`} key="favorites">
-            <div className={styles.tabContent}>
-              {assetsLoading ? <div className={styles.loadingMore}>{t('home.loading')}</div> :
-                assets?.favorites.length ? assets.favorites.map((favorite) => (
-                  <button className={styles.assetCard} key={favorite.id}
-                    onClick={() => navigate(`/shop-detail/${favorite.shopId}`)}>
-                    <MerchantVisual
-                      className={styles.assetImage}
-                      shopId={favorite.shopId}
-                      name={favorite.name}
-                      images={favorite.images}
-                      alt={favorite.name}
-                      loading="lazy"
-                    />
-                    <span className={styles.assetBody}>
-                      <strong>{favorite.name}</strong>
-                      <small>{[favorite.neighborhood, favorite.borough].filter(Boolean).join(', ')}</small>
-                      <small>{favorite.address}</small>
-                    </span>
-                    <span className={styles.assetArrow}>›</span>
-                  </button>
-                )) : empty(t('profile.noFavorites'))}
-            </div>
-          </Tabs.Tab>
-
-          <Tabs.Tab title={`${t('profile.itineraries')} ${assets?.counts.itineraries ?? 0}`} key="itineraries">
-            <div className={styles.tabContent}>
-              {assets?.itineraries.length ? assets.itineraries.map((trip) => (
-                <div className={styles.assetCard} key={trip.id}>
-                  <span className={styles.assetGlyph}>⌖</span>
-                  <span className={styles.assetBody}>
-                    <strong>{trip.title}</strong>
-                    <small>{trip.shopNames.join(' · ')}</small>
-                    <span className={styles.assetMeta}>
-                      {t('profile.stops', { n: trip.shopIds.length })}
-                      {trip.itinerary.total_estimated_cost_cents != null &&
-                        ` · $${(trip.itinerary.total_estimated_cost_cents / 100).toFixed(0)}`}
-                      {' · '}{formatDate(trip.updatedAt)}
-                    </span>
-                  </span>
-                </div>
-              )) : empty(t('profile.noItineraries'))}
-            </div>
-          </Tabs.Tab>
-
-          <Tabs.Tab title={`${t('profile.myVouchers')} ${assets?.counts.vouchers ?? 0}`} key="vouchers">
-            <div className={styles.tabContent}>
-              {assets?.vouchers.length ? assets.vouchers.map((voucher) => (
-                <button className={styles.voucherAsset} key={voucher.orderId}
-                  onClick={() => voucher.shopId && navigate(`/shop-detail/${voucher.shopId}`)}>
-                  <span className={styles.voucherValue}>${(voucher.actualValue / 100).toFixed(0)}</span>
-                  <span className={styles.assetBody}>
-                    <strong>{voucher.title}</strong>
-                    <small>{voucher.shopName || t('profile.shopUnavailable')}</small>
-                    <span className={styles.assetMeta}>
-                      {t('profile.paid', { amount: (voucher.payValue / 100).toFixed(2) })}
-                      {' · '}{t(`profile.voucherStatus.${voucher.orderStatus}`, {
-                        defaultValue: t('profile.voucherStatus.unknown'),
-                      })}
-                    </span>
-                  </span>
-                  <span className={styles.assetArrow}>›</span>
-                </button>
-              )) : empty(t('profile.noVouchers'))}
-            </div>
-          </Tabs.Tab>
-
-          <Tabs.Tab title={`${t('profile.reminders')} ${assets?.counts.reminders ?? 0}`} key="reminders">
-            <div className={styles.tabContent}>
-              {assets?.reminders.length ? assets.reminders.map((reminder) => (
-                <button className={styles.assetCard} key={reminder.id}
-                  onClick={() => reminder.shopId && navigate(`/shop-detail/${reminder.shopId}`)}>
-                  <span className={styles.assetGlyph}>◷</span>
-                  <span className={styles.assetBody}>
-                    <strong>{reminder.voucherTitle}</strong>
-                    <small>{reminder.shopName}</small>
-                    <span className={styles.assetMeta}>
-                      {t('profile.remindAt', { time: formatDate(reminder.remindAt) })}
-                    </span>
-                  </span>
-                  <span className={styles.statusPill}>{t(
-                    `profile.reminderStatus.${reminder.status.toLowerCase()}`,
-                    { defaultValue: reminder.status }
-                  )}</span>
-                </button>
-              )) : empty(t('profile.noReminders'))}
-            </div>
-          </Tabs.Tab>
-
-          <Tabs.Tab title={t('profile.aiMemory')} key="memory">
-            <div className={styles.tabContent}>
-              <div className={styles.memoryNotice}>{t('profile.memoryNotice')}</div>
-              {assets?.memories.length ? assets.memories.map((memory) => (
-                <div className={styles.memoryCard} key={memory.id}>
-                  <label>{t(`profile.memoryKeys.${memory.key}`, { defaultValue: memory.key })}</label>
-                  <input value={memoryDrafts[memory.id] ?? memory.value}
-                    onChange={(event) => setMemoryDrafts((previous) => ({
-                      ...previous,
-                      [memory.id]: event.target.value,
-                  }))} />
-                  <div className={styles.memoryActions}>
-                    <span />
-                    <button onClick={() => removeMemory(memory.id)}>{t('common.delete')}</button>
-                    <button className={styles.memorySave} onClick={() => saveMemory(memory.id)}>
-                      {t('common.save')}
-                    </button>
-                  </div>
-                </div>
-              )) : empty(t('profile.noMemory'))}
-            </div>
-          </Tabs.Tab>
-
-          <Tabs.Tab title={t('profile.following')} key="following">
-            <div className={styles.tabContent} onScroll={handleScroll} ref={containerRef}>
-              {followBlogs.map((blog) => (
-                <FeedCard key={blog.id} blog={blog} onLikeUpdate={() => handleLikeUpdate(blog.id)} />
-              ))}
-              {loading && <div className={styles.loadingMore}>{t('home.loading')}</div>}
-            </div>
-          </Tabs.Tab>
-        </Tabs>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionIcon}>{sectionMeta.icon}</span>
+          <h2>{sectionMeta.label}</h2>
+          <span className={styles.sectionCount}>{sectionMeta.count}</span>
+        </div>
+        <div
+          className={styles.tabContent}
+          onScroll={activeSection === 'following' ? handleScroll : undefined}
+          ref={activeSection === 'following' ? containerRef : undefined}
+        >
+          {renderSelectedContent()}
+        </div>
       </div>
-
-      <button className={styles.creditsLink} onClick={() => navigate('/image-credits')}>
-        {t('imageCredits.profileLink')} ›
-      </button>
 
       <FootBar activeBtn={4} />
     </div>

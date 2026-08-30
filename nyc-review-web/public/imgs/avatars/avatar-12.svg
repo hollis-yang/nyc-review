@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Sky portrait avatar">
+  <rect width="120" height="120" rx="60" fill="#DDF3FB"/>
+  <path d="M16 120c5-29 21-42 44-42s39 13 44 42" fill="#359BC4"/>
+  <circle cx="60" cy="54" r="30" fill="#B97855"/>
+  <path d="M30 50c1-24 13-38 31-38 18 0 30 13 31 36-12-2-22-8-29-18-5 10-16 17-33 20Z" fill="#251D1C"/>
+  <circle cx="49" cy="56" r="3" fill="#251D1C"/><circle cx="71" cy="56" r="3" fill="#251D1C"/>
+  <path d="M51 69c6 5 13 5 19 0" fill="none" stroke="#754039" stroke-width="3" stroke-linecap="round"/>
+  <path d="M87 21l7-9 6 13-13-4Z" fill="#F4C95D"/>
+</svg>

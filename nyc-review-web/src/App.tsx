@@ -20,7 +20,6 @@ import MapPage from './pages/Map';
 import AiWorkspace from './pages/AiWorkspace';
 import ProtectedRoute from './components/ProtectedRoute';
 import LegacyRedirect from './components/LegacyRedirect';
-import ImageCredits from './pages/ImageCredits';
 
 export default function App() {
   const { i18n } = useTranslation();
@@ -51,7 +50,6 @@ export default function App() {
           <Route path="/user/:id" element={<OtherProfile />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/ai" element={<AiWorkspace />} />
-          <Route path="/image-credits" element={<ImageCredits />} />
           {/* 兼容旧版 .html URL 格式 */}
           <Route path="/index.html" element={<LegacyRedirect />} />
           <Route path="/login.html" element={<LegacyRedirect />} />

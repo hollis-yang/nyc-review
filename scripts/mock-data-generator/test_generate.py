@@ -1,11 +1,12 @@
 import hashlib
-import io
 import importlib.util
+import io
 import json
 import sys
 import tempfile
 import unittest
 import urllib.error
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -57,6 +58,14 @@ VOUCHER_OVERLAY = importlib.util.module_from_spec(VOUCHER_OVERLAY_SPEC)
 assert VOUCHER_OVERLAY_SPEC and VOUCHER_OVERLAY_SPEC.loader
 sys.modules[VOUCHER_OVERLAY_SPEC.name] = VOUCHER_OVERLAY
 VOUCHER_OVERLAY_SPEC.loader.exec_module(VOUCHER_OVERLAY)
+USER_SOCIAL_OVERLAY_PATH = MODULE_PATH.with_name("build_user_social_overlay.py")
+USER_SOCIAL_OVERLAY_SPEC = importlib.util.spec_from_file_location(
+    "build_user_social_overlay_test", USER_SOCIAL_OVERLAY_PATH
+)
+USER_SOCIAL_OVERLAY = importlib.util.module_from_spec(USER_SOCIAL_OVERLAY_SPEC)
+assert USER_SOCIAL_OVERLAY_SPEC and USER_SOCIAL_OVERLAY_SPEC.loader
+sys.modules[USER_SOCIAL_OVERLAY_SPEC.name] = USER_SOCIAL_OVERLAY
+USER_SOCIAL_OVERLAY_SPEC.loader.exec_module(USER_SOCIAL_OVERLAY)
 SNAPSHOT_PATH = MODULE_PATH.parents[1] / ".." / "data" / "sources" / "nyc-open-data-restaurants-2026-08-23.json"
 OSM_FIXTURE_PATH = MODULE_PATH.with_name("fixtures") / "osm_places_fixture.json"
 IMAGE_CATALOG_PATH = MODULE_PATH.parents[1] / ".." / "data" / "sources" / "wikimedia-illustrative-images-v1.json"
@@ -117,6 +126,8 @@ class GenerateDatasetTest(unittest.TestCase):
             reviews = json.loads((Path(first) / "shop_reviews.json").read_text())
             blogs = json.loads((Path(first) / "blogs.json").read_text())
             blog_comments = json.loads((Path(first) / "blog_comments.json").read_text())
+            follows = json.loads((Path(first) / "follows.json").read_text())
+            blog_likes = json.loads((Path(first) / "blog_likes.json").read_text())
             vouchers = json.loads((Path(first) / "vouchers.json").read_text())
             seckill = json.loads((Path(first) / "seckill_vouchers.json").read_text())
             import_manifest = json.loads((Path(first) / "import_manifest.json").read_text())
@@ -134,6 +145,7 @@ class GenerateDatasetTest(unittest.TestCase):
                 voucher_by_id[item["voucherId"]]["shopId"] for item in seckill
             }
             blog_ids = {blog["id"] for blog in blogs}
+            blog_by_id = {blog["id"]: blog for blog in blogs}
             comment_ids = {comment["id"] for comment in blog_comments}
 
             self.assertEqual(36, len(shops))
@@ -165,6 +177,22 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertTrue(all(shop["sourceType"] == "MOCK" for shop in shops))
             self.assertTrue(all(shop["externalId"].startswith("mock:") for shop in shops))
             self.assertTrue(all(shop["syntheticFields"] for shop in shops))
+            self.assertGreaterEqual(len({user["icon"] for user in users}), 8)
+            self.assertGreaterEqual(len({user["city"] for user in users}), 10)
+            self.assertGreaterEqual(len({user["introduce"] for user in users}), 12)
+            outgoing = Counter(item["userId"] for item in follows)
+            incoming = Counter(item["followUserId"] for item in follows)
+            self.assertTrue(all(user["followee"] == outgoing[user["id"]] for user in users))
+            self.assertTrue(all(user["fans"] == incoming[user["id"]] for user in users))
+            follow_pairs = {(item["userId"], item["followUserId"]) for item in follows}
+            self.assertTrue(any((target, source) in follow_pairs for source, target in follow_pairs))
+            self.assertTrue(blog_likes)
+            self.assertTrue(all(item["blogId"] in blog_ids for item in blog_likes))
+            self.assertTrue(all(item["userId"] in user_ids for item in blog_likes))
+            self.assertTrue(all(
+                blog_by_id[item["blogId"]]["userId"] != item["userId"]
+                for item in blog_likes
+            ))
 
             expected_shop_ids = sorted(shop_ids)
             expected_shop_ids_sha = hashlib.sha256(
@@ -196,6 +224,7 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertGreater(restore_time_zone, first_shop_insert)
             self.assertIn(b"GEOADD", redis_resp)
             self.assertIn(b"shop:geo:1", redis_resp)
+            self.assertIn(b"blog:liked:", redis_resp)
             for item in seckill:
                 self.assertIn(f"seckill:stock:{item['voucherId']}".encode(), redis_resp)
 
@@ -233,6 +262,34 @@ class GenerateDatasetTest(unittest.TestCase):
             [1, 2, 3, 4, 5, 6],
             [category["id"] for category in GENERATOR.CATEGORIES],
         )
+
+    def test_user_social_overlay_is_scoped_and_seeds_likes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dataset = Path(directory) / "dataset"
+            overlay = Path(directory) / "overlay"
+            GENERATOR.generate_dataset("small", 12345, dataset)
+
+            report = USER_SOCIAL_OVERLAY.build_overlay(dataset, overlay, 12345)
+            mysql_sql = (overlay / "user_social_overlay.sql").read_text()
+            redis_commands = parse_resp_commands(
+                (overlay / "user_social_overlay.resp").read_bytes()
+            )
+
+            self.assertEqual(16, report["users"])
+            self.assertGreaterEqual(report["uniqueAvatars"], 8)
+            self.assertEqual(16, report["blogAuthorCoverage"])
+            self.assertEqual(16, report["commentAuthorCoverage"])
+            self.assertEqual(16, report["usersWithLikes"])
+            self.assertIn("Generated user identity mismatch", mysql_sql)
+            self.assertIn("DELETE f FROM `tb_follow`", mysql_sql)
+            self.assertIn("tmp_nyc_review_persona_target", mysql_sql)
+            self.assertNotIn(
+                "JOIN `tmp_nyc_review_persona` target_user",
+                mysql_sql,
+            )
+            self.assertNotIn("DELETE FROM `tb_user`", mysql_sql)
+            self.assertTrue(redis_commands)
+            self.assertTrue(all(command[0] == b"ZADD" for command in redis_commands))
 
     def test_medium_profile_expands_demo_scale_without_changing_load_profile(self):
         medium = GENERATOR.PROFILES["medium"]
@@ -351,6 +408,9 @@ class GenerateDatasetTest(unittest.TestCase):
             reviews = json.loads((output / "shop_reviews.json").read_text())
             blogs = json.loads((output / "blogs.json").read_text())
             blog_comments = json.loads((output / "blog_comments.json").read_text())
+            users = json.loads((output / "users.json").read_text())
+            follows = json.loads((output / "follows.json").read_text())
+            blog_likes = json.loads((output / "blog_likes.json").read_text())
             vouchers = json.loads((output / "vouchers.json").read_text())
             import_manifest = json.loads((output / "import_manifest.json").read_text())
             mysql_sql = (output / "mysql_import.sql").read_text()
@@ -401,6 +461,10 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertTrue(all("synthetic" not in blog["content"].casefold() for blog in blogs))
             self.assertTrue(all("a practical visit to" not in blog["title"].casefold() for blog in blogs))
             self.assertGreater(len({blog["content"] for blog in blogs}), len(shops))
+            self.assertEqual(len(users), len({blog["userId"] for blog in blogs}))
+            self.assertEqual(len(users), len({user["icon"] for user in users}))
+            self.assertTrue(follows)
+            self.assertTrue(blog_likes)
             self.assertEqual("REAL_ONLY", import_manifest["merchantIdentityMode"])
             self.assertEqual(expected_version, import_manifest["dataVersion"])
             self.assertEqual(0, import_manifest["provenance"]["mockShops"])
