@@ -204,8 +204,8 @@ if [[ ${#pending_indexes[@]} -gt 0 ]]; then
 
   queue_ready=0
   for _ in {1..16}; do
-    queue_counts="$(compose exec -T rabbitmq sh -lc \
-      'rabbitmqctl -q list_queues -p "$RABBITMQ_DEFAULT_VHOST" name messages messages_unacknowledged' \
+    queue_counts="$(compose exec -T rabbitmq sh -c \
+      '/opt/rabbitmq/sbin/rabbitmqctl -q list_queues -p "$RABBITMQ_DEFAULT_VHOST" name messages messages_unacknowledged' \
       | awk '$1 == "nyc-review.voucher.order.queue" {print $2 + 0, $3 + 0}')"
     [[ -n "$queue_counts" ]] || queue_counts="0 0"
     pending_orders="$(compose exec -T redis redis-cli --no-auth-warning ZCARD seckill:pending:orders | tr -d '\r')"
