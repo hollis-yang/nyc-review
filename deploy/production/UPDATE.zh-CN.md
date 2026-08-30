@@ -1,15 +1,11 @@
-# NYC Review 固定发布流程
+# NYC Review 固定生产发布流程
 
-这份流程适用于当前单台 Lightsail 生产环境。服务器只拉取 GHCR 镜像，
-不拉源码、不在服务器编译。生产环境始终使用 `sha-<完整 40 位提交 SHA>`，
-不使用会移动的 `main` 标签。
+这份流程适用于当前单台 AWS Lightsail 生产环境。服务器只拉取 GHCR 镜像，
+不拉源码、不编译代码。代码镜像与数据库发布统一绑定到完整的 40 位 Git SHA。
 
-## A. 普通代码更新（默认流程）
+## 日常发布：只需要一个 SHA
 
-适用于 React 前端、Spring 后端、Python Agent、各自 Dockerfile，以及前端
-Nginx 配置的修改。
-
-### 1. 在 Mac 测试并提交
+### 1. 在 Mac 提交并推送
 
 ```bash
 cd /Users/hollisyang/Desktop/hm-dianping
@@ -23,20 +19,42 @@ git push origin main
 
 ### 2. 等待 GitHub Actions
 
-打开仓库的 Actions 页面，等待 Spring、Agent、Web 三个任务全部成功。
-从成功任务中复制完整 40 位 commit SHA。不要下载 `.dockerbuild` Artifacts，
-它们只是构建记录。
+等待 Spring、Agent、Web 三个任务全部成功。三个任务显示的是同一个 commit，
+从任意一个任务复制完整的 40 位 commit SHA 即可。不要下载 `.dockerbuild`
+Artifacts，它们只是构建记录。
 
-### 3. 在 Lightsail 发布
+### 3. 在 Mac 执行一条命令
 
 ```bash
-cd /opt/nyc-review
-./scripts/deploy/update-production.sh <完整40位commit SHA>
+cd /Users/hollisyang/Desktop/hm-dianping
+./scripts/deploy/release-production.sh <完整40位commit SHA>
 ```
 
-脚本会依次验证配置、拉取固定标签镜像、更新容器、等待健康检查，并打印
-最终状态。MySQL、Redis、RabbitMQ、Qdrant、上传文件和 Agent 运行记录均
-保存在持久卷中，不会因普通代码发布而清空。
+这条命令必须在 Mac 本地仓库中执行，不是在 AWS 浏览器 SSH 中执行。它会：
+
+1. 确认 SHA 就是当前 `origin/main` commit，且仓库没有未提交文件；
+2. 打包生产 Compose、部署脚本和数据库发布清单；
+3. 把被 Git 忽略但列入清单的 SQL/Redis 数据文件一起上传 Lightsail；
+4. 暂停入口并等待秒杀订单队列清空；
+5. 只执行服务器尚未记录过的数据库变更；
+6. 拉取 `sha-<完整SHA>` 的 Spring、Agent、Web 镜像并等待全部健康。
+
+默认连接信息已经写入脚本：
+
+```text
+SSH key: /Users/hollisyang/Downloads/LightsailDefaultKey-us-east-1.pem
+Server:  ubuntu@34.194.141.58
+Path:    /opt/nyc-review
+```
+
+如果以后更换服务器或 SSH key，可以用环境变量覆盖，不需要修改脚本：
+
+```bash
+LIGHTSAIL_SSH_KEY=/新路径/key.pem \
+LIGHTSAIL_SSH_TARGET=ubuntu@新IP \
+NYC_REVIEW_REMOTE_ROOT=/opt/nyc-review \
+./scripts/deploy/release-production.sh <完整40位commit SHA>
+```
 
 ### 4. 验收
 
@@ -48,80 +66,64 @@ curl --fail --show-error http://34.194.141.58/agent-api/health
 
 绑定域名后，将地址替换为 `https://你的域名`。
 
-## B. 部署配置更新
+## 怎样加入下一次数据库更新
 
-修改 `compose.production.yml`、Caddy、部署脚本、环境变量模板或数据库 SQL
-时，除完成 A-1 和 A-2 外，还要在 Mac 重新生成并上传部署包：
+数据库发布清单是：
 
-```bash
-cd /Users/hollisyang/Desktop/hm-dianping
-./scripts/deploy/package-production-bundle.sh
-scp -i /Users/hollisyang/Downloads/LightsailDefaultKey-us-east-1.pem \
-  dist/nyc-review-production-bundle.tar.gz \
-  ubuntu@34.194.141.58:/tmp/
+```text
+deploy/production/database-release.tsv
 ```
 
-在 Lightsail 覆盖配置（不会覆盖 `.env.production`）：
+每次新增一行，四列依次为：
 
-```bash
-tar -xzf /tmp/nyc-review-production-bundle.tar.gz -C /opt/nyc-review
-cd /opt/nyc-review
-./scripts/deploy/check-production-config.sh .env.production
+```text
+唯一变更编号    schema或overlay    MySQL SQL路径    Redis RESP路径或-
 ```
 
-如果同一次提交也发布了新镜像，再执行 A-3。
+示例：
 
-## C. 生产环境变量更新
+```text
+20260901_add_user_badge_v1	schema	src/main/resources/db/migrations/016_add_user_badge.sql	-
+20260901_badge_seed_v1	overlay	data/generated/nyc-real-p13-full/badge_overlay.sql	data/generated/nyc-real-p13-full/badge_overlay.resp
+```
 
-只在服务器编辑真实环境文件：
+要求：
+
+- 一个变更编号上线后永远不要修改或复用；后续修正必须新增一行和新编号；
+- SQL 必须能安全重跑；需要同时改 Redis 时，使用 `redis-cli --pipe` 格式的 RESP；
+- `data/generated/...` 可以继续被 Git 忽略，一键脚本会按清单从 Mac 打包；
+- 当前清单已经包含 `015_password_auth_registration`、优惠券覆盖和用户社交数据；
+- 自动流程不会创建数据库备份，这是当前生产策略；数据库变更无法通过旧 SHA 自动回滚。
+
+## 哪些情况不使用这个脚本
+
+完整替换 P13 数据集不属于增量数据库更新。它可能删除或重建大量业务数据，
+仍需使用独立的 P13 导入流程：上传完整数据目录、暂停应用、导入 MySQL 与地图
+SQL、重新运行 Redis seed、重建 Agent 索引并单独验收。
+
+修改 `.env.production`（例如更换 DeepSeek API Key）也只在服务器完成：
 
 ```bash
 cd /opt/nyc-review
 nano .env.production
 ./scripts/deploy/check-production-config.sh .env.production
-docker compose --env-file .env.production -f compose.production.yml up -d --wait --wait-timeout 900
+docker compose --env-file .env.production -f compose.production.yml \
+  up -d --wait --wait-timeout 900
 ```
 
-不要输出、截图或提交 `.env.production`。每个密码和服务 Token 必须不同。
+不要输出、截图或提交 `.env.production`。
 
-## D. 数据库结构更新
+## 代码回滚与故障恢复
 
-`/docker-entrypoint-initdb.d` 只会在空 MySQL 数据卷首次创建时运行。给已有
-生产数据库增加或修改结构时，必须先创建 Lightsail 快照或数据库备份，再
-单独执行可重复、向后兼容的迁移脚本。不要通过删除 MySQL 数据卷来应用迁移。
-
-密码登录和国际手机号注册的升级必须先备份数据库，再执行
-`src/main/resources/db/migrations/015_password_auth_registration.sql`，确认 `tb_user.phone`
-为 `VARCHAR(32)` 且唯一索引存在，最后同时更新 Spring 与 Web 镜像。
-
-## E. P13 数据更新
-
-P13 是独立的数据发布，不属于普通代码更新：重新生成数据包、上传服务器、
-设置目录为文件 `0644`/目录 `0755`，暂停应用层，导入 MySQL 和地图 SQL，
-重新运行 `redis-seed`，再启动应用和 Agent。完成后必须验证：
-
-- `tb_shop_type` 为 6 条；
-- `tb_shop` 中 `OPENSTREETMAP` 为 5000 条（或新版本声明的数量）；
-- `tb_data_import` 有且只有一个 active 导入；
-- Agent 和 Qdrant 健康。
-
-## F. 回滚普通代码版本
-
-找到上一个成功部署的完整 SHA，在 Lightsail 执行：
+普通代码回滚可以在 Lightsail 执行原脚本：
 
 ```bash
 cd /opt/nyc-review
-./scripts/deploy/update-production.sh <上一个完整40位commit SHA>
+./scripts/deploy/update-production.sh <上一个成功版本的完整40位SHA>
 ```
 
-当前已知稳定版本为：
-
-```text
-529cf2090e0b3b55fe0b035c88077c5f99980092
-```
-
-代码镜像回滚不会自动回滚数据库迁移或 P13 数据，因此二者必须使用独立的
-备份和恢复方案。
+数据库发布失败时，一键脚本会尝试重新启动之前配置的应用镜像。已经成功执行并
+记录的数据库变更不会再次执行。代码镜像回滚不会撤销数据库或 Redis 变更。
 
 ## 永远不要做
 

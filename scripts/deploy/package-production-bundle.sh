@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export LC_ALL=C
+export COPYFILE_DISABLE=1
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
@@ -14,8 +15,9 @@ tar -czf "$OUTPUT" \
   .env.production.example \
   deploy/production \
   scripts/deploy/check-production-config.sh \
+  scripts/deploy/apply-production-release.sh \
   scripts/deploy/update-production.sh \
   src/main/resources/db
 
 echo "Created production bundle: $OUTPUT"
-echo "P13 generated data is intentionally excluded and must be transferred separately."
+echo "Generated database changes and full P13 data are intentionally excluded from this bundle."

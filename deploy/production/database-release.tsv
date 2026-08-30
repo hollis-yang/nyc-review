@@ -1,0 +1,5 @@
+# change_id	kind	sql_path	redis_resp_path
+# Never edit a row after it has reached production. Add a new, uniquely named row instead.
+015_password_auth_registration	schema	src/main/resources/db/migrations/015_password_auth_registration.sql	-
+20260830_voucher_coverage_v1	overlay	data/generated/nyc-real-p13-full/voucher_coverage_overlay.sql	data/generated/nyc-real-p13-full/voucher_coverage_redis.resp
+20260830_user_social_v1	overlay	data/generated/nyc-real-p13-full/user_social_overlay.sql	data/generated/nyc-real-p13-full/user_social_overlay.resp
