@@ -77,13 +77,16 @@ PROFILES = {
     "load": Profile(20_000, 2_000, 40_000, 10_000, 20_000, 30_000, 1_000, 100),
     # P8 profiles count only depth-0 review roots in Profile.reviews. Replies
     # are added deterministically at depth 1 and 2.
-    "real-small": Profile(12, 12, 60, 24, 48, 40, 6, 2),
-    "real-medium": Profile(5_000, 1_000, 100_000, 10_000, 20_000, 20_000, 750, 100),
-    "real-large": Profile(10_000, 2_000, 200_000, 20_000, 40_000, 40_000, 1_500, 150),
+    # Voucher-bearing shops are disjoint: approximately 60% have a standard
+    # voucher and 30% have a manual-only seckill voucher. The 12-shop contract
+    # profile uses the nearest whole-shop split (7 + 4).
+    "real-small": Profile(12, 12, 60, 24, 48, 40, 7, 4),
+    "real-medium": Profile(5_000, 1_000, 100_000, 10_000, 20_000, 20_000, 3_000, 1_500),
+    "real-large": Profile(10_000, 2_000, 200_000, 20_000, 40_000, 40_000, 6_000, 3_000),
     # The pinned single-source OSM inventory currently has ~16.6k eligible
     # identities. Keep headroom for source removals while preserving a
     # materially larger load profile than real-large.
-    "real-load": Profile(15_000, 4_000, 300_000, 30_000, 60_000, 80_000, 2_000, 200),
+    "real-load": Profile(15_000, 4_000, 300_000, 30_000, 60_000, 80_000, 9_000, 4_500),
 }
 
 
@@ -1331,19 +1334,36 @@ def generate_vouchers(
     seckill_count: int,
     shops: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if standard_count < 0 or seckill_count < 0:
+        raise ValueError("voucher counts must be non-negative")
+    if standard_count + seckill_count > len(shops):
+        raise ValueError("voucher-bearing shop counts cannot exceed the shop count")
+
+    # Stable hashing avoids coupling voucher ownership to the much larger
+    # review/blog RNG stream. Taking adjacent slices also guarantees that a
+    # shop has at most one generated offer, so 60% + 30% means 90% unique
+    # merchant coverage rather than overlapping voucher rows.
+    ranked_shops = sorted(
+        shops,
+        key=lambda shop: hashlib.sha256(
+            f"voucher-coverage-v2:{shop['dataVersion']}:{shop['id']}".encode("utf-8")
+        ).digest(),
+    )
+    standard_shops = ranked_shops[:standard_count]
+    seckill_shops = ranked_shops[standard_count : standard_count + seckill_count]
+
     vouchers: list[dict[str, Any]] = []
     seckill: list[dict[str, Any]] = []
     voucher_id = 1
-    for index in range(standard_count):
-        shop = shops[(index * 17) % len(shops)]
+    for shop in standard_shops:
         actual = rng.choice([1500, 2000, 2500, 3000, 5000])
         vouchers.append(
             {
                 "id": voucher_id,
                 "shopId": shop["id"],
-                "title": f"${actual // 100} demo credit",
-                "subTitle": "Platform-issued fictional promotion",
-                "rules": "Demo data only. One voucher per user.",
+                "title": f"${actual // 100} Local Credit",
+                "subTitle": "Limited-time local offer",
+                "rules": "One voucher per user. Terms apply.",
                 "payValueCents": max(100, actual - rng.choice([300, 500, 800])),
                 "actualValueCents": actual,
                 "type": 0,
@@ -1353,16 +1373,15 @@ def generate_vouchers(
             }
         )
         voucher_id += 1
-    for index in range(seckill_count):
-        shop = shops[(index * 23 + 3) % len(shops)]
+    for shop in seckill_shops:
         actual = rng.choice([2000, 3000, 5000])
         vouchers.append(
             {
                 "id": voucher_id,
                 "shopId": shop["id"],
-                "title": f"Flash ${actual // 100} demo credit",
-                "subTitle": "Manual seckill only",
-                "rules": "The user must click the seckill button. Agents cannot execute this action.",
+                "title": f"Flash ${actual // 100} Credit",
+                "subTitle": "Limited-time flash offer",
+                "rules": "The user must click the flash-sale button. Agents cannot execute this action.",
                 "payValueCents": actual // 2,
                 "actualValueCents": actual,
                 "type": 1,

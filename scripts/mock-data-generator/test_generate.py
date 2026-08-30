@@ -49,6 +49,14 @@ VALIDATOR = importlib.util.module_from_spec(VALIDATOR_SPEC)
 assert VALIDATOR_SPEC and VALIDATOR_SPEC.loader
 sys.modules[VALIDATOR_SPEC.name] = VALIDATOR
 VALIDATOR_SPEC.loader.exec_module(VALIDATOR)
+VOUCHER_OVERLAY_PATH = MODULE_PATH.with_name("build_voucher_overlay.py")
+VOUCHER_OVERLAY_SPEC = importlib.util.spec_from_file_location(
+    "build_voucher_overlay_test", VOUCHER_OVERLAY_PATH
+)
+VOUCHER_OVERLAY = importlib.util.module_from_spec(VOUCHER_OVERLAY_SPEC)
+assert VOUCHER_OVERLAY_SPEC and VOUCHER_OVERLAY_SPEC.loader
+sys.modules[VOUCHER_OVERLAY_SPEC.name] = VOUCHER_OVERLAY
+VOUCHER_OVERLAY_SPEC.loader.exec_module(VOUCHER_OVERLAY)
 SNAPSHOT_PATH = MODULE_PATH.parents[1] / ".." / "data" / "sources" / "nyc-open-data-restaurants-2026-08-23.json"
 OSM_FIXTURE_PATH = MODULE_PATH.with_name("fixtures") / "osm_places_fixture.json"
 IMAGE_CATALOG_PATH = MODULE_PATH.parents[1] / ".." / "data" / "sources" / "wikimedia-illustrative-images-v1.json"
@@ -118,6 +126,13 @@ class GenerateDatasetTest(unittest.TestCase):
             shop_ids = {shop["id"] for shop in shops}
             user_ids = {user["id"] for user in users}
             voucher_ids = {voucher["id"] for voucher in vouchers}
+            voucher_by_id = {voucher["id"]: voucher for voucher in vouchers}
+            standard_shop_ids = {
+                voucher["shopId"] for voucher in vouchers if voucher["type"] == 0
+            }
+            seckill_shop_ids = {
+                voucher_by_id[item["voucherId"]]["shopId"] for item in seckill
+            }
             blog_ids = {blog["id"] for blog in blogs}
             comment_ids = {comment["id"] for comment in blog_comments}
 
@@ -127,6 +142,9 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertTrue(all(voucher["shopId"] in shop_ids for voucher in vouchers))
             self.assertTrue(all(item["voucherId"] in voucher_ids for item in seckill))
             self.assertTrue(all(item["manualOnly"] for item in seckill))
+            self.assertEqual(GENERATOR.PROFILES["small"].standard_vouchers, len(standard_shop_ids))
+            self.assertEqual(GENERATOR.PROFILES["small"].seckill_vouchers, len(seckill_shop_ids))
+            self.assertFalse(standard_shop_ids & seckill_shop_ids)
             self.assertTrue(all(comment["blogId"] in blog_ids for comment in blog_comments))
             self.assertTrue(
                 all(
@@ -224,6 +242,59 @@ class GenerateDatasetTest(unittest.TestCase):
         self.assertEqual(5_000, GENERATOR.PROFILES["real-medium"].shops)
         self.assertEqual(10_000, GENERATOR.PROFILES["real-large"].shops)
         self.assertEqual(15_000, GENERATOR.PROFILES["real-load"].shops)
+
+    def test_real_profiles_target_60_30_disjoint_voucher_coverage(self):
+        for profile_name in ("real-medium", "real-large", "real-load"):
+            with self.subTest(profile=profile_name):
+                profile = GENERATOR.PROFILES[profile_name]
+                self.assertEqual(profile.shops * 60 // 100, profile.standard_vouchers)
+                self.assertEqual(profile.shops * 30 // 100, profile.seckill_vouchers)
+                self.assertEqual(
+                    profile.shops * 90 // 100,
+                    profile.standard_vouchers + profile.seckill_vouchers,
+                )
+
+    def test_voucher_assignment_is_stable_and_disjoint(self):
+        shops = [
+            {"id": shop_id, "dataVersion": "nyc-real-test"}
+            for shop_id in range(1, 101)
+        ]
+        first = GENERATOR.generate_vouchers(__import__("random").Random(7), 60, 30, shops)
+        second = GENERATOR.generate_vouchers(__import__("random").Random(7), 60, 30, shops)
+
+        self.assertEqual(first, second)
+        vouchers, seckill = first
+        voucher_by_id = {voucher["id"]: voucher for voucher in vouchers}
+        standard_shop_ids = {voucher["shopId"] for voucher in vouchers if voucher["type"] == 0}
+        seckill_shop_ids = {
+            voucher_by_id[item["voucherId"]]["shopId"] for item in seckill
+        }
+        self.assertEqual(60, len(standard_shop_ids))
+        self.assertEqual(30, len(seckill_shop_ids))
+        self.assertFalse(standard_shop_ids & seckill_shop_ids)
+
+    def test_voucher_overlay_builds_guarded_non_destructive_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = root / "dataset"
+            output = root / "overlay"
+            GENERATOR.generate_dataset("small", 12345, dataset)
+
+            report = VOUCHER_OVERLAY.build_overlay(dataset, output)
+            sql = (output / "voucher_coverage_overlay.sql").read_text()
+            commands = parse_resp_commands(
+                (output / "voucher_coverage_redis.resp").read_bytes()
+            )
+
+            self.assertEqual(36, report["shops"])
+            self.assertEqual(22, report["standardVoucherShops"])
+            self.assertEqual(11, report["seckillVoucherShops"])
+            self.assertEqual(0, report["assignmentOverlap"])
+            self.assertIn("CHECK (`shop_count` = 36)", sql)
+            self.assertIn("UPDATE `tb_voucher` SET `status` = 2", sql)
+            self.assertNotIn("DELETE FROM `tb_voucher`", sql)
+            self.assertEqual(3, sum(command[0] == b"DEL" for command in commands))
+            self.assertEqual(11, sum(command[0] == b"SETNX" for command in commands))
 
     def test_real_data_version_is_scoped_by_profile_snapshot_and_seed(self):
         snapshot_sha = "a" * 64

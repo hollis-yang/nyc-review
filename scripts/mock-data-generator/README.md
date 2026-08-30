@@ -9,11 +9,13 @@
 - `medium`：2,000 家全 Mock 商户、16,000 条评论，用于 P6 以前的规模测试。
 - `load`：20,000 家全 Mock 商户，用于按需压测。
 - `real-small`：12 家真实身份商户、60 条根评论，用于 P8 快速契约测试。
-- `real-medium`：5,000 家真实身份商户、100,000 条根评论，用于当前完整演示。
-- `real-large`：10,000 家真实身份商户、200,000 条根评论，用于扩展验证。
-- `real-load`：15,000 家真实身份商户、300,000 条根评论，用于按需压测。
+- `real-medium`：5,000 家真实身份商户、100,000 条根评论，用于当前完整演示；3,000 家有普通券，另有 1,500 家有手动秒杀券。
+- `real-large`：10,000 家真实身份商户、200,000 条根评论，用于扩展验证；优惠券仍按 60% 普通券、30% 秒杀券生成。
+- `real-load`：15,000 家真实身份商户、300,000 条根评论，用于按需压测；优惠券仍按 60% 普通券、30% 秒杀券生成。
 
 P8 Profile 中的评论数量指有 1–5 星评分的 depth-0 根评论；生成器还会确定性增加 depth-1 和 depth-2 回复。默认随机种子为 `20260817`。`manifest.json` 记录 Profile、种子、数据版本、来源快照、记录数量和每个数据文件的 SHA-256；`import_manifest.json` 记录 MySQL、Redis 与 Qdrant 共用的 shopId 清单和 SHA-256。
+
+真实身份 Profile 的普通券商户与秒杀券商户互不重叠：60% 商户展示普通券，30% 商户展示必须由用户手动参与的秒杀券，剩余 10% 不展示优惠券。Agent 可以规划普通券领取或秒杀提醒，但模型 Tool Catalog 仍不包含实际秒杀工具。
 
 ## P8 Real-only 数据集
 
@@ -83,6 +85,23 @@ redis-cli DEL cache:shopType:list
 ```
 
 全新数据库无需逐条重放历史迁移，依次导入 `bootstrap-schema.sql`、数据 SQL、地图 SQL，并执行 Redis seed。`bootstrap-schema.sql` 仅适用于空数据库；已有数据库不得覆盖导入。
+
+### 仅更新优惠券覆盖率
+
+如果环境已经导入完整数据且包含需要保留的用户、订单、收藏和评论，不要为了调整优惠券重新导入 `mysql_import.sql`。生成并应用增量 Overlay：
+
+```bash
+python3 scripts/mock-data-generator/build_voucher_overlay.py \
+  --dataset data/generated/nyc-real-p13-full
+
+# 先暂停新的秒杀请求并备份 tb_voucher、tb_seckill_voucher，再执行：
+mysql -u root -p nyc_review \
+  < data/generated/nyc-real-p13-full/voucher_coverage_overlay.sql
+redis-cli --pipe \
+  < data/generated/nyc-real-p13-full/voucher_coverage_redis.resp
+```
+
+Overlay 会先校验数据库中同一 `dataVersion` 的商户数，只下架该版本原有的合成优惠券，再以独立高位 ID 写入 60% 普通券和 30% 秒杀券；不会删除旧券、订单或用户资产。Redis 文件只移除旧版秒杀库存并用 `SETNX` 初始化新库存，不重置已开始售卖的新券。完整数据集以后重新生成时已经原生采用相同的 60% / 30% 互斥分配，不需要 Overlay。
 
 ## P6 Hybrid 历史 Profile
 
