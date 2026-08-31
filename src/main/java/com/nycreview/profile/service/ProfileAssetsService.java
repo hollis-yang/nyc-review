@@ -44,7 +44,7 @@ public class ProfileAssetsService {
                 new ProfileAssetsResponse.AssetCounts(
                         favorites.size(),
                         itineraries.size(),
-                        vouchers.size(),
+                        (int) vouchers.stream().filter(voucher -> !voucher.expired()).count(),
                         reminders.size(),
                         memories.size()
                 )
@@ -136,22 +136,28 @@ public class ProfileAssetsService {
         return jdbcTemplate.query(
                 "SELECT o.id AS order_id, v.id AS voucher_id, v.shop_id, v.title, v.sub_title, " +
                         "s.name AS shop_name, v.type, v.pay_value, v.actual_value, o.status AS order_status, " +
-                        "o.create_time FROM tb_voucher_order o JOIN tb_voucher v ON v.id = o.voucher_id " +
+                        "o.create_time, COALESCE(o.expires_at, DATE_ADD(o.create_time, INTERVAL 7 DAY)) AS expires_at " +
+                        "FROM tb_voucher_order o JOIN tb_voucher v ON v.id = o.voucher_id " +
                         "LEFT JOIN tb_shop s ON s.id = v.shop_id WHERE o.user_id = ? " +
                         "ORDER BY o.create_time DESC LIMIT 100",
-                (rs, row) -> new ProfileAssetsResponse.OwnedVoucher(
-                        rs.getLong("order_id"),
-                        rs.getLong("voucher_id"),
-                        rs.getObject("shop_id", Long.class),
-                        rs.getString("title"),
-                        rs.getString("sub_title"),
-                        rs.getString("shop_name"),
-                        rs.getInt("type"),
-                        rs.getLong("pay_value"),
-                        rs.getLong("actual_value"),
-                        rs.getInt("order_status"),
-                        localDateTime(rs.getTimestamp("create_time"))
-                ),
+                (rs, row) -> {
+                    LocalDateTime expiresAt = localDateTime(rs.getTimestamp("expires_at"));
+                    return new ProfileAssetsResponse.OwnedVoucher(
+                            rs.getLong("order_id"),
+                            rs.getLong("voucher_id"),
+                            rs.getObject("shop_id", Long.class),
+                            rs.getString("title"),
+                            rs.getString("sub_title"),
+                            rs.getString("shop_name"),
+                            rs.getInt("type"),
+                            rs.getLong("pay_value"),
+                            rs.getLong("actual_value"),
+                            rs.getInt("order_status"),
+                            localDateTime(rs.getTimestamp("create_time")),
+                            expiresAt,
+                            expiresAt != null && !expiresAt.isAfter(LocalDateTime.now())
+                    );
+                },
                 userId
         );
     }

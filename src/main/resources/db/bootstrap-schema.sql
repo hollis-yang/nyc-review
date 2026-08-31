@@ -588,12 +588,14 @@ CREATE TABLE `tb_voucher_order` (
   `pay_type` tinyint unsigned NOT NULL DEFAULT '1' COMMENT '支付方式',
   `status` tinyint unsigned NOT NULL DEFAULT '1' COMMENT '订单状态',
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
+  `expires_at` datetime DEFAULT NULL COMMENT 'Coupon ownership expiration time',
   `pay_time` timestamp NULL DEFAULT NULL COMMENT '支付时间',
   `use_time` timestamp NULL DEFAULT NULL COMMENT '核销时间',
   `refund_time` timestamp NULL DEFAULT NULL COMMENT '退款时间',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_voucher_order_user_voucher` (`user_id`,`voucher_id`)
+  UNIQUE KEY `uk_voucher_order_user_voucher` (`user_id`,`voucher_id`),
+  KEY `idx_voucher_order_user_expiry` (`user_id`,`expires_at`,`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci ROW_FORMAT=COMPACT;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

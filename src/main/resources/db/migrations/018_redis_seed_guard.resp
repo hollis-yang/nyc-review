@@ -1,0 +1,7 @@
+*3
+$4
+EVAL
+$138
+if redis.call('exists','shop:geo:1') == 1 then return redis.call('set','nyc-review:redis:base-seed:nyc-real-p13-full-v1','1') end return 0
+$1
+0

@@ -36,6 +36,8 @@ export interface OwnedVoucherAsset {
   actualValue: number;
   orderStatus: number;
   createdAt: string;
+  expiresAt: string;
+  expired: boolean;
 }
 
 export interface FlashSaleReminderAsset {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import NAMESPACE_URL, uuid5
@@ -136,7 +137,6 @@ class AgentActionService:
         if not candidates:
             return []
 
-        first = candidates[0]
         proposals = [
             self._proposal(
                 run_id,
@@ -164,51 +164,51 @@ class AgentActionService:
                 )
             )
 
-        try:
-            vouchers = await self._gateway.available_vouchers(first.shop_id, authorization)
-        except (httpx.HTTPError, RuntimeError, ValueError):
-            vouchers = []
-        standard = next((item for item in vouchers if int(item.get("type", -1)) == 0), None)
-        seckill = next((item for item in vouchers if int(item.get("type", -1)) == 1), None)
-        if standard and standard.get("id") is not None:
-            proposals.append(
-                self._proposal(
-                    run_id,
-                    AgentActionType.CLAIM_STANDARD_VOUCHER,
-                    str(standard["id"]),
-                    title="Claim the standard voucher",
-                    description="Create a normal voucher order after you approve it.",
-                    payload={
-                        "shopId": first.shop_id,
-                        "shopName": first.name,
-                        "voucherId": int(standard["id"]),
-                    },
+        voucher_lists = await asyncio.gather(
+            *(self.available_vouchers(candidate.shop_id, authorization) for candidate in candidates)
+        )
+        for candidate, vouchers in zip(candidates, voucher_lists, strict=True):
+            standard = next((item for item in vouchers if int(item.get("type", -1)) == 0), None)
+            seckill = next((item for item in vouchers if int(item.get("type", -1)) == 1), None)
+            if standard and standard.get("id") is not None:
+                proposals.append(
+                    self._proposal(
+                        run_id,
+                        AgentActionType.CLAIM_STANDARD_VOUCHER,
+                        str(standard["id"]),
+                        title="Claim the standard voucher",
+                        description="Create a normal voucher order after you approve it.",
+                        payload={
+                            "shopId": candidate.shop_id,
+                            "shopName": candidate.name,
+                            "voucherId": int(standard["id"]),
+                        },
+                    )
                 )
-            )
-        if seckill and seckill.get("id") is not None:
-            payload: dict[str, Any] = {
-                "shopId": first.shop_id,
-                "shopName": first.name,
-                "voucherId": int(seckill["id"]),
-            }
-            begin_time = seckill.get("beginTime")
-            if begin_time:
-                try:
-                    payload["remindAt"] = (
-                        datetime.fromisoformat(str(begin_time)) - timedelta(minutes=10)
-                    ).isoformat()
-                except ValueError:
-                    pass
-            proposals.append(
-                self._proposal(
-                    run_id,
-                    AgentActionType.CREATE_SECKILL_REMINDER,
-                    str(seckill["id"]),
-                    title="Create a flash-sale reminder",
-                    description="Save a reminder only. The flash-sale purchase stays manual.",
-                    payload=payload,
+            if seckill and seckill.get("id") is not None:
+                payload: dict[str, Any] = {
+                    "shopId": candidate.shop_id,
+                    "shopName": candidate.name,
+                    "voucherId": int(seckill["id"]),
+                }
+                begin_time = seckill.get("beginTime")
+                if begin_time:
+                    try:
+                        payload["remindAt"] = (
+                            datetime.fromisoformat(str(begin_time)) - timedelta(minutes=10)
+                        ).isoformat()
+                    except ValueError:
+                        pass
+                proposals.append(
+                    self._proposal(
+                        run_id,
+                        AgentActionType.CREATE_SECKILL_REMINDER,
+                        str(seckill["id"]),
+                        title="Create a flash-sale reminder",
+                        description="Save a reminder only. The flash-sale purchase stays manual.",
+                        payload=payload,
+                    )
                 )
-            )
         return proposals
 
     async def execute(

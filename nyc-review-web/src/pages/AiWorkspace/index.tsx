@@ -66,6 +66,7 @@ export default function AiWorkspace() {
   const [actions, setActions] = useState<AgentActionProposal[]>([]);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [result, setResult] = useState<AgentRunResponse | null>(null);
+  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const closeStreamRef = useRef<(() => void) | null>(null);
 
@@ -82,6 +83,19 @@ export default function AiWorkspace() {
   const itineraryByShop = useMemo(
     () => new Map(result?.itinerary.stops.map((item) => [item.shop_id, item]) || []),
     [result],
+  );
+  const selectedShop = useMemo(
+    () => result?.candidates.candidates.find((shop) => shop.shop_id === selectedShopId)
+      ?? result?.candidates.candidates[0]
+      ?? null,
+    [result, selectedShopId],
+  );
+  const selectedActions = useMemo(
+    () => actions.filter((action) => (
+      action.action_type === 'save_itinerary'
+      || Number(action.payload.shopId) === selectedShop?.shop_id
+    )),
+    [actions, selectedShop],
   );
   const visibleIssues = useMemo(() => {
     const relaxed = new Set(result?.candidates.relaxed_constraints ?? []);
@@ -166,6 +180,7 @@ export default function AiWorkspace() {
     setEvents([]);
     setActions([]);
     setResult(null);
+    setSelectedShopId(null);
     setRunError(null);
     try {
       const created = await createAgentRun({
@@ -267,6 +282,8 @@ export default function AiWorkspace() {
     t(`agentActions.${action.action_type}.title`, { shop: String(action.payload.shopName || '') });
   const actionDescription = (action: AgentActionProposal) =>
     t(`agentActions.${action.action_type}.description`);
+  const selectedEvidence = selectedShop ? evidenceByShop.get(selectedShop.shop_id) : undefined;
+  const selectedStop = selectedShop ? itineraryByShop.get(selectedShop.shop_id) : undefined;
 
   return (
     <div className={styles.page}>
@@ -431,99 +448,118 @@ export default function AiWorkspace() {
               )}
             </div>
 
-            {result.candidates.candidates.map((shop) => {
-              const evidence = evidenceByShop.get(shop.shop_id);
-              const stop = itineraryByShop.get(shop.shop_id);
-              return (
-                <article className={styles.shopCard} key={shop.shop_id}>
+            <section className={styles.candidatePicker}>
+              <div className={styles.candidatePickerHeading}>
+                <h3>{t('aiGuide.recommendationListTitle')}</h3>
+                <p>{t('aiGuide.chooseRecommendation')}</p>
+              </div>
+              <div className={styles.candidateList}>
+                {result.candidates.candidates.map((shop, index) => (
+                  <button
+                    type="button"
+                    key={shop.shop_id}
+                    className={shop.shop_id === selectedShop?.shop_id ? styles.candidateActive : ''}
+                    onClick={() => setSelectedShopId(shop.shop_id)}
+                  >
+                    <span>{index + 1}</span>
+                    <div>
+                      <strong>{shop.name}</strong>
+                      <small>{shop.neighborhood}{shop.borough ? `, ${shop.borough}` : ''}</small>
+                    </div>
+                    <RightOutline />
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {selectedShop && (
+                <article className={styles.shopCard} key={selectedShop.shop_id}>
                   <div className={styles.shopVisual}>
                     <MerchantVisual
-                      shopId={shop.shop_id}
-                      name={shop.name}
-                      alt={shop.name}
+                      shopId={selectedShop.shop_id}
+                      name={selectedShop.name}
+                      alt={selectedShop.name}
                       loading="lazy"
                     />
                   </div>
                   <div className={styles.shopTop}>
                     <div>
-                      <span className={styles.shopCategory}>{t(`shopTypes.${shop.category}`, shop.category)}</span>
-                      <h3>{shop.name}</h3>
-                      <p>{shop.neighborhood}{shop.borough ? `, ${shop.borough}` : ''}</p>
+                      <span className={styles.shopCategory}>{t(`shopTypes.${selectedShop.category}`, selectedShop.category)}</span>
+                      <h3>{selectedShop.name}</h3>
+                      <p>{selectedShop.neighborhood}{selectedShop.borough ? `, ${selectedShop.borough}` : ''}</p>
                     </div>
-                    {shop.avg_price_cents != null && (
-                      <div className={styles.price}>${(shop.avg_price_cents / 100).toFixed(0)}<small>{t('aiGuide.perPerson')}</small></div>
+                    {selectedShop.avg_price_cents != null && (
+                      <div className={styles.price}>${(selectedShop.avg_price_cents / 100).toFixed(0)}<small>{t('aiGuide.perPerson')}</small></div>
                     )}
                   </div>
                   <div className={styles.facts}>
-                    {shop.score != null && (
-                      <span>★ {shop.score.toFixed(1)}</span>
+                    {selectedShop.score != null && (
+                      <span>★ {selectedShop.score.toFixed(1)}</span>
                     )}
-                    <span>{formatDistance(stop?.distance_meters ?? shop.distance_meters)}</span>
-                    {stop && (
+                    <span>{formatDistance(selectedStop?.distance_meters ?? selectedShop.distance_meters)}</span>
+                    {selectedStop && (
                       <span>
-                        {stop.estimated_cost_cents != null
-                          ? t('aiGuide.estimated', { value: (stop.estimated_cost_cents / 100).toFixed(0) })
+                        {selectedStop.estimated_cost_cents != null
+                          ? t('aiGuide.estimated', { value: (selectedStop.estimated_cost_cents / 100).toFixed(0) })
                           : t('aiGuide.costUnavailable')}
                       </span>
                     )}
                   </div>
-                  <div className={styles.tags}>{shop.tags.slice(0, 5).map((tag) => (
+                  <div className={styles.tags}>{selectedShop.tags.slice(0, 5).map((tag) => (
                     <span key={tag}>{t(`tags.${tag}`, tag.replaceAll('_', ' '))}</span>
                   ))}</div>
-                  {evidence?.citations.slice(0, 2).map((citation) => (
+                  {selectedEvidence?.citations.slice(0, 2).map((citation) => (
                     <blockquote key={citation.citation_id}>
                       <p>“{cleanDisplayContent(citation.excerpt)}”</p>
                     </blockquote>
                   ))}
-                  <button className={styles.openShop} onClick={() => navigate(`/shop-detail/${shop.shop_id}`)}>
+                  <button className={styles.openShop} onClick={() => navigate(`/shop-detail/${selectedShop.shop_id}`)}>
                     {t('aiGuide.viewShop')} <RightOutline />
                   </button>
                 </article>
-              );
-            })}
+            )}
 
-          </section>
-        )}
-
-        {actions.length > 0 && (
-          <section className={styles.approvals}>
-            <div className={styles.approvalHeading}>
-              <span>✓</span>
-              <div>
-                <h2>{t('aiGuide.approvalTitle')}</h2>
-                <p>{t('aiGuide.approvalSubtitle')}</p>
-              </div>
-            </div>
-            {actions.map((action) => {
-              const canDecide = action.status === 'proposed' || action.status === 'failed';
-              return (
-                <article className={styles.actionCard} key={action.action_id}>
-                  <div className={styles.actionTop}>
-                    <div className={styles.actionIcon}>{action.action_type === 'save_itinerary' ? '⌖' : action.action_type.includes('voucher') ? '%' : action.action_type.includes('reminder') ? '◷' : '♡'}</div>
-                    <div>
-                      <h3>{actionTitle(action)}</h3>
-                      <p>{actionDescription(action)}</p>
-                    </div>
-                    <span className={`${styles.actionStatus} ${styles[action.status]}`}>
-                      {t(`agentActions.status.${action.status}`)}
-                    </span>
+            {selectedActions.length > 0 && (
+              <section className={styles.approvals}>
+                <div className={styles.approvalHeading}>
+                  <span>✓</span>
+                  <div>
+                    <h2>{t('aiGuide.approvalTitle')}</h2>
+                    <p>{t('aiGuide.selectedApprovalSubtitle', { shop: selectedShop?.name || '' })}</p>
                   </div>
-                  {action.error && <div className={styles.actionError}>{action.error}</div>}
-                  {canDecide && (
-                    <div className={styles.actionButtons}>
-                      <button disabled={actionBusy === action.action_id} onClick={() => decideAction(action, 'reject')}>
-                        {t('aiGuide.reject')}
-                      </button>
-                      <button disabled={actionBusy === action.action_id} onClick={() => decideAction(action, 'approve')}>
-                        {actionBusy === action.action_id
-                          ? t('aiGuide.executing')
-                          : action.status === 'failed' ? t('aiGuide.retry') : t('aiGuide.approve')}
-                      </button>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
+                </div>
+                {selectedActions.map((action) => {
+                  const canDecide = action.status === 'proposed' || action.status === 'failed';
+                  return (
+                    <article className={styles.actionCard} key={action.action_id}>
+                      <div className={styles.actionTop}>
+                        <div className={styles.actionIcon}>{action.action_type === 'save_itinerary' ? '⌖' : action.action_type.includes('voucher') ? '%' : action.action_type.includes('reminder') ? '◷' : '♡'}</div>
+                        <div>
+                          <h3>{actionTitle(action)}</h3>
+                          <p>{actionDescription(action)}</p>
+                        </div>
+                        <span className={`${styles.actionStatus} ${styles[action.status]}`}>
+                          {t(`agentActions.status.${action.status}`)}
+                        </span>
+                      </div>
+                      {action.error && <div className={styles.actionError}>{action.error}</div>}
+                      {canDecide && (
+                        <div className={styles.actionButtons}>
+                          <button disabled={actionBusy === action.action_id} onClick={() => decideAction(action, 'reject')}>
+                            {t('aiGuide.reject')}
+                          </button>
+                          <button disabled={actionBusy === action.action_id} onClick={() => decideAction(action, 'approve')}>
+                            {actionBusy === action.action_id
+                              ? t('aiGuide.executing')
+                              : action.status === 'failed' ? t('aiGuide.retry') : t('aiGuide.approve')}
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </section>
+            )}
           </section>
         )}
       </main>

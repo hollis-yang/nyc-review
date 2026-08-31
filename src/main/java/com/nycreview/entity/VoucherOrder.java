@@ -50,6 +50,11 @@ public class VoucherOrder implements Serializable {
     private LocalDateTime createTime;
 
     /**
+     * Coupon expiration, assigned between 7 and 183 days after acquisition.
+     */
+    private LocalDateTime expiresAt;
+
+    /**
      * 支付时间
      */
     private LocalDateTime payTime;

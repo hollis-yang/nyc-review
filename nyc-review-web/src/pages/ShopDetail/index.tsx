@@ -83,6 +83,24 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function localizedSeckillError(error: unknown, translate: (key: string) => string): string {
+  const message = errorMessage(error);
+  const normalized = message.toLowerCase();
+  if (message.includes('库存不足') || normalized.includes('out of stock')) {
+    return translate('voucher.outOfStock');
+  }
+  if (message.includes('不能重复购买') || normalized.includes('already purchased')) {
+    return translate('voucher.alreadyPurchased');
+  }
+  if (normalized.includes('not found')) {
+    return translate('voucher.notFound');
+  }
+  if (normalized.includes('temporarily unavailable')) {
+    return translate('voucher.temporarilyUnavailable');
+  }
+  return message;
+}
+
 export default function ShopDetail() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
@@ -125,7 +143,7 @@ export default function ShopDetail() {
       const res = await seckillVoucher(voucherId);
       Toast.show({ icon: 'success', content: t('shopDetail.seckillSuccess', { id: res.data ?? res }) });
     } catch (err: unknown) {
-      Toast.show({ icon: 'fail', content: errorMessage(err) });
+      Toast.show({ icon: 'fail', content: localizedSeckillError(err, t) });
     }
   };
 

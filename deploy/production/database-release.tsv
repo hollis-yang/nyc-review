@@ -9,3 +9,4 @@
 017_shop_review_likes	schema	src/main/resources/db/migrations/017_shop_review_likes.sql	-
 20260831_note_comment_times_v3	overlay	data/generated/nyc-real-p13-full/note_comment_time_overlay_v3.sql	-
 20260830_followed_note_likes_v1	overlay	data/generated/nyc-real-p13-full/followed_note_likes_overlay.sql	data/generated/nyc-real-p13-full/followed_note_likes_overlay.resp
+018_coupon_expiration	schema	src/main/resources/db/migrations/018_coupon_expiration.sql	src/main/resources/db/migrations/018_redis_seed_guard.resp

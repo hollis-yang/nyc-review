@@ -45,7 +45,9 @@ public record ProfileAssetsResponse(
             Long payValue,
             Long actualValue,
             Integer orderStatus,
-            LocalDateTime createdAt
+            LocalDateTime createdAt,
+            LocalDateTime expiresAt,
+            boolean expired
     ) {}
 
     public record FlashSaleReminder(

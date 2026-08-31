@@ -3,6 +3,7 @@ package com.nycreview.service.impl;
 import com.nycreview.dto.Result;
 import com.nycreview.entity.Voucher;
 import com.nycreview.entity.VoucherOrder;
+import com.nycreview.entity.SeckillVoucher;
 import com.nycreview.mapper.VoucherOrderMapper;
 import com.nycreview.messaging.VoucherOrderMessage;
 import com.nycreview.messaging.VoucherOrderPublisher;
@@ -20,7 +21,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.Collections;
+
+import static com.nycreview.utils.RedisConstants.SECKILL_STOCK_KEY;
 
 @Slf4j
 @Service
@@ -52,6 +56,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     public Result seckillVoucher(Long voucherId) {
         // 获取用户
         Long userId = UserHolder.getUser().getId();
+        if (!initializeStockIfMissing(voucherId)) {
+            return Result.fail("Flash-sale voucher not found");
+        }
         long orderId = redisIdWorker.nextId("order");
         // 1.执行lua脚本
         Long result = stringRedisTemplate.execute(SECKILL_SCRIPT,
@@ -67,7 +74,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         int r = result.intValue();
         if (r != 0) {
             // 2-1.不为0，没有购买资格
-            return Result.fail(r == 1 ? "库存不足" : "不能重复购买");
+            return Result.fail(r == 1
+                    ? "Flash-sale voucher is out of stock"
+                    : "You have already purchased this voucher");
         }
         // Lua已经原子预留库存并保存生产侧待发布记录。RabbitMQ不可用时由定时任务重放。
         try {
@@ -95,9 +104,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
         VoucherOrder voucherOrder = new VoucherOrder();
         long orderId = redisIdWorker.nextId("order");
+        LocalDateTime acquiredAt = LocalDateTime.now();
         voucherOrder.setId(orderId);
         voucherOrder.setUserId(userId);
         voucherOrder.setVoucherId(voucherId);
+        voucherOrder.setCreateTime(acquiredAt);
+        voucherOrder.setExpiresAt(expirationFor(orderId, acquiredAt));
         save(voucherOrder);
         return Result.ok(orderId);
     }
@@ -125,8 +137,34 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             throw new IllegalStateException("Database stock is insufficient or the flash-sale voucher does not exist");
         }
 
+        LocalDateTime acquiredAt = voucherOrder.getCreateTime() == null
+                ? LocalDateTime.now()
+                : voucherOrder.getCreateTime();
+        voucherOrder.setCreateTime(acquiredAt);
+        voucherOrder.setExpiresAt(expirationFor(voucherOrder.getId(), acquiredAt));
         if (!save(voucherOrder)) {
             throw new IllegalStateException("Failed to save the flash-sale order");
         }
+    }
+
+    boolean initializeStockIfMissing(Long voucherId) {
+        String stockKey = SECKILL_STOCK_KEY + voucherId;
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(stockKey))) {
+            return true;
+        }
+        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+        if (voucher == null || voucher.getStock() == null) {
+            return false;
+        }
+        stringRedisTemplate.opsForValue().setIfAbsent(
+                stockKey,
+                Integer.toString(Math.max(0, voucher.getStock()))
+        );
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(stockKey));
+    }
+
+    static LocalDateTime expirationFor(long orderId, LocalDateTime acquiredAt) {
+        int validityDays = 7 + Math.floorMod(Long.hashCode(orderId), 177);
+        return acquiredAt.plusDays(validityDays);
     }
 }

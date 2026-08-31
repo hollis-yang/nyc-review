@@ -44,7 +44,7 @@ interface ProfileUserSummary {
 
 export default function MyProfile() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { logout } = useAuth();
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
   const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
@@ -219,8 +219,14 @@ export default function MyProfile() {
   };
 
   const formatDate = (value?: string) => value
-    ? new Intl.DateTimeFormat(undefined, {
+    ? new Intl.DateTimeFormat(i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(value))
+    : '';
+
+  const formatCalendarDate = (value?: string) => value
+    ? new Intl.DateTimeFormat(i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en-US', {
+      year: 'numeric', month: 'short', day: 'numeric',
     }).format(new Date(value))
     : '';
 
@@ -325,16 +331,18 @@ export default function MyProfile() {
 
     if (activeSection === 'vouchers') {
       return assets?.vouchers.length ? assets.vouchers.map((voucher) => (
-        <button className={styles.voucherAsset} key={voucher.orderId}
+        <button
+          className={`${styles.voucherAsset} ${voucher.expired ? styles.voucherExpired : ''}`}
+          key={voucher.orderId}
           onClick={() => voucher.shopId && navigate(`/shop-detail/${voucher.shopId}`)}>
           <span className={styles.voucherValue}>${(voucher.actualValue / 100).toFixed(0)}</span>
           <span className={styles.assetBody}>
             <strong>{voucher.title}</strong>
             <small>{voucher.shopName || t('profile.shopUnavailable')}</small>
             <span className={styles.assetMeta}>
-              {t('profile.paid', { amount: (voucher.payValue / 100).toFixed(2) })}
-              {' · '}{t(`profile.voucherStatus.${voucher.orderStatus}`, {
-                defaultValue: t('profile.voucherStatus.unknown'),
+              {t('profile.acquiredOn', { date: formatCalendarDate(voucher.createdAt) })}
+              {' · '}{t(voucher.expired ? 'profile.expiredOn' : 'profile.expiresOn', {
+                date: formatCalendarDate(voucher.expiresAt),
               })}
             </span>
           </span>

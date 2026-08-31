@@ -554,6 +554,23 @@ button.statItem {
   font-weight: 800;
 }
 
+.voucherExpired {
+  border-color: #ddd;
+  color: #999;
+  background: #f5f5f5;
+  filter: grayscale(0.85);
+}
+
+.voucherExpired .voucherValue {
+  color: #eee;
+  background: #aaa;
+}
+
+.voucherExpired .assetMeta,
+.voucherExpired .assetBody small {
+  color: #999;
+}
+
 .statusPill {
   flex-shrink: 0;
   border-radius: 999px;

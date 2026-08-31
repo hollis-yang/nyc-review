@@ -244,7 +244,13 @@ services:
       - /bin/sh
       - -ec
       - |
-        redis-cli -h redis --no-auth-warning --pipe < /seed/redis_seed.resp
+        marker='nyc-review:redis:base-seed:nyc-real-p13-full-v1'
+        if [ "$(redis-cli -h redis --no-auth-warning EXISTS "$marker")" = "1" ]; then
+          echo "Base Redis dataset already initialized; preserving live and release overlay keys."
+        else
+          redis-cli -h redis --no-auth-warning --pipe < /seed/redis_seed.resp
+          redis-cli -h redis --no-auth-warning SET "$marker" 1 >/dev/null
+        fi
         redis-cli -h redis --no-auth-warning DEL cache:shopType:list
     restart: "no"
     logging: *default-logging
