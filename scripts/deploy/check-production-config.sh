@@ -86,6 +86,15 @@ bad_restart = sorted(
 if bad_restart:
     raise SystemExit(f"Missing restart policy: {', '.join(bad_restart)}")
 
+redis_seed_command = " ".join(
+    str(item) for item in services["redis-seed"].get("command", [])
+)
+redis_seed_marker = "nyc-review:redis:base-seed:nyc-real-p13-full-v1"
+if redis_seed_command.count(redis_seed_marker) < 2:
+    raise SystemExit("Redis seed must check and set the stable base-dataset marker.")
+if "$marker" in redis_seed_command or 'SET ""' in redis_seed_command:
+    raise SystemExit("Redis seed marker must not depend on Compose variable interpolation.")
+
 mysql_healthcheck = " ".join(
     str(item) for item in services["mysql"].get("healthcheck", {}).get("test", [])
 )
