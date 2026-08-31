@@ -95,12 +95,14 @@ export default function Register() {
         <div className={styles.headerTitle}>{t('register.title')}</div>
       </div>
       <div className={styles.scroll}>
+        <div className={styles.authPanel}>
         <div className={styles.brand}>
           <BrandIcon />
           <div className={styles.brandName}>{t('register.heading')}</div>
           <div className={styles.brandSlogan}>{t('register.subtitle')}</div>
         </div>
 
+        <div className={styles.formColumn}>
         <div className={styles.formCard}>
           <div className={styles.fieldGroup}>
             <PhoneNumberField
@@ -179,6 +181,8 @@ export default function Register() {
             {t('auth.agreementJoin')}
             <a href="#privacy" onClick={(event) => event.preventDefault()}>{t('auth.privacy')}</a>
           </div>
+        </div>
+        </div>
         </div>
       </div>
     </div>

@@ -163,88 +163,94 @@ export default function ProfileEdit() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
-        </div>
+        </button>
         <div className={styles.title}>{t('profileEdit.title')}</div>
       </div>
 
       <div className={styles.scroll}>
-        {/* 基本信息 */}
-        <div className={styles.infoBox}>
-          <div className={styles.infoItem} onClick={handleAvatarClick}>
-            <div className={styles.infoLabel}>{t('profileEdit.avatar')}</div>
-            <div className={styles.infoBtn}>
-              <img width="35" src={user?.icon || '/imgs/icons/default-icon.png'} alt="" style={{ borderRadius: '50%' }} />
-              <RightOutline fontSize={14} color="#ccc" />
+        <div className={styles.settingsGrid}>
+          <div className={styles.settingsColumn}>
+            {/* 基本信息 */}
+            <div className={styles.infoBox}>
+              <button type="button" className={styles.infoItem} onClick={handleAvatarClick}>
+                <div className={styles.infoLabel}>{t('profileEdit.avatar')}</div>
+                <div className={styles.infoBtn}>
+                  <img width="35" src={user?.icon || '/imgs/icons/default-icon.png'} alt="" style={{ borderRadius: '50%' }} />
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarChange} />
+              <div className={styles.divider} />
+              <button type="button" className={styles.infoItem} onClick={() => openTextEdit('nickname', user?.nickName || '')}>
+                <div className={styles.infoLabel}>{t('profileEdit.nickname')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>{user?.nickName || ''}</div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
+              <div className={styles.divider} />
+              <button type="button" className={styles.infoItem} onClick={() => openTextEdit('introduce', info.introduce || '')}>
+                <div className={styles.infoLabel}>{t('profileEdit.intro')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>{info.introduce || t('profileEdit.introPlaceholder')}</div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
             </div>
-          </div>
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleAvatarChange} />
-          <div className={styles.divider} />
-          <div className={styles.infoItem} onClick={() => openTextEdit('nickname', user?.nickName || '')}>
-            <div className={styles.infoLabel}>{t('profileEdit.nickname')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{user?.nickName || ''}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-          <div className={styles.divider} />
-          <div className={styles.infoItem} onClick={() => openTextEdit('introduce', info.introduce || '')}>
-            <div className={styles.infoLabel}>{t('profileEdit.intro')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.introduce || t('profileEdit.introPlaceholder')}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-        </div>
 
-        <div className={styles.infoBox}>
-          <div className={styles.infoItem} onClick={() => setLanguagePickerVisible(true)}>
-            <div className={styles.infoLabel}>{t('profileEdit.language')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>
-                {i18n.resolvedLanguage === 'zh-CN'
-                  ? t('profileEdit.chinese')
-                  : t('profileEdit.english')}
-              </div>
-              <RightOutline fontSize={14} color="#ccc" />
+            <div className={styles.infoBox}>
+              <button type="button" className={styles.infoItem} onClick={() => setLanguagePickerVisible(true)}>
+                <div className={styles.infoLabel}>{t('profileEdit.language')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>
+                    {i18n.resolvedLanguage === 'zh-CN'
+                      ? t('profileEdit.chinese')
+                      : t('profileEdit.english')}
+                  </div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className={styles.infoBox}>
-          <div className={styles.infoItem} onClick={() => navigate('/account-security')}>
-            <div className={styles.infoLabel}>{t('profileEdit.accountSecurity')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{t('profileEdit.passwordAndRecovery')}</div>
-              <RightOutline fontSize={14} color="#ccc" />
+          <div className={styles.settingsColumn}>
+            <div className={styles.infoBox}>
+              <button type="button" className={styles.infoItem} onClick={() => navigate('/account-security')}>
+                <div className={styles.infoLabel}>{t('profileEdit.accountSecurity')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>{t('profileEdit.passwordAndRecovery')}</div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
             </div>
-          </div>
-        </div>
 
-        {/* 详细信息 */}
-        <div className={styles.infoBox}>
-          <div className={styles.infoItem} onClick={() => setGenderVisible(true)}>
-            <div className={styles.infoLabel}>{t('profileEdit.gender')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{genderLabel}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-          <div className={styles.divider} />
-          <div className={styles.infoItem} onClick={() => setCommunityPickerVisible(true)}>
-            <div className={styles.infoLabel}>{t('profileEdit.community')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.city || t('profileEdit.select')}</div>
-              <RightOutline fontSize={14} color="#ccc" />
-            </div>
-          </div>
-          <div className={styles.divider} />
-          <div className={styles.infoItem} onClick={() => setDateVisible(true)}>
-            <div className={styles.infoLabel}>{t('profileEdit.birthday')}</div>
-            <div className={styles.infoBtn}>
-              <div className={styles.infoValue}>{info.birthday || t('profileEdit.add')}</div>
-              <RightOutline fontSize={14} color="#ccc" />
+            {/* 详细信息 */}
+            <div className={styles.infoBox}>
+              <button type="button" className={styles.infoItem} onClick={() => setGenderVisible(true)}>
+                <div className={styles.infoLabel}>{t('profileEdit.gender')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>{genderLabel}</div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
+              <div className={styles.divider} />
+              <button type="button" className={styles.infoItem} onClick={() => setCommunityPickerVisible(true)}>
+                <div className={styles.infoLabel}>{t('profileEdit.community')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>{info.city || t('profileEdit.select')}</div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
+              <div className={styles.divider} />
+              <button type="button" className={styles.infoItem} onClick={() => setDateVisible(true)}>
+                <div className={styles.infoLabel}>{t('profileEdit.birthday')}</div>
+                <div className={styles.infoBtn}>
+                  <div className={styles.infoValue}>{info.birthday || t('profileEdit.add')}</div>
+                  <RightOutline fontSize={14} color="#ccc" />
+                </div>
+              </button>
             </div>
           </div>
         </div>
@@ -259,24 +265,24 @@ export default function ProfileEdit() {
             {editField ? fieldLabels[editField] : ''}
           </div>
           <div style={{ width: '100%', boxSizing: 'border-box' }}>
-          {editField === 'introduce' ? (
-            <TextArea
-              value={editValue}
-              onChange={(val) => setEditValue(val)}
-              placeholder={t('profileEdit.introPlaceholder')}
-              rows={4}
-              maxLength={128}
-              style={{ '--font-size': '15px' }}
-            />
-          ) : (
-            <Input
-              value={editValue}
-              onChange={(val) => setEditValue(val)}
-              placeholder={t('profileEdit.enterText')}
-              clearable
-              style={{ '--font-size': '15px' }}
-            />
-          )}
+            {editField === 'introduce' ? (
+              <TextArea
+                value={editValue}
+                onChange={(val) => setEditValue(val)}
+                placeholder={t('profileEdit.introPlaceholder')}
+                rows={4}
+                maxLength={128}
+                style={{ '--font-size': '15px' }}
+              />
+            ) : (
+              <Input
+                value={editValue}
+                onChange={(val) => setEditValue(val)}
+                placeholder={t('profileEdit.enterText')}
+                clearable
+                style={{ '--font-size': '15px' }}
+              />
+            )}
           </div>
           <Button
             block

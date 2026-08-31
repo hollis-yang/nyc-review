@@ -97,9 +97,10 @@ export default function AccountSecurity() {
         <div className={styles.title}>{t('accountSecurity.title')}</div>
       </header>
 
-      <main className={styles.scroll}>
-        <div className={styles.intro}>{t('accountSecurity.intro')}</div>
+      <main className={`${styles.scroll} ${styles.securityScroll}`}>
+        <div className={`${styles.intro} ${styles.securityIntro}`}>{t('accountSecurity.intro')}</div>
 
+        <div className={styles.securityCards}>
         <section className={styles.card}>
           <div className={styles.cardTitle}>{t('accountSecurity.recoveryTitle')}</div>
           {recoveryConfigured !== null && (
@@ -140,6 +141,7 @@ export default function AccountSecurity() {
             {savingPassword ? t('auth.submitting') : t('accountSecurity.changePassword')}
           </button>
         </section>
+        </div>
       </main>
       <FootBar activeBtn={4} />
     </div>

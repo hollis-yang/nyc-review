@@ -23,12 +23,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
   cursor: pointer;
   transition: transform var(--transition-fast);
 }
 
 .backBtn:active {
   transform: scale(0.9);
+}
+
+.backBtn:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.72);
+  outline-offset: -4px;
 }
 
 .headerTitle {
@@ -114,6 +122,7 @@
   border-radius: 14px;
   padding: 6px 18px;
   font-size: 13px;
+  font-family: inherit;
   cursor: pointer;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
@@ -172,10 +181,16 @@
 
 /* ===== 笔记列表项 ===== */
 .blogItem {
+  width: 100%;
   display: flex;
   gap: 10px;
+  border: 0;
+  background: transparent;
   padding: 12px 0;
   border-bottom: 1px solid var(--color-divider);
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background var(--transition-fast);
 }
@@ -256,6 +271,9 @@
   height: 44px;
   flex-shrink: 0;
   border-radius: 50%;
+  border: 0;
+  background: transparent;
+  padding: 0;
   overflow: hidden;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
@@ -287,6 +305,7 @@
   border-radius: 14px;
   padding: 5px 14px;
   font-size: 12px;
+  font-family: inherit;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
@@ -297,6 +316,14 @@
   transform: scale(0.95);
 }
 
+.followBtn:focus-visible,
+.blogItem:focus-visible,
+.followIcon:focus-visible,
+.followVisitBtn:focus-visible {
+  outline: 3px solid rgba(255, 102, 51, 0.28);
+  outline-offset: 2px;
+}
+
 /* ===== 加载 / 错误 ===== */
 .loadingFull {
   height: 100%;
@@ -305,4 +332,118 @@
   justify-content: center;
   color: var(--color-text-hint);
   font-size: 14px;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .scroll {
+    width: min(760px, 100%);
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+}
+
+@media (min-width: 1024px) {
+  .header {
+    height: var(--desktop-context-height);
+    padding: 0 var(--desktop-page-gutter);
+  }
+
+  .backBtn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .headerTitle {
+    padding-right: 44px;
+    font-size: 18px;
+  }
+
+  .scroll {
+    width: min(1120px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+    margin: 0 auto;
+    padding: 20px 0 32px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
+  }
+
+  .profileCard {
+    position: sticky;
+    top: 0;
+    min-width: 0;
+    margin: 0;
+    border: 1px solid rgba(78, 51, 40, 0.06);
+    box-shadow: 0 10px 30px rgba(60, 37, 28, 0.07);
+  }
+
+  .profileTop {
+    flex-wrap: wrap;
+    padding: 22px 20px 16px;
+  }
+
+  .avatar {
+    width: 72px;
+    height: 72px;
+  }
+
+  .profileInfo {
+    flex-basis: calc(100% - 84px);
+  }
+
+  .followBtn {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 18px;
+    text-align: center;
+  }
+
+  .introRow {
+    padding: 0 20px 18px;
+  }
+
+  .contentCard {
+    min-width: 0;
+    min-height: calc(100dvh - var(--desktop-context-height) - 52px);
+    margin: 0;
+    border: 1px solid rgba(78, 51, 40, 0.06);
+    box-shadow: 0 10px 30px rgba(60, 37, 28, 0.07);
+  }
+
+  .contentCard :global(.adm-tabs-content) {
+    overflow: visible;
+  }
+
+  .tabContent {
+    height: auto;
+    overflow: visible;
+    padding: 12px 20px 20px;
+  }
+
+  .blogItem,
+  .followItem {
+    padding: 16px 0;
+  }
+
+  .blogItemImg {
+    width: 128px;
+    height: 92px;
+  }
+
+  .loadingFull {
+    width: min(720px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1120px) {
+  .scroll {
+    grid-template-columns: 292px minmax(0, 1fr);
+    gap: 18px;
+  }
 }

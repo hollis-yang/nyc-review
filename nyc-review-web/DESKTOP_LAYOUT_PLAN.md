@@ -1,9 +1,11 @@
 # NYC Review desktop layout plan
 
-Status: Phase 3 complete
+Status: Phase 4 complete
 Baseline: `b379b86` (`feat: add account security and check-in calendar`)
 Phase 1 commit: `3f26310` (`feat(web): add desktop shell and home layout`)
 Phase 2 commit: `52e39f2` (`feat(web): add desktop discovery layouts`)
+Phase 3 commit: `bfa0f5f` (`feat(web): add desktop detail and conversation layouts`)
+Post-Phase 3 stabilization commit: `53e8e80` (`fix(web): repair desktop home feed and create navigation`)
 Scope: the current 15 React page routes in `nyc-review-web/src/App.tsx`
 
 ## Goal and non-negotiable constraints
@@ -221,6 +223,33 @@ pre-Phase-1 baseline and is not part of the Phase 3 detail/conversation scope.
 
 - Implement My Profile, the check-in calendar, Other Profile, Profile Edit,
   Account Security, Login, Register, and Forgot Password.
+
+Completed in Phase 4:
+
+- converted My Profile into a sticky `340px` profile/stat/activity rail and a
+  responsive main workspace for all nine existing sections, while keeping the
+  mobile card order and lazy-loading behavior unchanged;
+- kept check-in as the selected My Profile panel, capped the desktop calendar
+  at `640px`, and retained its streak, month navigation, seven-column dates,
+  today state, New York date note, and separate sign action;
+- converted Other Profile into a sticky profile rail plus notes/common-follow
+  panel without changing follow toggles, lazy common-follow loading, or routes;
+- grouped Profile Edit into a `960px` two-column settings canvas while
+  preserving each field's independent update, language, picker, popup, upload,
+  and Account Security navigation behavior;
+- gave Account Security a full-width introduction and isolated recovery-key
+  and password cards that stack on compact desktop and split at `1280px`;
+- introduced a shared two-column brand/form card for Login and Register while
+  retaining redirect queries, agreement controls, validation, and submission
+  states;
+- isolated Forgot Password from the shared security-card layout in a centered
+  single-column canvas, preserving recovery-key validation and return-to-login;
+- centered the Phase 4 forms and profile surfaces as bounded single columns at
+  `768–1023px` before their desktop grids activate;
+- consolidated My Profile's repeated avatar fallback reference so the existing
+  merchant visual audit now passes without changing the displayed fallback;
+- added five Phase 4 content/layout contracts; all 25 static/unit tests, lint,
+  production build, bilingual frontend contracts, and the visual audit pass.
 
 ### Phase 5 — creation and AI surfaces
 

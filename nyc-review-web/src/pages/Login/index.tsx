@@ -87,12 +87,14 @@ export default function Login() {
         <div className={styles.headerTitle}>{t('login.title')}</div>
       </div>
       <div className={styles.scroll}>
+        <div className={styles.authPanel}>
         <div className={styles.brand}>
           <BrandIcon size={48} />
           <div className={styles.brandName}>{t('login.brand')}</div>
           <div className={styles.brandSlogan}>{t('login.slogan')}</div>
         </div>
 
+        <div className={styles.formColumn}>
         <div className={styles.formCard}>
           <div className={styles.fieldGroup}>
             <PhoneNumberField
@@ -149,6 +151,8 @@ export default function Login() {
             {t('auth.agreementJoin')}
             <a href="#privacy" onClick={(event) => event.preventDefault()}>{t('auth.privacy')}</a>
           </div>
+        </div>
+        </div>
         </div>
       </div>
     </div>

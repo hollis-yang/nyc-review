@@ -50,6 +50,8 @@ interface ProfileUserSummary {
   icon: string;
 }
 
+const DEFAULT_AVATAR = '/imgs/icons/default-icon.png';
+
 export default function MyProfile() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
@@ -532,7 +534,7 @@ export default function MyProfile() {
           key={follower.id}
           onClick={() => navigate(`/user/${follower.id}`)}
         >
-          <img src={follower.icon || '/imgs/icons/default-icon.png'} alt="" />
+          <img src={follower.icon || DEFAULT_AVATAR} alt="" />
           <span>{follower.nickName}</span>
           <b>›</b>
         </button>
@@ -546,7 +548,7 @@ export default function MyProfile() {
         key={followedUser.id}
         onClick={() => navigate(`/user/${followedUser.id}`)}
       >
-        <img src={followedUser.icon || '/imgs/icons/default-icon.png'} alt="" />
+        <img src={followedUser.icon || DEFAULT_AVATAR} alt="" />
         <span>{followedUser.nickName}</span>
         <b>›</b>
       </button>
@@ -556,108 +558,112 @@ export default function MyProfile() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
-        </div>
+        </button>
         <div className={styles.headerTitle}>{t('profile.title')}</div>
       </div>
 
-      {user && (
-        <div className={styles.profileCard}>
-          <div className={styles.profileTop}>
-            <div className={styles.avatarWrap}>
-              <img src={user.icon || '/imgs/icons/default-icon.png'} alt="" />
-            </div>
-            <div className={styles.profileInfo}>
-              <div className={styles.nickName}>{user.nickName}</div>
-              <div className={styles.city}>{info.city || t('profile.notSet')}</div>
-              <div className={styles.intro}>{info.introduce || t('profile.defaultIntro')}</div>
-              <div className={styles.actions}>
-                <button className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
-                  {t('profile.editProfile')}
+      <div className={styles.desktopLayout}>
+        <aside className={styles.profileRail}>
+          {user && (
+            <div className={styles.profileCard}>
+              <div className={styles.profileTop}>
+                <div className={styles.avatarWrap}>
+                  <img src={user.icon || DEFAULT_AVATAR} alt="" />
+                </div>
+                <div className={styles.profileInfo}>
+                  <div className={styles.nickName}>{user.nickName}</div>
+                  <div className={styles.city}>{info.city || t('profile.notSet')}</div>
+                  <div className={styles.intro}>{info.introduce || t('profile.defaultIntro')}</div>
+                  <div className={styles.actions}>
+                    <button className={styles.editBtn} onClick={() => navigate('/profile-edit')}>
+                      {t('profile.editProfile')}
+                    </button>
+                    <button className={styles.logoutBtn} onClick={handleLogout}>
+                      {t('profile.logout')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.stats}>
+                <button
+                  className={`${styles.statItem} ${activeSection === 'notes' ? styles.statItemActive : ''}`}
+                  onClick={() => handleSectionChange('notes')}
+                >
+                  <div className={styles.statNum}>{blogs.length}</div>
+                  <div className={styles.statLabel}>{t('profile.notes')}</div>
                 </button>
-                <button className={styles.logoutBtn} onClick={handleLogout}>
-                  {t('profile.logout')}
+                <div className={styles.statDivider} />
+                <button
+                  className={`${styles.statItem} ${activeSection === 'followers' ? styles.statItemActive : ''}`}
+                  onClick={() => handleSectionChange('followers')}
+                >
+                  <div className={styles.statNum}>{info.fans || 0}</div>
+                  <div className={styles.statLabel}>{t('profile.fans')}</div>
+                </button>
+                <div className={styles.statDivider} />
+                <button
+                  className={`${styles.statItem} ${activeSection === 'following' ? styles.statItemActive : ''}`}
+                  onClick={() => handleSectionChange('following')}
+                >
+                  <div className={styles.statNum}>{info.followee || 0}</div>
+                  <div className={styles.statLabel}>{t('profile.following')}</div>
                 </button>
               </div>
             </div>
-          </div>
-          <div className={styles.stats}>
-            <button
-              className={`${styles.statItem} ${activeSection === 'notes' ? styles.statItemActive : ''}`}
-              onClick={() => handleSectionChange('notes')}
-            >
-              <div className={styles.statNum}>{blogs.length}</div>
-              <div className={styles.statLabel}>{t('profile.notes')}</div>
-            </button>
-            <div className={styles.statDivider} />
-            <button
-              className={`${styles.statItem} ${activeSection === 'followers' ? styles.statItemActive : ''}`}
-              onClick={() => handleSectionChange('followers')}
-            >
-              <div className={styles.statNum}>{info.fans || 0}</div>
-              <div className={styles.statLabel}>{t('profile.fans')}</div>
-            </button>
-            <div className={styles.statDivider} />
-            <button
-              className={`${styles.statItem} ${activeSection === 'following' ? styles.statItemActive : ''}`}
-              onClick={() => handleSectionChange('following')}
-            >
-              <div className={styles.statNum}>{info.followee || 0}</div>
-              <div className={styles.statLabel}>{t('profile.following')}</div>
-            </button>
-          </div>
-        </div>
-      )}
+          )}
 
-      <section className={styles.activityCard} aria-label={t('profile.activity')}>
-        <h2>{t('profile.activity')}</h2>
-        <div className={styles.activityGrid}>
-          {activityItems.map((item) => (
-            <button
-              key={item.key}
-              className={`${styles.activityItem} ${activeSection === item.key ? styles.activityItemActive : ''}`}
-              onClick={() => handleSectionChange(item.key)}
-            >
-              <span className={styles.activityIcon}>{item.icon}</span>
-              <span className={styles.activityText}>
-                <strong>{item.label}</strong>
-                <small>{item.count}</small>
-              </span>
-              <span className={styles.activityArrow}>›</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            className={`${styles.activityItem} ${styles.checkInItem} ${activeSection === 'checkin' ? styles.activityItemActive : ''} ${signedToday ? styles.checkInItemComplete : ''}`}
-            onClick={() => handleSectionChange('checkin')}
-            aria-label={signedToday
-              ? t('profile.signedIn', { n: signDays })
-              : t('profile.signIn')}
+          <section className={styles.activityCard} aria-label={t('profile.activity')}>
+            <h2>{t('profile.activity')}</h2>
+            <div className={styles.activityGrid}>
+              {activityItems.map((item) => (
+                <button
+                  key={item.key}
+                  className={`${styles.activityItem} ${activeSection === item.key ? styles.activityItemActive : ''}`}
+                  onClick={() => handleSectionChange(item.key)}
+                >
+                  <span className={styles.activityIcon}>{item.icon}</span>
+                  <span className={styles.activityText}>
+                    <strong>{item.label}</strong>
+                    <small>{item.count}</small>
+                  </span>
+                  <span className={styles.activityArrow}>›</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`${styles.activityItem} ${styles.checkInItem} ${activeSection === 'checkin' ? styles.activityItemActive : ''} ${signedToday ? styles.checkInItemComplete : ''}`}
+                onClick={() => handleSectionChange('checkin')}
+                aria-label={signedToday
+                  ? t('profile.signedIn', { n: signDays })
+                  : t('profile.signIn')}
+              >
+                <span className={styles.activityIcon}><CheckCircleOutline /></span>
+                <span className={styles.activityText}>
+                  <strong>{t('profile.signIn')}</strong>
+                  <small>{signedToday
+                    ? t('profile.signedIn', { n: signDays })
+                    : t('profile.checkInReady')}</small>
+                </span>
+                <span className={styles.activityArrow}>›</span>
+              </button>
+            </div>
+          </section>
+        </aside>
+
+        <div className={styles.content} data-section={activeSection}>
+          <div className={styles.sectionHeader}>
+            <span className={styles.sectionIcon}>{sectionMeta.icon}</span>
+            <h2>{sectionMeta.label}</h2>
+            <span className={styles.sectionCount}>{sectionMeta.count}</span>
+          </div>
+          <div
+            key={activeSection}
+            className={styles.tabContent}
           >
-            <span className={styles.activityIcon}><CheckCircleOutline /></span>
-            <span className={styles.activityText}>
-              <strong>{t('profile.signIn')}</strong>
-              <small>{signedToday
-                ? t('profile.signedIn', { n: signDays })
-                : t('profile.checkInReady')}</small>
-            </span>
-            <span className={styles.activityArrow}>›</span>
-          </button>
-        </div>
-      </section>
-
-      <div className={styles.content}>
-        <div className={styles.sectionHeader}>
-          <span className={styles.sectionIcon}>{sectionMeta.icon}</span>
-          <h2>{sectionMeta.label}</h2>
-          <span className={styles.sectionCount}>{sectionMeta.count}</span>
-        </div>
-        <div
-          key={activeSection}
-          className={styles.tabContent}
-        >
-          {renderSelectedContent()}
+            {renderSelectedContent()}
+          </div>
         </div>
       </div>
 

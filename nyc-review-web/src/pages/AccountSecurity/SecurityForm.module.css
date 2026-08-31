@@ -41,6 +41,10 @@
   padding: 12px 12px 92px;
 }
 
+.securityCards {
+  display: contents;
+}
+
 .intro,
 .card {
   width: 100%;
@@ -143,5 +147,101 @@
   .scroll {
     padding-right: 20px;
     padding-left: 20px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .securityScroll {
+    width: min(760px, 100%);
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .forgotScroll {
+    width: min(calc(var(--desktop-form-width) + (var(--desktop-page-gutter) * 2)), 100%);
+    margin: 0 auto;
+    padding-right: var(--desktop-page-gutter);
+    padding-left: var(--desktop-page-gutter);
+    box-sizing: border-box;
+  }
+}
+
+@media (min-width: 1024px) {
+  .header {
+    height: var(--desktop-context-height);
+    padding: 0 var(--desktop-page-gutter);
+  }
+
+  .backBtn {
+    width: 44px;
+    flex: 0 0 44px;
+  }
+
+  .title {
+    padding-right: 44px;
+  }
+
+  .securityScroll {
+    width: min(1120px, 100%);
+    margin: 0 auto;
+    padding: 24px var(--desktop-page-gutter) 32px;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
+  }
+
+  .securityIntro {
+    margin-bottom: 20px;
+    padding: 18px 20px;
+    font-size: 14px;
+  }
+
+  .securityCards {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+  }
+
+  .securityCards .card {
+    min-width: 0;
+    margin-bottom: 0;
+    padding: 22px;
+    border: 1px solid rgba(78, 51, 40, 0.06);
+    box-shadow: 0 10px 30px rgba(60, 37, 28, 0.07);
+  }
+
+  .cardTitle {
+    font-size: 18px;
+  }
+
+  .forgotScroll {
+    width: min(calc(var(--desktop-form-width) + (var(--desktop-page-gutter) * 2)), 100%);
+    margin: 0 auto;
+    padding: 32px var(--desktop-page-gutter) 40px;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
+  }
+
+  .forgotIntro {
+    margin-bottom: 16px;
+    padding: 18px 20px;
+    font-size: 14px;
+  }
+
+  .forgotCard {
+    margin-bottom: 0;
+    padding: 24px;
+    border: 1px solid rgba(78, 51, 40, 0.06);
+    box-shadow: 0 12px 34px rgba(60, 37, 28, 0.08);
+  }
+
+  .field {
+    min-height: 52px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .securityCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

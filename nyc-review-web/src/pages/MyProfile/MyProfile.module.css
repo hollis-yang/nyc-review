@@ -5,6 +5,11 @@
   background: var(--color-bg-page);
 }
 
+.desktopLayout,
+.profileRail {
+  display: contents;
+}
+
 /* ===== Header ===== */
 .header {
   height: 48px;
@@ -23,12 +28,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
   cursor: pointer;
   transition: transform var(--transition-fast);
 }
 
 .backBtn:active {
   transform: scale(0.9);
+}
+
+.backBtn:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.72);
+  outline-offset: -4px;
 }
 
 .headerTitle {
@@ -880,5 +893,190 @@ button.statItem {
   .content {
     width: min(736px, calc(100% - 24px));
     align-self: center;
+  }
+}
+
+@media (min-width: 1024px) {
+  .header {
+    height: var(--desktop-context-height);
+    padding: 0 var(--desktop-page-gutter);
+  }
+
+  .backBtn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .headerTitle {
+    padding-right: 44px;
+    font-size: 18px;
+  }
+
+  .desktopLayout {
+    width: min(1180px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    align-items: start;
+    gap: 24px;
+    margin: 0 auto;
+    padding: 20px 0 32px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
+  }
+
+  .profileRail {
+    position: sticky;
+    top: 0;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .profileCard,
+  .activityCard,
+  .content {
+    width: 100%;
+    margin: 0;
+    align-self: auto;
+    box-sizing: border-box;
+    border: 1px solid rgba(78, 51, 40, 0.06);
+    box-shadow: 0 10px 30px rgba(60, 37, 28, 0.07);
+  }
+
+  .profileTop {
+    padding: 20px 18px 14px;
+  }
+
+  .avatarWrap {
+    width: 64px;
+    height: 64px;
+  }
+
+  .activityCard {
+    padding: 16px;
+  }
+
+  .activityCard h2 {
+    margin-bottom: 12px;
+    font-size: 14px;
+  }
+
+  .activityItem {
+    min-height: 56px;
+    padding: 9px 10px;
+  }
+
+  .activityItem:hover {
+    border-color: #ffc6b5;
+    background: #fff5f1;
+  }
+
+  .content {
+    min-width: 0;
+    min-height: calc(100dvh - var(--desktop-context-height) - 52px);
+    flex: none;
+    overflow: visible;
+  }
+
+  .sectionHeader {
+    min-height: 58px;
+    padding: 0 20px;
+  }
+
+  .sectionHeader h2 {
+    font-size: 16px;
+  }
+
+  .tabContent {
+    flex: none;
+    overflow: visible;
+    padding: 16px;
+  }
+
+  .content[data-section='notes'] .tabContent,
+  .content[data-section='favorites'] .tabContent,
+  .content[data-section='itineraries'] .tabContent,
+  .content[data-section='vouchers'] .tabContent,
+  .content[data-section='reminders'] .tabContent,
+  .content[data-section='followers'] .tabContent,
+  .content[data-section='following'] .tabContent,
+  .content[data-section='memory'] .tabContent {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 12px;
+  }
+
+  .blogItem,
+  .personCard {
+    min-width: 0;
+    box-sizing: border-box;
+    border: 1px solid #f0e9e6;
+    border-radius: 12px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .assetCard,
+  .voucherAsset,
+  .memoryCard {
+    margin-bottom: 0;
+  }
+
+  .emptyState,
+  .loadingMore,
+  .memoryNotice {
+    grid-column: 1 / -1;
+  }
+
+  .checkInPanel {
+    width: min(640px, 100%);
+    box-sizing: border-box;
+    gap: 18px;
+    margin: 0 auto;
+    padding: 8px 12px 20px;
+  }
+
+  .streakSummary {
+    padding: 15px 18px;
+  }
+
+  .calendarGrid {
+    gap: 8px;
+  }
+
+  .weekday {
+    font-size: 12px;
+  }
+
+  .calendarDay {
+    border-radius: 12px;
+    font-size: 14px;
+  }
+
+  .checkInTodayButton {
+    min-height: 46px;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1120px) {
+  .desktopLayout {
+    grid-template-columns: 316px minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .content[data-section='notes'] .tabContent,
+  .content[data-section='favorites'] .tabContent,
+  .content[data-section='itineraries'] .tabContent,
+  .content[data-section='vouchers'] .tabContent,
+  .content[data-section='reminders'] .tabContent,
+  .content[data-section='followers'] .tabContent,
+  .content[data-section='following'] .tabContent,
+  .content[data-section='memory'] .tabContent {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

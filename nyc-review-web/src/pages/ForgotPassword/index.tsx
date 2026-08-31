@@ -62,9 +62,9 @@ export default function ForgotPassword() {
         </button>
         <div className={styles.title}>{t('forgotPassword.title')}</div>
       </header>
-      <main className={styles.scroll}>
-        <div className={styles.intro}>{t('forgotPassword.intro')}</div>
-        <section className={styles.card}>
+      <main className={`${styles.scroll} ${styles.forgotScroll}`}>
+        <div className={`${styles.intro} ${styles.forgotIntro}`}>{t('forgotPassword.intro')}</div>
+        <section className={`${styles.card} ${styles.forgotCard}`}>
           <div className={styles.field}>
             <PhoneNumberField regionCode={regionCode} phoneNumber={phoneNumber} onRegionChange={setRegionCode} onPhoneChange={setPhoneNumber} />
           </div>

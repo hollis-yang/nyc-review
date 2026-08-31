@@ -113,9 +113,9 @@ export default function OtherProfile() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
-        </div>
+        </button>
         <div className={styles.headerTitle}>
           {user ? t('otherProfile.title', { name: user.nickName }) : ''}
         </div>
@@ -138,12 +138,13 @@ export default function OtherProfile() {
                   {info.introduce ? ` · ${info.introduce}` : ''}
                 </div>
               </div>
-              <div
+              <button
+                type="button"
                 className={`${styles.followBtn} ${followed ? styles.followBtnUnfollow : ''}`}
                 onClick={handleFollow}
               >
                 {followed ? t('otherProfile.followed') : t('otherProfile.follow')}
-              </div>
+              </button>
             </div>
             {!info.introduce && !info.city && (
               <div className={styles.introRow}>{t('otherProfile.emptyIntro')}</div>
@@ -156,7 +157,8 @@ export default function OtherProfile() {
               <Tabs.Tab title={t('otherProfile.notes')} key="1">
                 <div className={styles.tabContent}>
                   {blogs.map((b) => (
-                    <div
+                    <button
+                      type="button"
                       key={b.id}
                       className={styles.blogItem}
                       onClick={() => navigate(`/blog-detail/${b.id}`)}
@@ -179,7 +181,7 @@ export default function OtherProfile() {
                           <span>💬 {b.comments ?? 0}</span>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </Tabs.Tab>
@@ -188,19 +190,22 @@ export default function OtherProfile() {
                   <div className={styles.commonFollowHint}>{t('otherProfile.commonHint')}</div>
                   {commonFollows.map((u) => (
                     <div key={u.id} className={styles.followItem}>
-                      <div
+                      <button
+                        type="button"
                         className={styles.followIcon}
                         onClick={() => navigate(`/user/${u.id}`)}
+                        aria-label={`${u.nickName}: ${t('otherProfile.visitProfile')}`}
                       >
                         <img src={u.icon || '/imgs/icons/default-icon.png'} alt="" />
-                      </div>
+                      </button>
                       <div className={styles.followName}>{u.nickName}</div>
-                      <div
+                      <button
+                        type="button"
                         className={styles.followVisitBtn}
                         onClick={() => navigate(`/user/${u.id}`)}
                       >
                         {t('otherProfile.visitProfile')}
-                      </div>
+                      </button>
                     </div>
                   ))}
                 </div>
