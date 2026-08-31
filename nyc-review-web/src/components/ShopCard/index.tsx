@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Rate } from 'antd-mobile';
 import { EnvironmentOutline } from 'antd-mobile-icons';
@@ -32,7 +32,6 @@ interface ShopCardProps {
 
 export default function ShopCard({ shop }: ShopCardProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const displayReviewCount = shop.localReviewCount ?? shop.comments;
 
   const formatDistance = (d: number) => {
@@ -41,7 +40,10 @@ export default function ShopCard({ shop }: ShopCardProps) {
   };
 
   return (
-    <div className={styles.box} onClick={() => navigate(`/shop-detail/${shop.id}`)}>
+    <Link
+      to={`/shop-detail/${shop.id}`}
+      className={styles.box}
+    >
       <div className={styles.img}>
         <MerchantVisual
           shopId={shop.id}
@@ -62,21 +64,21 @@ export default function ShopCard({ shop }: ShopCardProps) {
                 value={shop.score / 10}
                 style={{ '--star-size': '12px', '--active-color': '#F63' }}
               />
-              <span style={{ color: '#F63', fontSize: 11, marginLeft: 4 }}>
+              <span className={styles.score}>
                 {shop.score / 10}{t('shopCard.score')}
               </span>
             </>
           ) : (
-            <span style={{ color: '#999', fontSize: 11 }}>{t('shopCard.ratingUnavailable')}</span>
+            <span className={styles.ratingUnavailable}>{t('shopCard.ratingUnavailable')}</span>
           )}
-          <span style={{ color: '#999', fontSize: 10, marginLeft: 4 }}>
+          <span className={styles.reviewCount}>
             {displayReviewCount}{t('shopCard.comments')}
           </span>
         </div>
         <div className={styles.area}>
           <span>{shop.area}</span>
           {shop.distance != null && (
-            <span style={{ marginLeft: 8 }}>{formatDistance(shop.distance)}</span>
+            <span className={styles.distance}>{formatDistance(shop.distance)}</span>
           )}
         </div>
         <div className={styles.avgPrice}>
@@ -86,9 +88,9 @@ export default function ShopCard({ shop }: ShopCardProps) {
         </div>
         <div className={styles.address}>
           <EnvironmentOutline fontSize={12} />
-          <span style={{ marginLeft: 2 }}>{shop.address}</span>
+          <span>{shop.address}</span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

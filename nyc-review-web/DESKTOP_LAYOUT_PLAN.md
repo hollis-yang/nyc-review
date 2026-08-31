@@ -1,7 +1,8 @@
 # NYC Review desktop layout plan
 
-Status: Phase 1 complete  
-Baseline: `b379b86` (`feat: add account security and check-in calendar`)  
+Status: Phase 2 complete
+Baseline: `b379b86` (`feat: add account security and check-in calendar`)
+Phase 1 commit: `3f26310` (`feat(web): add desktop shell and home layout`)
 Scope: the current 15 React page routes in `nyc-review-web/src/App.tsx`
 
 ## Goal and non-negotiable constraints
@@ -72,7 +73,7 @@ Protected pages:
   Preserve note order and infinite loading.
 - Shop list: persistent `240px` category panel, sticky sort controls, and one
   or two columns of the existing shop cards.
-- Map: vertical category overlay on the left, with the map filling the remaining
+- Map: a vertical category rail on the left, with the map filling the remaining
   route viewport. Preserve mode, density, location, error, and popup behavior;
   do not add a shop-results list.
 
@@ -132,7 +133,7 @@ Protected pages:
 - Compile and run the current static/unit contracts before handing off the
   first preview.
 
-Completed in the current working tree:
+Completed in Phase 1 commit `3f26310`:
 
 - responsive route shell and shared desktop sizing tokens;
 - compact and expanded desktop modes for the existing primary navigation;
@@ -150,6 +151,28 @@ issue; Phase 1 does not modify that file.
 
 - Adapt shared note and shop cards.
 - Implement Shop List and Map desktop layouts.
+
+Completed in Phase 2:
+
+- retained the Phase 1 desktop note-card grid and added a bounded `136x108px`
+  desktop media column plus keyboard-native link semantics to the shared shop
+  card, without adding or removing merchant fields;
+- converted Shop List to a persistent `240px` category panel and a one/two
+  column result grid while preserving the mobile category dropdown, sorting,
+  geolocation fallback, loading, and empty states;
+- retained the result list as the pagination scroll owner, added underfilled
+  viewport continuation, and canceled/ignored superseded requests so rapid
+  category or sort changes cannot mix result sets;
+- converted Map to a `240px` desktop filter rail (`264px` on wide screens) and
+  a separate map canvas, keeping all category, viewport URL, cluster, marker,
+  popup, loading, error, empty, density, and locate behaviors;
+- added Leaflet size invalidation when the responsive canvas changes and
+  enlarged only the desktop popup presentation;
+- added three discovery-specific desktop contracts; 15 static/unit tests,
+  lint, production build, and bilingual frontend contracts pass.
+
+The existing `visual:audit` failure for `MyProfile/index.tsx` is unchanged from
+the Phase 1 baseline and remains outside this phase's discovery-surface scope.
 
 ### Phase 3 — detail and conversation surfaces
 

@@ -19,12 +19,12 @@ export function getShopsByType(params: {
   sortOrder?: string;
   x?: number;
   y?: number;
-}) {
-  return client.get('/shop/of/type', { params });
+}, signal?: AbortSignal) {
+  return client.get('/shop/of/type', { params, signal });
 }
 
-export function getShopsByName(name: string, current: number = 1) {
-  return client.get('/shop/of/name', { params: { name, current } });
+export function getShopsByName(name: string, current: number = 1, signal?: AbortSignal) {
+  return client.get('/shop/of/name', { params: { name, current }, signal });
 }
 
 export function getShopLinkOptions(params: {

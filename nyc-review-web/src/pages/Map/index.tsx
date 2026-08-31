@@ -260,6 +260,33 @@ function MapEvents({
   return null;
 }
 
+function MapResizeObserver() {
+  const map = useMap();
+
+  useEffect(() => {
+    const mapElement = map.getContainer();
+    const invalidateSize = () => map.invalidateSize({ pan: false, animate: false });
+    const initialTimer = window.setTimeout(invalidateSize, 0);
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', invalidateSize);
+      return () => {
+        window.clearTimeout(initialTimer);
+        window.removeEventListener('resize', invalidateSize);
+      };
+    }
+
+    const observer = new ResizeObserver(invalidateSize);
+    observer.observe(mapElement);
+    return () => {
+      window.clearTimeout(initialTimer);
+      observer.disconnect();
+    };
+  }, [map]);
+
+  return null;
+}
+
 function MapLayers({
   data,
   types,
@@ -563,23 +590,6 @@ export default function MapPage() {
       </div>
 
       <div className={styles.mapWrap}>
-        <MapContainer
-          center={initialMapState.center}
-          zoom={initialMapState.zoom}
-          minZoom={8}
-          maxZoom={MAX_ZOOM}
-          className={styles.map}
-          zoomControl={false}
-          preferCanvas
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapEvents centerOn={flyTo} onViewportChange={handleViewportChange} />
-          <MapLayers data={mapData} types={types} userPos={userPos} />
-        </MapContainer>
-
         <div className={styles.filterPanel}>
           <div className={styles.filterScroller} role="group" aria-label={tt('map.categoryFilter')}>
             <button
@@ -612,51 +622,71 @@ export default function MapPage() {
           </div>
         </div>
 
-        {mapData && (
-          <div className={styles.modeBadge} aria-live="polite">
-            {modeLabel}
-            {mapLoading && <span className={styles.updatingDot} aria-label={tt('map.updating')} />}
-          </div>
-        )}
+        <div className={styles.mapCanvas}>
+          <MapContainer
+            center={initialMapState.center}
+            zoom={initialMapState.zoom}
+            minZoom={8}
+            maxZoom={MAX_ZOOM}
+            className={styles.map}
+            zoomControl={false}
+            preferCanvas
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <MapResizeObserver />
+            <MapEvents centerOn={flyTo} onViewportChange={handleViewportChange} />
+            <MapLayers data={mapData} types={types} userPos={userPos} />
+          </MapContainer>
 
-        {mapLoading && !mapData && (
-          <div className={styles.loadingOverlay} role="status">
-            <span className={styles.spinner} />
-            {tt('map.loading')}
-          </div>
-        )}
+          {mapData && (
+            <div className={styles.modeBadge} aria-live="polite">
+              {modeLabel}
+              {mapLoading && <span className={styles.updatingDot} aria-label={tt('map.updating')} />}
+            </div>
+          )}
 
-        {mapError && !mapData && !mapLoading && (
-          <div className={styles.errorOverlay} role="alert">
-            <span>{tt('map.loadFailed')}</span>
-            <button type="button" onClick={retryMap}>
-              {tt('map.retry')}
-            </button>
-          </div>
-        )}
+          {mapLoading && !mapData && (
+            <div className={styles.loadingOverlay} role="status">
+              <span className={styles.spinner} />
+              {tt('map.loading')}
+            </div>
+          )}
 
-        {!mapLoading && !mapError && mapData?.items.length === 0 && (
-          <div className={styles.emptyBadge}>{tt('map.noShopsInView')}</div>
-        )}
+          {mapError && !mapData && !mapLoading && (
+            <div className={styles.errorOverlay} role="alert">
+              <span>{tt('map.loadFailed')}</span>
+              <button type="button" onClick={retryMap}>
+                {tt('map.retry')}
+              </button>
+            </div>
+          )}
 
-        {(mapData?.tooDense || mapData?.truncated) && (
-          <div className={styles.densityNotice} role="status">
-            {tt('map.zoomInForShops', {
-              zoom: mapData.minZoomRequired ?? mapData.detailZoom ?? DETAIL_ZOOM,
-            })}
-          </div>
-        )}
+          {!mapLoading && !mapError && mapData?.items.length === 0 && (
+            <div className={styles.emptyBadge}>{tt('map.noShopsInView')}</div>
+          )}
 
-        <button
-          type="button"
-          className={styles.locateBtn}
-          onClick={locateMe}
-          aria-label={tt('map.locateMe')}
-        >
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-            <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
-          </svg>
-        </button>
+          {(mapData?.tooDense || mapData?.truncated) && (
+            <div className={styles.densityNotice} role="status">
+              {tt('map.zoomInForShops', {
+                zoom: mapData.minZoomRequired ?? mapData.detailZoom ?? DETAIL_ZOOM,
+              })}
+            </div>
+          )}
+
+          <button
+            type="button"
+            className={styles.locateBtn}
+            onClick={locateMe}
+            aria-label={tt('map.locateMe')}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+              <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <FootBar activeBtn={2} />

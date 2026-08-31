@@ -1,10 +1,18 @@
 .box {
+  appearance: none;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
+  border: 0;
   background: #fff;
   padding: 10px;
   margin: 6px 0;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
@@ -61,10 +69,31 @@
   margin-bottom: 2px;
 }
 
+.score {
+  margin-left: 4px;
+  color: #F63;
+  font-size: 11px;
+}
+
+.ratingUnavailable {
+  color: #999;
+  font-size: 11px;
+}
+
+.reviewCount {
+  margin-left: 4px;
+  color: #999;
+  font-size: 10px;
+}
+
 .area {
   color: #666;
   font-size: 12px;
   margin-bottom: 2px;
+}
+
+.distance {
+  margin-left: 8px;
 }
 
 .avgPrice {
@@ -81,4 +110,67 @@
   font-size: 11px;
   line-height: 1.4;
   word-break: break-word;
+}
+
+.address span {
+  margin-left: 2px;
+}
+
+@media (min-width: 1024px) {
+  .box {
+    min-height: 136px;
+    margin: 0;
+    padding: 14px;
+    border: 1px solid rgba(47, 38, 34, 0.06);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px rgba(47, 38, 34, 0.07);
+  }
+
+  .box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 32px rgba(47, 38, 34, 0.11);
+  }
+
+  .box:focus-visible {
+    outline: 3px solid rgba(255, 102, 51, 0.24);
+    outline-offset: 2px;
+  }
+
+  .img {
+    width: 136px;
+    flex-basis: 136px;
+  }
+
+  .img img {
+    height: 108px;
+    border-radius: var(--radius-md);
+  }
+
+  .info {
+    margin-left: 14px;
+  }
+
+  .title {
+    margin-bottom: 7px;
+    font-size: 16px;
+    line-height: 1.35;
+  }
+
+  .rate,
+  .area,
+  .avgPrice {
+    margin-bottom: 4px;
+  }
+
+  .rate {
+    flex-wrap: wrap;
+  }
+
+  .area {
+    font-size: 13px;
+  }
+
+  .address {
+    font-size: 12px;
+  }
 }

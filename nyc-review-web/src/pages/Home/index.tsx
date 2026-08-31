@@ -28,6 +28,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const loadingRef = useRef(false);
+  const underfillAttemptLength = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [searchText, setSearchText] = useState('');
   const [suggestions, setSuggestions] = useState<{ id: number; name: string; typeId?: number }[]>([]);
@@ -95,20 +96,37 @@ export default function Home() {
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!el) return;
 
-    const observer = new ResizeObserver(() => {
+    const fillUnderfilledViewport = () => {
       if (
-        el.scrollHeight <= el.clientHeight + 1 &&
-        !loadingRef.current &&
-        hasMore
-      ) {
-        void loadBlogs();
-      }
-    });
+        blogs.length === 0 ||
+        el.scrollHeight > el.clientHeight + 1 ||
+        loadingRef.current ||
+        !hasMore ||
+        underfillAttemptLength.current === blogs.length
+      ) return;
+
+      underfillAttemptLength.current = blogs.length;
+      void loadBlogs();
+    };
+
+    const initialTimer = window.setTimeout(fillUnderfilledViewport, 0);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', fillUnderfilledViewport);
+      return () => {
+        window.clearTimeout(initialTimer);
+        window.removeEventListener('resize', fillUnderfilledViewport);
+      };
+    }
+
+    const observer = new ResizeObserver(fillUnderfilledViewport);
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, loadBlogs]);
+    return () => {
+      window.clearTimeout(initialTimer);
+      observer.disconnect();
+    };
+  }, [blogs.length, hasMore, loadBlogs]);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;

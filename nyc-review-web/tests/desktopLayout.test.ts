@@ -71,7 +71,10 @@ test('home retains its mobile contract and defines the desktop grid contract', (
   assert.match(home, /blogs\.map/);
   assert.match(home, /onScroll=\{handleScroll\}/);
   assert.match(home, /onLikeUpdate=\{handleLikeUpdate\}/);
-  assert.match(home, /new ResizeObserver/);
+  assert.match(home, /blogs\.length === 0/);
+  assert.match(home, /el\.scrollHeight > el\.clientHeight \+ 1/);
+  assert.match(home, /underfillAttemptLength\.current === blogs\.length/);
+  assert.match(home, /new ResizeObserver\(fillUnderfilledViewport\)/);
   assert.match(homeStyles, /\.typeList\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(cardStyles, /\.box\s*\{[^}]*width:\s*48%;/s);
   assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?grid-template-columns:\s*repeat\(6,/s);

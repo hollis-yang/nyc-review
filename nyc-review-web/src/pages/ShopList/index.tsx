@@ -52,6 +52,10 @@ export default function ShopList() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
+  const requestSequence = useRef(0);
+  const requestAbortController = useRef<AbortController | null>(null);
+  const underfillAttemptLength = useRef<number | null>(null);
 
   useEffect(() => {
     getShopTypes()
@@ -86,11 +90,15 @@ export default function ShopList() {
   }, []);
 
   const loadShops = useCallback(async () => {
-    if (loading || !hasMore || !distanceOrigin) return;
+    if (loadingRef.current || !hasMore || !distanceOrigin) return;
+    const abortController = new AbortController();
+    const sequence = ++requestSequence.current;
+    requestAbortController.current = abortController;
+    loadingRef.current = true;
     setLoading(true);
     try {
       const res = searchQuery
-        ? await getShopsByName(searchQuery, current)
+        ? await getShopsByName(searchQuery, current, abortController.signal)
         : await getShopsByType({
             typeId,
             current,
@@ -98,7 +106,8 @@ export default function ShopList() {
             sortOrder,
             x: distanceOrigin.x,
             y: distanceOrigin.y,
-          });
+          }, abortController.signal);
+      if (sequence !== requestSequence.current || abortController.signal.aborted) return;
       const data = res.data ?? res;
       if (!data || data.length === 0) {
         setHasMore(false);
@@ -109,17 +118,31 @@ export default function ShopList() {
     } catch {
       // ignore
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) {
+        loadingRef.current = false;
+        requestAbortController.current = null;
+        setLoading(false);
+      }
     }
-  }, [typeId, current, sortBy, sortOrder, searchQuery, loading, hasMore, distanceOrigin]);
+  }, [typeId, current, sortBy, sortOrder, searchQuery, hasMore, distanceOrigin]);
 
   useEffect(() => {
     // Reset pagination when the user changes the query contract.
+    requestAbortController.current?.abort();
+    requestSequence.current += 1;
+    loadingRef.current = false;
+    underfillAttemptLength.current = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShops([]);
     setCurrent(1);
     setHasMore(true);
+    setLoading(false);
   }, [typeId, sortBy, sortOrder, searchQuery]);
+
+  useEffect(() => () => {
+    requestSequence.current += 1;
+    requestAbortController.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (distanceOrigin && shops.length === 0 && hasMore) {
@@ -129,14 +152,48 @@ export default function ShopList() {
     }
   }, [distanceOrigin, shops.length, hasMore, typeId, sortBy, sortOrder, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const fillUnderfilledViewport = () => {
+      if (
+        shops.length === 0 ||
+        !hasMore ||
+        loadingRef.current ||
+        el.scrollHeight > el.clientHeight + 1 ||
+        underfillAttemptLength.current === shops.length
+      ) return;
+
+      underfillAttemptLength.current = shops.length;
+      void loadShops();
+    };
+
+    const initialTimer = window.setTimeout(fillUnderfilledViewport, 0);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', fillUnderfilledViewport);
+      return () => {
+        window.clearTimeout(initialTimer);
+        window.removeEventListener('resize', fillUnderfilledViewport);
+      };
+    }
+
+    const observer = new ResizeObserver(fillUnderfilledViewport);
+    observer.observe(el);
+    return () => {
+      window.clearTimeout(initialTimer);
+      observer.disconnect();
+    };
+  }, [hasMore, loadShops, shops.length]);
+
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const { scrollTop, offsetHeight, scrollHeight } = el;
-    if (scrollTop + offsetHeight + 1 > scrollHeight && !loading && hasMore) {
+    if (scrollTop + offsetHeight + 1 > scrollHeight && !loadingRef.current && hasMore) {
       loadShops();
     }
-  }, [loadShops, loading, hasMore]);
+  }, [loadShops, hasMore]);
 
   const handleSort = (field: string) => {
     setVisible(false);
@@ -164,38 +221,23 @@ export default function ShopList() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
-        </div>
+        </button>
         <div className={styles.title}>
           {searchQuery ? t('shopList.searchResult', { query: searchQuery }) : t(`shopTypes.${typeName}`, typeName)}
         </div>
       </div>
 
-      <div className={styles.sortBar}>
-        <div className={`${styles.sortItem} ${visible ? styles.sortActive : ''}`} onClick={() => setVisible(!visible)}>
-          <span>{typeName ? t(`shopTypes.${typeName}`, typeName) : t('shopList.allCategories')}</span>
-          <span className={styles.sortArrow}>&#9660;</span>
-        </div>
-        {sortOptions.map((opt) => (
-          <div
-            key={opt.field}
-            className={`${styles.sortItem} ${sortBy === opt.field ? styles.sortActive : ''}`}
-            onClick={() => handleSort(opt.field)}
-          >
-            <span>{opt.label}</span>
-            {sortBy === opt.field && (
-              <span className={styles.sortArrow}>
-                {sortOrder === 'desc' ? '▼' : '▲'}
-              </span>
-            )}
-          </div>
-        ))}
-
-        {visible && (
-          <div className={styles.selectType}>
+      <div className={styles.contentShell}>
+        <aside
+          className={`${styles.categoryPanel} ${visible ? styles.categoryPanelOpen : ''}`}
+          aria-label={t('shopList.allCategories')}
+        >
+          <div className={styles.categoryGrid}>
             {types.map((tp) => (
-              <div
+              <button
+                type="button"
                 key={tp.id}
                 className={`${styles.typeOption} ${String(tp.id) === typeId ? styles.activeType : ''}`}
                 onClick={() => {
@@ -209,32 +251,59 @@ export default function ShopList() {
                   alt={tp.name}
                 />
                 <span className={styles.typeName}>{t(`shopTypes.${tp.name}`, tp.name)}</span>
-              </div>
+              </button>
             ))}
           </div>
-        )}
-      </div>
+        </aside>
 
-      {visible && (
-        <div className={styles.mask} onClick={() => setVisible(false)} />
-      )}
-
-      <div className={styles.list} onScroll={handleScroll} ref={containerRef}>
-        {!distanceOrigin ? (
-          <div className={styles.loading}>{t('shopList.locating')}</div>
-        ) : shops.length === 0 && !loading ? (
-          <div className={styles.emptySearch}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-            <div style={{ fontSize: 15, color: '#999' }}>{t('shopList.noResults')}</div>
-            <div style={{ fontSize: 13, color: '#ccc', marginTop: 4 }}>{t('shopList.tryDifferent')}</div>
+        <div className={styles.resultsPanel}>
+          <div className={styles.sortBar}>
+            <button
+              type="button"
+              className={`${styles.sortItem} ${styles.categoryToggle} ${visible ? styles.sortActive : ''}`}
+              onClick={() => setVisible(!visible)}
+              aria-expanded={visible}
+            >
+              <span>{typeName ? t(`shopTypes.${typeName}`, typeName) : t('shopList.allCategories')}</span>
+              <span className={styles.sortArrow}>&#9660;</span>
+            </button>
+            {sortOptions.map((opt) => (
+              <button
+                type="button"
+                key={opt.field}
+                className={`${styles.sortItem} ${sortBy === opt.field ? styles.sortActive : ''}`}
+                onClick={() => handleSort(opt.field)}
+              >
+                <span>{opt.label}</span>
+                {sortBy === opt.field && (
+                  <span className={styles.sortArrow}>
+                    {sortOrder === 'desc' ? '▼' : '▲'}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
-        ) : (
-          shops.map((s) => (
-            <ShopCard key={s.id} shop={s} />
-          ))
-        )}
-        {loading && <div className={styles.loading}>{t('shopList.loading')}</div>}
+
+          <div className={styles.list} onScroll={handleScroll} ref={containerRef}>
+            {!distanceOrigin ? (
+              <div className={styles.loading}>{t('shopList.locating')}</div>
+            ) : shops.length === 0 && !loading ? (
+              <div className={styles.emptySearch}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+                <div style={{ fontSize: 15, color: '#999' }}>{t('shopList.noResults')}</div>
+                <div style={{ fontSize: 13, color: '#ccc', marginTop: 4 }}>{t('shopList.tryDifferent')}</div>
+              </div>
+            ) : (
+              shops.map((s) => (
+                <ShopCard key={s.id} shop={s} />
+              ))
+            )}
+            {loading && <div className={styles.loading}>{t('shopList.loading')}</div>}
+          </div>
+        </div>
       </div>
+
+      {visible && <div className={styles.mask} onClick={() => setVisible(false)} />}
     </div>
   );
 }
