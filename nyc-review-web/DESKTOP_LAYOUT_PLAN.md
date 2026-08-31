@@ -60,9 +60,9 @@ Protected pages:
   content grid capped at `1280px`.
 - At very wide viewports: cap the working canvas at `1440px` rather than
   stretching content indefinitely.
-- Convert the existing bottom navigation to the desktop rail only on the seven
-  pages that currently render `FootBar`: Home, Map, AI, My Profile, Profile
-  Edit, Other Profile, and Account Security.
+- Convert the existing bottom navigation to the desktop rail on Home, Map, AI,
+  My Profile, Profile Edit, Other Profile, and Account Security; keep the same
+  rail on Blog Edit at desktop widths without adding a mobile bottom bar there.
 - Ordinary pages use one primary scroll surface. Independent scrolling is
   retained only where the feature requires it, such as the map, AI event log,
   suggestion lists, and modal result lists.
@@ -76,9 +76,9 @@ Protected pages:
   Preserve note order and infinite loading.
 - Shop list: persistent `240px` category panel, sticky sort controls, and one
   or two columns of the existing shop cards.
-- Map: a vertical category rail on the left, with the map filling the remaining
-  route viewport. Preserve mode, density, location, error, and popup behavior;
-  do not add a shop-results list.
+- Map: a horizontal category strip at the top of the map, with the map filling
+  the route viewport below it. Preserve mode, density, location, error, and
+  popup behavior; do not add a shop-results list.
 
 ### Detail and social content
 
@@ -166,9 +166,10 @@ Completed in Phase 2:
 - retained the result list as the pagination scroll owner, added underfilled
   viewport continuation, and canceled/ignored superseded requests so rapid
   category or sort changes cannot mix result sets;
-- converted Map to a `240px` desktop filter rail (`264px` on wide screens) and
-  a separate map canvas, keeping all category, viewport URL, cluster, marker,
-  popup, loading, error, empty, density, and locate behaviors;
+- added a dedicated desktop filter surface and map canvas while keeping all
+  category, viewport URL, cluster, marker, popup, loading, error, empty,
+  density, and locate behaviors; later feedback moved that filter surface from
+  the original side rail to a horizontal strip above the map;
 - added Leaflet size invalidation when the responsive canvas changes and
   enlarged only the desktop popup presentation;
 - added three discovery-specific desktop contracts; 15 static/unit tests,
@@ -250,6 +251,19 @@ Completed in Phase 4:
   merchant visual audit now passes without changing the displayed fallback;
 - added five Phase 4 content/layout contracts; all 25 static/unit tests, lint,
   production build, bilingual frontend contracts, and the visual audit pass.
+
+### Post-Phase 4 stabilization — desktop density and navigation
+
+- prefetch a second hot-note page when the desktop grid has fewer than 12
+  items, keeping the mobile first request at the existing 10-item page size;
+- use a slim, unobtrusive Home feed scrollbar and anchor every note's author
+  and like count to the bottom of equal-height cards;
+- restore Map categories to a top horizontal filter strip while retaining all
+  map state, URL, loading, and popup behavior;
+- keep the primary navigation rail visible on Blog Edit at desktop widths only;
+- restore the final My Profile note card's full desktop border and slightly
+  enlarge reading text on otherwise sparse profile and account pages;
+- extend the responsive contracts to cover these fixes before Phase 5 begins.
 
 ### Phase 5 — creation and AI surfaces
 

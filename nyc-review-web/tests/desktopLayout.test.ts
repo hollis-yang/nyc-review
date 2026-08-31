@@ -97,6 +97,10 @@ test('home retains its mobile contract and defines the desktop grid contract', (
   assert.match(home, /underfillAttemptPage\.current === current/);
   assert.match(home, /if \(loadingRef\.current \|\| !hasMore\) return;\s*underfillAttemptPage\.current = current;\s*loadingRef\.current = true;/s);
   assert.match(home, /new ResizeObserver\(fillUnderfilledViewport\)/);
+  assert.match(home, /const DESKTOP_INITIAL_BLOG_COUNT = 12/);
+  assert.match(home, /window\.matchMedia\('\(min-width: 1024px\)'\)\.matches/);
+  assert.match(home, /blogs\.length < DESKTOP_INITIAL_BLOG_COUNT/);
+  assert.match(home, /!needsDesktopInitialPrefetch && el\.scrollHeight > el\.clientHeight \+ 1/);
   assert.match(homeStyles, /\.typeList\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(cardStyles, /\.box\s*\{[^}]*width:\s*48%;/s);
   assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?grid-template-columns:\s*repeat\(6,/s);
@@ -104,6 +108,24 @@ test('home retains its mobile contract and defines the desktop grid contract', (
   assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?\.container\s*\{[^}]*overflow:\s*hidden;/s);
   assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?\.blogList\s*\{[^}]*min-height:\s*0;/s);
   assert.match(homeStyles, /@media \(min-width: 1200px\)[\s\S]*?grid-template-columns:\s*repeat\(4,/s);
+  assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?\.blogList\s*\{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:/s);
+  assert.match(homeStyles, /\.blogList::-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*999px;/s);
   assert.match(homeStyles, /\.loading\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s);
   assert.match(cardStyles, /@media \(min-width: 1024px\)[\s\S]*?\.box\s*\{[^}]*width:\s*100%;/s);
+  assert.match(cardStyles, /\.box\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
+  assert.match(cardStyles, /\.title\s*\{[^}]*flex:\s*1 1 auto;/s);
+  assert.match(cardStyles, /@media \(min-width: 1024px\)[\s\S]*?\.foot\s*\{[^}]*margin-top:\s*auto;/s);
+});
+
+test('blog editor keeps primary navigation on desktop without adding a mobile footer', () => {
+  const app = readSource('../src/App.tsx');
+  const editor = readSource('../src/pages/BlogEdit/index.tsx');
+  const editorStyles = readSource('../src/pages/BlogEdit/BlogEdit.module.css');
+  const navigationList = app.match(/const routesWithPrimaryNavigation = \[([\s\S]*?)\];/)?.[1] ?? '';
+
+  assert.match(navigationList, /'\/blog-edit'/);
+  assert.match(editor, /styles\.desktopNavigation/);
+  assert.match(editor, /<FootBar activeBtn=\{0\}/);
+  assert.match(editorStyles, /\.desktopNavigation\s*\{\s*display:\s*none;/s);
+  assert.match(editorStyles, /@media \(min-width: 1024px\)[\s\S]*?\.desktopNavigation\s*\{\s*display:\s*block;/s);
 });

@@ -320,6 +320,18 @@
     min-height: 54px;
   }
 
+  .passwordToggle {
+    font-size: 13px;
+  }
+
+  .hint,
+  .forgotLink a,
+  .switchLink a,
+  .switchLink span,
+  .agreementText {
+    font-size: 14px;
+  }
+
   .loginBtn {
     min-height: 48px;
   }

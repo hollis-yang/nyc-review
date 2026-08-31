@@ -214,6 +214,27 @@
     font-size: 18px;
   }
 
+  .description,
+  .hint {
+    font-size: 14px;
+  }
+
+  .status {
+    font-size: 13px;
+  }
+
+  .field :global(.adm-input) {
+    --font-size: 16px;
+  }
+
+  .button {
+    font-size: 16px;
+  }
+
+  .footerLink {
+    font-size: 14px;
+  }
+
   .forgotScroll {
     width: min(calc(var(--desktop-form-width) + (var(--desktop-page-gutter) * 2)), 100%);
     margin: 0 auto;

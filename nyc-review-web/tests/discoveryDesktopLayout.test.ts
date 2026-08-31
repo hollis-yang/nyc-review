@@ -56,7 +56,7 @@ test('shop card keeps every existing display field and gains bounded desktop med
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.img img\s*\{[^}]*height:\s*108px;/s);
 });
 
-test('map keeps filters, viewport states and popups while reserving a desktop filter rail', () => {
+test('map keeps filters, viewport states and popups with a desktop top filter bar', () => {
   const mapPage = readSource('../src/pages/Map/index.tsx');
   const styles = readSource('../src/pages/Map/Map.module.css');
 
@@ -77,7 +77,9 @@ test('map keeps filters, viewport states and popups while reserving a desktop fi
   assert.match(mapPage, /function MapResizeObserver/);
   assert.match(mapPage, /map\.invalidateSize\(\{ pan: false, animate: false \}\)/);
   assert.match(styles, /\.filterScroller\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;/s);
-  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?grid-template-columns:\s*240px minmax\(0, 1fr\)/s);
-  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterScroller\s*\{[^}]*flex-direction:\s*column;/s);
-  assert.match(styles, /@media \(min-width: 1440px\)[\s\S]*?grid-template-columns:\s*264px minmax\(0, 1fr\)/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mapCanvas\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterPanel\s*\{[^}]*position:\s*absolute;[^}]*top:\s*16px;[^}]*left:\s*50%;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterScroller\s*\{[^}]*flex-direction:\s*row;[^}]*overflow-x:\s*auto;/s);
+  assert.doesNotMatch(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mapWrap\s*\{[^}]*grid-template-columns:/s);
+  assert.match(styles, /@media \(min-width: 1440px\)[\s\S]*?\.filterPanel\s*\{[^}]*width:\s*min\(1040px,/s);
 });

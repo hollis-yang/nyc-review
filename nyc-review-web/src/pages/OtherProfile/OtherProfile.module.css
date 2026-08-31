@@ -392,6 +392,14 @@
     height: 72px;
   }
 
+  .userName {
+    font-size: 20px;
+  }
+
+  .userMeta {
+    font-size: 14px;
+  }
+
   .profileInfo {
     flex-basis: calc(100% - 84px);
   }
@@ -400,11 +408,13 @@
     width: 100%;
     box-sizing: border-box;
     padding: 9px 18px;
+    font-size: 14px;
     text-align: center;
   }
 
   .introRow {
     padding: 0 20px 18px;
+    font-size: 15px;
   }
 
   .contentCard {
@@ -417,6 +427,10 @@
 
   .contentCard :global(.adm-tabs-content) {
     overflow: visible;
+  }
+
+  .contentCard :global(.adm-tabs-tab) {
+    font-size: 15px;
   }
 
   .tabContent {
@@ -435,9 +449,27 @@
     height: 92px;
   }
 
+  .blogItemTitle {
+    font-size: 16px;
+  }
+
+  .blogItemMeta,
+  .followVisitBtn {
+    font-size: 13px;
+  }
+
+  .commonFollowHint {
+    font-size: 14px;
+  }
+
+  .followName {
+    font-size: 15px;
+  }
+
   .loadingFull {
     width: min(720px, calc(100% - (var(--desktop-page-gutter) * 2)));
     margin: 0 auto;
+    font-size: 16px;
   }
 }
 

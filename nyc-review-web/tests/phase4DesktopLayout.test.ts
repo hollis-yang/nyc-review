@@ -63,6 +63,9 @@ test('my profile keeps all nine surfaces in a sticky desktop workspace', () => {
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.profileCard,[\s\S]*?\.activityCard,[\s\S]*?\.content\s*\{[^}]*width:\s*100%;[^}]*box-sizing:\s*border-box;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.content\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*visible;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.checkInPanel\s*\{[^}]*width:\s*min\(640px, 100%\)/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.content\[data-section='notes'\] \.blogItem:last-child\s*\{[^}]*border-bottom:\s*1px solid #f0e9e6;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.blogItemTitle\s*\{[^}]*font-size:\s*16px;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.emptyState,[\s\S]*?\.loadingMore\s*\{[^}]*font-size:\s*15px;/s);
   assert.match(styles, /\.calendarGrid\s*\{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/s);
 });
 
@@ -82,6 +85,8 @@ test('other profile keeps follow and lazy common-follow behavior in a two-column
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.scroll\s*\{[^}]*grid-template-columns:\s*320px minmax\(0, 1fr\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.profileCard\s*\{[^}]*position:\s*sticky;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.contentCard\s*\{[^}]*min-width:\s*0;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.userMeta\s*\{[^}]*font-size:\s*14px;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.blogItemTitle\s*\{[^}]*font-size:\s*16px;/s);
   assert.match(styles, /@media \(min-width: 768px\) and \(max-width: 1023px\)[\s\S]*?\.scroll\s*\{[^}]*width:\s*min\(760px, 100%\)/s);
 });
 
@@ -127,6 +132,7 @@ test('profile edit preserves immediate field updates inside a desktop settings g
   assert.match(styles, /\.settingsGrid,[\s\S]*?\.settingsColumn\s*\{\s*display:\s*contents;/s);
   assert.match(styles, /@media \(min-width: 768px\) and \(max-width: 1023px\)[\s\S]*?\.scroll\s*\{[^}]*width:\s*min\(760px, 100%\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.settingsGrid\s*\{[^}]*width:\s*min\(960px, 100%\);[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.infoLabel\s*\{[^}]*font-size:\s*16px;/s);
 });
 
 test('account security and forgot password use separate desktop canvases', () => {
@@ -169,6 +175,7 @@ test('account security and forgot password use separate desktop canvases', () =>
   assert.match(styles, /@media \(min-width: 768px\) and \(max-width: 1023px\)[\s\S]*?\.securityScroll\s*\{[^}]*width:\s*min\(760px, 100%\)/s);
   assert.match(styles, /\.forgotScroll\s*\{[^}]*width:\s*min\(calc\(var\(--desktop-form-width\) \+ \(var\(--desktop-page-gutter\) \* 2\)\), 100%\)/s);
   assert.match(styles, /@media \(min-width: 1280px\)[\s\S]*?\.securityCards\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.description,[\s\S]*?\.hint\s*\{[^}]*font-size:\s*14px;/s);
 });
 
 test('login and register share a desktop brand panel without entering primary navigation', () => {
@@ -217,6 +224,7 @@ test('login and register share a desktop brand panel without entering primary na
   assert.match(styles, /@media \(min-width: 768px\) and \(max-width: 1023px\)[\s\S]*?\.scroll\s*\{[^}]*width:\s*min\(592px, 100%\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.authPanel\s*\{[^}]*width:\s*min\(1040px, 100%\);[^}]*grid-template-columns:\s*minmax\(300px, 0\.9fr\) minmax\(420px, 1\.1fr\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.authPanel\s*\{[^}]*box-sizing:\s*border-box;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.hint,[\s\S]*?\.agreementText\s*\{[^}]*font-size:\s*14px;/s);
   assert.match(styles, /@media \(min-width: 1024px\) and \(max-height: 720px\)[\s\S]*?\.scroll\s*\{[^}]*justify-content:\s*flex-start;/s);
 
   const navigationList = app.match(/const routesWithPrimaryNavigation = \[([\s\S]*?)\];/)?.[1] ?? '';

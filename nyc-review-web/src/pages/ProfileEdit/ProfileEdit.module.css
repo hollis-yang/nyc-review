@@ -172,6 +172,14 @@
     padding: 16px 18px;
   }
 
+  .infoLabel {
+    font-size: 16px;
+  }
+
+  .infoValue {
+    font-size: 15px;
+  }
+
   .infoItem:hover {
     background: #fff8f5;
   }

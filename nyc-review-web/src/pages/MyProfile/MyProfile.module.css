@@ -951,6 +951,25 @@ button.statItem {
     padding: 20px 18px 14px;
   }
 
+  .nickName {
+    font-size: 18px;
+  }
+
+  .city,
+  .intro,
+  .editBtn,
+  .logoutBtn {
+    font-size: 13px;
+  }
+
+  .statNum {
+    font-size: 20px;
+  }
+
+  .statLabel {
+    font-size: 12px;
+  }
+
   .avatarWrap {
     width: 64px;
     height: 64px;
@@ -962,7 +981,7 @@ button.statItem {
 
   .activityCard h2 {
     margin-bottom: 12px;
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .activityItem {
@@ -973,6 +992,11 @@ button.statItem {
   .activityItem:hover {
     border-color: #ffc6b5;
     background: #fff5f1;
+  }
+
+  .activityText strong,
+  .activityText small {
+    font-size: 13px;
   }
 
   .content {
@@ -988,7 +1012,11 @@ button.statItem {
   }
 
   .sectionHeader h2 {
-    font-size: 16px;
+    font-size: 18px;
+  }
+
+  .sectionCount {
+    font-size: 12px;
   }
 
   .tabContent {
@@ -1021,6 +1049,35 @@ button.statItem {
     padding: 12px;
   }
 
+  .content[data-section='notes'] .blogItem:last-child {
+    border-bottom: 1px solid #f0e9e6;
+  }
+
+  .blogItemTitle {
+    font-size: 16px;
+  }
+
+  .blogItemMeta {
+    font-size: 13px;
+  }
+
+  .assetBody strong {
+    font-size: 15px;
+  }
+
+  .assetBody small,
+  .assetMeta {
+    font-size: 13px;
+  }
+
+  .statusPill {
+    font-size: 11px;
+  }
+
+  .personCard span {
+    font-size: 15px;
+  }
+
   .assetCard,
   .voucherAsset,
   .memoryCard {
@@ -1031,6 +1088,20 @@ button.statItem {
   .loadingMore,
   .memoryNotice {
     grid-column: 1 / -1;
+  }
+
+  .emptyState,
+  .loadingMore {
+    font-size: 15px;
+  }
+
+  .memoryNotice {
+    font-size: 13px;
+  }
+
+  .memoryCard label,
+  .memoryValueRow input {
+    font-size: 14px;
   }
 
   .checkInPanel {

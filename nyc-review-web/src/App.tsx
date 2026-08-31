@@ -28,6 +28,7 @@ const routesWithPrimaryNavigation = [
   '/',
   '/map',
   '/ai',
+  '/blog-edit',
   '/profile',
   '/profile-edit',
   '/account-security',

@@ -5,6 +5,10 @@
   background: #f5f5f5;
 }
 
+.desktopNavigation {
+  display: none;
+}
+
 .header {
   height: 48px;
   display: grid;
@@ -351,4 +355,10 @@
   color: var(--color-primary);
   background: transparent;
   font-size: 12px;
+}
+
+@media (min-width: 1024px) {
+  .desktopNavigation {
+    display: block;
+  }
 }

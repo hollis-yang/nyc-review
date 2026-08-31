@@ -15,6 +15,8 @@ interface ShopType {
   icon: string;
 }
 
+const DESKTOP_INITIAL_BLOG_COUNT = 12;
+
 const shopTypeIconUrl = (icon?: string) => {
   if (!icon) return '/imgs/types/nyc-dining.svg';
   return `/imgs${icon.startsWith('/') ? icon : `/${icon}`}`;
@@ -112,8 +114,10 @@ export default function Home() {
     if (!el) return;
 
     const fillUnderfilledViewport = () => {
+      const needsDesktopInitialPrefetch = window.matchMedia('(min-width: 1024px)').matches
+        && blogs.length < DESKTOP_INITIAL_BLOG_COUNT;
       if (
-        el.scrollHeight > el.clientHeight + 1 ||
+        (!needsDesktopInitialPrefetch && el.scrollHeight > el.clientHeight + 1) ||
         loadingRef.current ||
         !hasMore ||
         loadError ||

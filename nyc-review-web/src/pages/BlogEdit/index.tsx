@@ -7,6 +7,7 @@ import { uploadBlogImage, deleteBlogImage } from '../../api/upload';
 import { createBlog } from '../../api/blog';
 import { getMe } from '../../api/user';
 import { useTranslation } from 'react-i18next';
+import FootBar from '../../components/FootBar';
 import styles from './BlogEdit.module.css';
 
 interface ShopItem {
@@ -276,6 +277,10 @@ export default function BlogEdit() {
           </div>
         </>
       )}
+
+      <div className={styles.desktopNavigation}>
+        <FootBar activeBtn={0} />
+      </div>
     </div>
   );
 }
