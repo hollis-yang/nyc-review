@@ -1,8 +1,9 @@
 # NYC Review desktop layout plan
 
-Status: Phase 2 complete
+Status: Phase 3 complete
 Baseline: `b379b86` (`feat: add account security and check-in calendar`)
 Phase 1 commit: `3f26310` (`feat(web): add desktop shell and home layout`)
+Phase 2 commit: `52e39f2` (`feat(web): add desktop discovery layouts`)
 Scope: the current 15 React page routes in `nyc-review-web/src/App.tsx`
 
 ## Goal and non-negotiable constraints
@@ -177,6 +178,31 @@ the Phase 1 baseline and remains outside this phase's discovery-surface scope.
 ### Phase 3 — detail and conversation surfaces
 
 - Implement Shop Detail, Shop Reviews, Blog Detail, and the deep-comment tree.
+
+Completed in Phase 3:
+
+- converted Shop Detail to a `7:5` media/details grid above an `8:4`
+  reviews/support grid while retaining every image, favorite/share/contact,
+  navigation, hours, voucher, review, reply, translation, and purchase path;
+- kept the merchant gallery horizontally reachable for arbitrary image counts
+  and aligned the existing review composer with the desktop conversation card;
+- centered Shop Reviews in an approximately `860px` reading column, added
+  desktop-only underfilled-viewport continuation, and protected pagination and
+  reply refreshes from stale result overwrites;
+- enlarged non-compact and compact desktop review threads, allowed action rows
+  to wrap, and capped visual indentation for deep descendants without changing
+  the existing reply-depth rule or mobile recursion behavior;
+- kept Blog Detail single-column at compact desktop widths and introduced the
+  `820px` article/comments column plus `320px` sticky shop/engagement rail at
+  `1280px`, with the existing composer and action bar aligned only to the main
+  column;
+- used `display: contents` for the new mobile wrappers so the existing mobile
+  order remains image/details, support/engagement, comments, and composer;
+- added four Phase 3 layout/content contracts; 19 static/unit tests, lint,
+  production build, and bilingual frontend contracts pass.
+
+The existing `visual:audit` failure for `MyProfile/index.tsx` remains the same
+pre-Phase-1 baseline and is not part of the Phase 3 detail/conversation scope.
 
 ### Phase 4 — profile and security surfaces
 

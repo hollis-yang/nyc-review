@@ -429,6 +429,7 @@ export default function BlogDetail() {
       </div>
 
       <div className={styles.scroll}>
+        <div className={styles.detailLayout}>
         {/* 图片卡片：Swiper + 作者信息 */}
         <div className={styles.imageCard}>
           <ImageSwiper
@@ -484,6 +485,7 @@ export default function BlogDetail() {
           )}
         </div>
 
+        <aside className={styles.sideRail}>
         {/* 关联商铺卡片 */}
         {shop && (
           <div className={styles.shopBasic} onClick={() => navigate(`/shop-detail/${shop.id}`)}>
@@ -538,6 +540,7 @@ export default function BlogDetail() {
             )}
           </div>
         </div>
+        </aside>
 
         {/* 评论卡片 */}
         <div className={styles.comments} id="comments-section">
@@ -556,9 +559,11 @@ export default function BlogDetail() {
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* 底部固定区域 */}
+      <div className={styles.bottomFrame}>
       <div className={styles.bottomSticky}>
         <div className={styles.commentInputBar}>
           <input
@@ -592,6 +597,7 @@ export default function BlogDetail() {
             <span className={hasCommented ? styles.liked : ''}>{blog.comments ?? 0}</span>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

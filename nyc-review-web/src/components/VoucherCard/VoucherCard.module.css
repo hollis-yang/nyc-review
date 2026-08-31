@@ -116,3 +116,34 @@
   font-size: 11px;
   color: #F63;
 }
+
+@media (min-width: 1024px) {
+  .box {
+    align-items: center;
+    gap: 8px;
+    padding: 14px 12px;
+  }
+
+  .left {
+    min-width: 0;
+  }
+
+  .title,
+  .subtitle,
+  .validity,
+  .time {
+    overflow-wrap: anywhere;
+  }
+
+  .right {
+    max-width: 46%;
+    padding-right: 0;
+  }
+
+  .btn {
+    min-width: 74px;
+    box-sizing: border-box;
+    padding: 7px 12px;
+    white-space: normal;
+  }
+}

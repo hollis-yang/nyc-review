@@ -392,100 +392,101 @@ export default function ShopDetail() {
           )}
         </div>
 
-        <div className={styles.divider} />
-
-        <div className={styles.openTime}>
-          <span>🕐</span>
-          <div>{t('shopDetail.hours')}</div>
-          <div style={{ flex: 1, fontSize: 12 }}>{shop.openHours || t('shopDetail.hoursUnavailable')}</div>
-        </div>
-
-        <div className={styles.divider} />
-
-        {vouchers.length > 0 && (
-          <>
-            <div className={styles.voucherSection}>
-              <div>
-                <span className={styles.voucherIcon}>%</span>
-                <span style={{ fontWeight: 'bold' }}>{t('shopDetail.vouchers')}</span>
-              </div>
-              {vouchers.map((v) => (
-                <VoucherCard key={v.id} voucher={v} onSeckill={handleSeckill} />
-              ))}
-            </div>
+        <div className={styles.lowerGrid}>
+          <aside className={styles.supportColumn}>
             <div className={styles.divider} />
-          </>
-        )}
 
-        <div className={styles.comments}>
-          <div className={styles.commentsHead}>
-            <div>{t('shopDetail.reviews')} <span>（{reviewTotal}）</span></div>
-            <div className={styles.reviewHeadActions}>
-              <button type="button" onClick={() => document.getElementById('write-shop-review')?.scrollIntoView({ behavior: 'smooth' })}>
-                {t('shopDetail.writeReview')}
-              </button>
-              {reviewTotal > 3 && (
-                <button type="button" onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</button>
-              )}
+            <div className={styles.openTime}>
+              <span>🕐</span>
+              <div>{t('shopDetail.hours')}</div>
+              <div style={{ flex: 1, fontSize: 12 }}>{shop.openHours || t('shopDetail.hoursUnavailable')}</div>
             </div>
-          </div>
-          <div className={styles.commentList}>
-            {reviews.slice(0, 3).map((review) => (
-              <div className={styles.commentBox} key={review.id}>
-                <ReviewThread
-                  review={review}
-                  compact
-                  shopId={shop.id}
-                  onReplyCreated={refreshReviews}
+
+            <div className={styles.divider} />
+
+            {vouchers.length > 0 && (
+              <>
+                <div className={styles.voucherSection}>
+                  <div>
+                    <span className={styles.voucherIcon}>%</span>
+                    <span style={{ fontWeight: 'bold' }}>{t('shopDetail.vouchers')}</span>
+                  </div>
+                  {vouchers.map((v) => (
+                    <VoucherCard key={v.id} voucher={v} onSeckill={handleSeckill} />
+                  ))}
+                </div>
+                <div className={styles.divider} />
+              </>
+            )}
+          </aside>
+
+          <main className={styles.conversationColumn}>
+            <div className={styles.comments}>
+              <div className={styles.commentsHead}>
+                <div>{t('shopDetail.reviews')} <span>（{reviewTotal}）</span></div>
+                <div className={styles.reviewHeadActions}>
+                  <button type="button" onClick={() => document.getElementById('write-shop-review')?.scrollIntoView({ behavior: 'smooth' })}>
+                    {t('shopDetail.writeReview')}
+                  </button>
+                  {reviewTotal > 3 && (
+                    <button type="button" onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</button>
+                  )}
+                </div>
+              </div>
+              <div className={styles.commentList}>
+                {reviews.slice(0, 3).map((review) => (
+                  <div className={styles.commentBox} key={review.id}>
+                    <ReviewThread
+                      review={review}
+                      compact
+                      shopId={shop.id}
+                      onReplyCreated={refreshReviews}
+                    />
+                  </div>
+                ))}
+                {reviewTotal > 3 && (
+                  <div className={styles.viewAll} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>
+                    <div>{t('shopDetail.viewAll', { n: reviewTotal })}</div>
+                    <div>&gt;</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 写评价 */}
+            <div className={styles.divider} />
+            <div id="write-shop-review" className={styles.reviewComposer}>
+              <div className={styles.reviewComposerTitle}>{t('shopDetail.writeReview')}</div>
+              <div className={styles.reviewRatingRow}>
+                <span>{t('shopDetail.rating')}</span>
+                <Rate
+                  value={reviewRating}
+                  onChange={setReviewRating}
+                  style={{ '--star-size': '20px', '--active-color': '#F63' }}
                 />
               </div>
-            ))}
-            {reviewTotal > 3 && (
-              <div className={styles.viewAll} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>
-                <div>{t('shopDetail.viewAll', { n: reviewTotal })}</div>
-                <div>&gt;</div>
+              <textarea
+                placeholder={t('shopDetail.reviewPlaceholder')}
+                value={reviewContent}
+                onChange={(e) => setReviewContent(e.target.value)}
+                rows={3}
+                maxLength={500}
+              />
+              <div
+                className={styles.reviewSubmit}
+                onClick={handleReviewSubmit}
+                style={{
+                  cursor: reviewContent.trim() && !reviewSubmitting ? 'pointer' : 'default',
+                  opacity: reviewContent.trim() && !reviewSubmitting ? 1 : 0.5,
+                }}
+              >
+                {reviewSubmitting ? t('shopDetail.submitting') : t('shopDetail.submit')}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* 写评价 */}
-        <div className={styles.divider} />
-        <div id="write-shop-review" style={{ padding: '12px 14px', scrollMarginTop: 56 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{t('shopDetail.writeReview')}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, color: '#666' }}>{t('shopDetail.rating')}</span>
-            <Rate
-              value={reviewRating}
-              onChange={setReviewRating}
-              style={{ '--star-size': '20px', '--active-color': '#F63' }}
-            />
-          </div>
-          <textarea
-            placeholder={t('shopDetail.reviewPlaceholder')}
-            value={reviewContent}
-            onChange={(e) => setReviewContent(e.target.value)}
-            rows={3}
-            maxLength={500}
-            style={{
-              width: '100%', padding: '8px 12px', border: '1px solid #eee',
-              borderRadius: 8, fontSize: 13, resize: 'vertical', boxSizing: 'border-box',
-            }}
-          />
-          <div
-            onClick={handleReviewSubmit}
-            style={{
-              marginTop: 8, textAlign: 'center', background: 'var(--color-primary-gradient)',
-              color: '#fff', padding: '8px 0', borderRadius: 20, fontSize: 14,
-              cursor: reviewContent.trim() && !reviewSubmitting ? 'pointer' : 'default',
-              opacity: reviewContent.trim() && !reviewSubmitting ? 1 : 0.5,
-            }}
-          >
-            {reviewSubmitting ? t('shopDetail.submitting') : t('shopDetail.submit')}
-          </div>
+            <div className={styles.divider} />
+          </main>
         </div>
-
-        <div className={styles.divider} />
         <div className={styles.copyright}>copyright ©2021 nyc-review.com</div>
       </div>
     </div>

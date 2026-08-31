@@ -125,3 +125,113 @@
 @media (max-width: 390px) {
   .children { margin-left: 18px; padding-left: 8px; }
 }
+
+@media (min-width: 1024px) {
+  .thread:not(.compact) .review {
+    gap: 14px;
+    padding: 16px 0;
+  }
+
+  .thread:not(.compact) .avatar {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .thread:not(.compact) .heading {
+    font-size: 14px;
+  }
+
+  .thread:not(.compact) .content {
+    padding: 7px 0;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .thread:not(.compact) .images img {
+    width: 104px;
+    height: 104px;
+  }
+
+  .compact .review {
+    gap: 11px;
+    padding: 10px 0;
+  }
+
+  .compact .avatar {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .compact .content {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .compact .images img {
+    width: 88px;
+    height: 88px;
+  }
+
+  .compact .replyComposer textarea {
+    min-height: 72px;
+    font-size: 12px;
+  }
+
+  .footer {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+  }
+
+  .footer time {
+    margin-left: auto;
+  }
+
+  .likeButton:focus-visible,
+  .replyButton:focus-visible,
+  .translateButton:focus-visible,
+  .replyActions button:focus-visible,
+  .replyComposer textarea:focus-visible {
+    outline: 3px solid rgba(255, 102, 51, 0.18);
+    outline-offset: 2px;
+  }
+
+  .replyButton {
+    cursor: pointer;
+  }
+
+  .thread:not(.compact) .replyComposer {
+    margin-top: 10px;
+    padding: 12px;
+    font-size: 11px;
+  }
+
+  .thread:not(.compact) .replyComposer textarea {
+    min-height: 88px;
+    padding: 9px 10px;
+    font-size: 13px;
+  }
+
+  .thread:not(.compact) .replyActions button {
+    min-height: 34px;
+    padding: 6px 14px;
+  }
+
+  .thread[data-depth='0'] > .children {
+    margin-left: 38px;
+    padding-left: 14px;
+  }
+
+  .thread[data-depth='1'] > .children {
+    margin-left: 24px;
+    padding-left: 12px;
+  }
+
+  .thread[data-depth='2'] > .children {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+}

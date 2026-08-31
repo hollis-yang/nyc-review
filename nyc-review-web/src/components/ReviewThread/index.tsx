@@ -32,9 +32,16 @@ interface ReviewThreadProps {
   compact?: boolean;
   shopId?: number;
   onReplyCreated?: () => void | Promise<void>;
+  nestingDepth?: number;
 }
 
-export default function ReviewThread({ review, compact = false, shopId, onReplyCreated }: ReviewThreadProps) {
+export default function ReviewThread({
+  review,
+  compact = false,
+  shopId,
+  onReplyCreated,
+  nestingDepth = 0,
+}: ReviewThreadProps) {
   const { t, i18n } = useTranslation();
   const isChinese = i18n.resolvedLanguage === 'zh-CN';
   const [translation, setTranslation] = useState('');
@@ -47,6 +54,7 @@ export default function ReviewThread({ review, compact = false, shopId, onReplyC
   const [replySubmitting, setReplySubmitting] = useState(false);
   const reviewImages = review.images ? review.images.split(',').filter(Boolean) : [];
   const depth = Math.min(2, Math.max(0, review.depth ?? 0));
+  const visualDepth = Math.min(2, Math.max(nestingDepth, review.depth ?? 0));
 
   const toggleTranslation = async () => {
     if (translation) {
@@ -107,7 +115,7 @@ export default function ReviewThread({ review, compact = false, shopId, onReplyC
   };
 
   return (
-    <div className={`${styles.thread} ${compact ? styles.compact : ''}`} data-depth={depth}>
+    <div className={`${styles.thread} ${compact ? styles.compact : ''}`} data-depth={visualDepth}>
       <article className={styles.review}>
         <div className={styles.avatar}>
           <img src={review.icon || '/imgs/icons/default-icon.png'} alt="" loading="lazy" />
@@ -201,6 +209,7 @@ export default function ReviewThread({ review, compact = false, shopId, onReplyC
             compact={compact}
             shopId={shopId}
             onReplyCreated={onReplyCreated}
+            nestingDepth={visualDepth + 1}
           />
         </div>
       ))}

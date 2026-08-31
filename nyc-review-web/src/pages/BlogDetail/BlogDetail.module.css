@@ -56,6 +56,12 @@
   padding: 8px 0 64px;
 }
 
+.detailLayout,
+.sideRail,
+.bottomFrame {
+  display: contents;
+}
+
 /* ===== 图片卡片（Swiper + 作者信息） ===== */
 .imageCard {
   margin: 0 12px 8px;
@@ -607,5 +613,242 @@
   .commentNested .translationAction,
   .commentNestedDeep .translationAction {
     flex-basis: 100%;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .container {
+    width: min(760px, 100%);
+    margin: 0 auto;
+    box-shadow: 0 0 30px rgba(47, 38, 34, 0.08);
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    height: 100dvh;
+    background: #f6f4f2;
+  }
+
+  .header {
+    height: var(--desktop-context-height);
+    padding: 0 var(--desktop-page-gutter);
+    box-shadow: 0 8px 24px rgba(119, 70, 49, 0.12);
+  }
+
+  .backBtn,
+  .share {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+  }
+
+  .backBtn:hover,
+  .share:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .title {
+    position: absolute;
+    left: 50%;
+    max-width: min(720px, 65%);
+    overflow: hidden;
+    transform: translateX(-50%);
+    font-size: 19px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .backBtn {
+    margin-right: auto;
+  }
+
+  .scroll {
+    box-sizing: border-box;
+    padding: 20px var(--desktop-page-gutter) 24px;
+  }
+
+  .detailLayout {
+    width: min(820px, 100%);
+    display: block;
+    margin: 0 auto;
+  }
+
+  .sideRail {
+    display: contents;
+  }
+
+  .imageCard,
+  .contentCard,
+  .shopBasic,
+  .zanBox,
+  .comments {
+    box-sizing: border-box;
+    margin: 0 0 16px;
+    border: 1px solid rgba(47, 38, 34, 0.06);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(47, 38, 34, 0.07);
+  }
+
+  .imageCard {
+    overflow: hidden;
+  }
+
+  .basic {
+    padding: 15px 18px;
+  }
+
+  .basicIcon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .name {
+    font-size: 15px;
+  }
+
+  .followBtn:hover,
+  .likeIconWrapper:hover,
+  .bottomBox:hover,
+  .shopBasic:hover {
+    filter: brightness(0.96);
+  }
+
+  .contentCard {
+    padding: 22px 24px;
+  }
+
+  .contentTitle {
+    font-size: 24px;
+    line-height: 1.4;
+  }
+
+  .contentBody {
+    font-size: 16px;
+    line-height: 1.9;
+  }
+
+  .shopBasic,
+  .zanBox,
+  .comments {
+    padding: 18px;
+  }
+
+  .shopIcon {
+    width: 68px;
+    height: 68px;
+  }
+
+  .commentsHead {
+    font-size: 17px;
+  }
+
+  .commentItem {
+    gap: 12px;
+    padding: 16px 0;
+  }
+
+  .commentIcon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .commentContent {
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .commentNested {
+    margin-left: 32px;
+    padding-left: 12px;
+  }
+
+  .commentNestedDeep {
+    margin-left: 12px;
+    padding-left: 10px;
+  }
+
+  .inlineReplyBar {
+    margin-top: 10px;
+    padding: 12px;
+  }
+
+  .inlineReplyInput {
+    min-height: 36px;
+    padding: 8px 13px;
+    font-size: 13px;
+  }
+
+  .bottomFrame {
+    width: min(820px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    display: block;
+    box-sizing: border-box;
+    margin: 0 auto;
+  }
+
+  .bottomSticky {
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(47, 38, 34, 0.07);
+    border-bottom: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: 0 -8px 26px rgba(47, 38, 34, 0.08);
+  }
+
+  .commentInputBar {
+    padding: 12px 18px;
+  }
+
+  .commentInput {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .detailLayout {
+    width: min(1164px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 820px) minmax(280px, 320px);
+    grid-template-rows: auto auto auto;
+    justify-content: center;
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .imageCard {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .contentCard {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .comments {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .sideRail {
+    min-width: 0;
+    display: flex;
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+  }
+
+  .bottomFrame {
+    width: min(1164px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    display: grid;
+    grid-template-columns: minmax(0, 820px) minmax(280px, 320px);
+    justify-content: center;
+    column-gap: 24px;
+  }
+
+  .bottomSticky {
+    grid-column: 1;
   }
 }

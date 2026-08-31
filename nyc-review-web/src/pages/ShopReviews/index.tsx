@@ -25,43 +25,63 @@ export default function ShopReviews() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [shopName, setShopName] = useState(searchParams.get('name') || t('shopReviews.allReviews'));
+  const requestedShopName = searchParams.get('name') || t('shopReviews.allReviews');
+  const [resolvedShopName, setResolvedShopName] = useState<{ shopId: string; name: string } | null>(null);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
   const [current, setCurrent] = useState(2);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(true);
+  const requestSequence = useRef(0);
+  const underfillAttemptLength = useRef<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
     let active = true;
+    const sequence = ++requestSequence.current;
+    loadingRef.current = true;
+    underfillAttemptLength.current = null;
+    // Clear the previous route's rows before its replacement request resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReviews([]);
+    setCurrent(2);
+    setHasMore(true);
+    setLoading(true);
     Promise.all([getShopById(id), getShopReviews(id, 1)])
       .then(([shopResponse, reviewResponse]) => {
-        if (!active) return;
+        if (!active || sequence !== requestSequence.current) return;
         const shopEnvelope = shopResponse as unknown as ApiEnvelope<{ name?: string }>;
         const shop = shopEnvelope.data ?? shopResponse as unknown as { name?: string };
-        if (shop?.name) setShopName(shop.name);
+        if (shop?.name) setResolvedShopName({ shopId: id, name: shop.name });
         const page = unwrapReviews(reviewResponse);
         setReviews(page.records);
         setCurrent(2);
         setHasMore(page.records.length > 0 && page.records.length < page.total);
       })
       .catch(() => {
-        if (active) setHasMore(false);
+        if (active && sequence === requestSequence.current) setHasMore(false);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && sequence === requestSequence.current) {
+          loadingRef.current = false;
+          setLoading(false);
+        }
       });
     return () => {
       active = false;
+      requestSequence.current += 1;
     };
   }, [id]);
 
   const loadReviews = useCallback(async () => {
-    if (loading || !hasMore || !id) return;
+    if (loadingRef.current || !hasMore || !id) return;
+    const sequence = ++requestSequence.current;
+    loadingRef.current = true;
     setLoading(true);
     try {
       const res = await getShopReviews(id, current);
+      if (sequence !== requestSequence.current) return;
       const page = unwrapReviews(res);
       if (page.records.length === 0) {
         setHasMore(false);
@@ -73,19 +93,58 @@ export default function ShopReviews() {
       }
     } catch {
       // ignore
+      if (sequence === requestSequence.current) underfillAttemptLength.current = null;
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
-  }, [id, current, loading, hasMore, reviews.length]);
+  }, [id, current, hasMore, reviews.length]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const fillUnderfilledViewport = () => {
+      if (
+        !window.matchMedia('(min-width: 1024px)').matches ||
+        reviews.length === 0 ||
+        !hasMore ||
+        loadingRef.current ||
+        el.scrollHeight > el.clientHeight + 1 ||
+        underfillAttemptLength.current === reviews.length
+      ) return;
+
+      underfillAttemptLength.current = reviews.length;
+      void loadReviews();
+    };
+
+    const initialTimer = window.setTimeout(fillUnderfilledViewport, 0);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', fillUnderfilledViewport);
+      return () => {
+        window.clearTimeout(initialTimer);
+        window.removeEventListener('resize', fillUnderfilledViewport);
+      };
+    }
+
+    const observer = new ResizeObserver(fillUnderfilledViewport);
+    observer.observe(el);
+    return () => {
+      window.clearTimeout(initialTimer);
+      observer.disconnect();
+    };
+  }, [hasMore, loadReviews, reviews.length]);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const { scrollTop, offsetHeight, scrollHeight } = el;
-    if (scrollTop + offsetHeight + 1 > scrollHeight && !loading && hasMore) {
+    if (scrollTop + offsetHeight + 1 > scrollHeight && !loadingRef.current && hasMore) {
       loadReviews();
     }
-  }, [loadReviews, loading, hasMore]);
+  }, [loadReviews, hasMore]);
 
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);
@@ -94,23 +153,37 @@ export default function ShopReviews() {
 
   const refreshVisibleReviews = useCallback(async () => {
     if (!id) return;
+    const sequence = ++requestSequence.current;
+    loadingRef.current = true;
     const loadedPages = Math.max(1, current - 1);
-    const responses = await Promise.all(
-      Array.from({ length: loadedPages }, (_, index) => getShopReviews(id, index + 1))
-    );
-    const pages = responses.map(unwrapReviews);
-    const records = pages.flatMap((page) => page.records);
-    const total = pages[0]?.total ?? records.length;
-    setReviews(records);
-    setHasMore(records.length < total);
+    try {
+      const responses = await Promise.all(
+        Array.from({ length: loadedPages }, (_, index) => getShopReviews(id, index + 1))
+      );
+      if (sequence !== requestSequence.current) return;
+      const pages = responses.map(unwrapReviews);
+      const records = pages.flatMap((page) => page.records);
+      const total = pages[0]?.total ?? records.length;
+      setReviews(records);
+      setHasMore(records.length < total);
+    } finally {
+      if (sequence === requestSequence.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    }
   }, [current, id]);
+
+  const shopName = resolvedShopName && resolvedShopName.shopId === id
+    ? resolvedShopName.name
+    : requestedShopName;
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
-        </div>
+        </button>
         <div className={styles.title}>{t('shopReviews.title', { name: shopName })}</div>
         <div className={styles.placeholder} />
       </div>
