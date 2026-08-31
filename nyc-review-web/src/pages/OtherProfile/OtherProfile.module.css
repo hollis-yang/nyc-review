@@ -90,11 +90,14 @@
 }
 
 .userName {
+  overflow: hidden;
   font-size: 17px;
   font-weight: 700;
   color: var(--color-text-dark);
   line-height: 1.4;
   margin-bottom: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .userMeta {
@@ -271,6 +274,9 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--color-text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .followVisitBtn {

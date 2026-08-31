@@ -80,13 +80,13 @@ PROFILES = {
     # Voucher-bearing shops are disjoint: approximately 60% have a standard
     # voucher and 30% have a manual-only seckill voucher. The 12-shop contract
     # profile uses the nearest whole-shop split (7 + 4).
-    "real-small": Profile(12, 12, 60, 24, 48, 40, 7, 4),
-    "real-medium": Profile(5_000, 1_000, 100_000, 10_000, 20_000, 20_000, 3_000, 1_500),
-    "real-large": Profile(10_000, 2_000, 200_000, 20_000, 40_000, 40_000, 6_000, 3_000),
+    "real-small": Profile(12, 12, 60, 24, 240, 40, 7, 4),
+    "real-medium": Profile(5_000, 1_000, 100_000, 10_000, 100_000, 20_000, 3_000, 1_500),
+    "real-large": Profile(10_000, 2_000, 200_000, 20_000, 200_000, 40_000, 6_000, 3_000),
     # The pinned single-source OSM inventory currently has ~16.6k eligible
     # identities. Keep headroom for source removals while preserving a
     # materially larger load profile than real-large.
-    "real-load": Profile(15_000, 4_000, 300_000, 30_000, 60_000, 80_000, 9_000, 4_500),
+    "real-load": Profile(15_000, 4_000, 300_000, 30_000, 300_000, 80_000, 9_000, 4_500),
 }
 
 

@@ -103,6 +103,23 @@ redis-cli --pipe \
 
 Overlay 会先校验数据库中同一 `dataVersion` 的商户数，只下架该版本原有的合成优惠券，再以独立高位 ID 写入 60% 普通券和 30% 秒杀券；不会删除旧券、订单或用户资产。Redis 文件只移除旧版秒杀库存并用 `SETNX` 初始化新库存，不重置已开始售卖的新券。完整数据集以后重新生成时已经原生采用相同的 60% / 30% 互斥分配，不需要 Overlay。
 
+### 演示账户与互动数据 Overlay
+
+如需在不重建商户库的情况下刷新笔记互动，并为两个演示账户补齐内容与资产：
+
+```bash
+python3 scripts/mock-data-generator/build_demo_experience_overlay.py \
+  --dataset data/generated/nyc-real-p13-full
+
+# 先备份受影响的用户与互动表，再按顺序执行：
+mysql -u root -p nyc_review \
+  < data/generated/nyc-real-p13-full/engagement_overlay.sql
+mysql -u root -p nyc_review \
+  < data/generated/nyc-real-p13-full/demo_accounts_overlay.sql
+```
+
+`engagement_overlay.sql` 将活动数据集的合成笔记评论重建为每篇 0–20 条、总体平均 10 条，并确保同一笔记由不同用户参与；笔记和商户评价点赞数改为确定性长尾分布，不再使用统一的 2400。`demo_accounts_overlay.sql` 要求 `+8618817638328` 与 `+13322157333` 已完成注册，为两者补齐笔记、关注/粉丝、收藏、行程、优惠券和 AI Memory。两份 SQL 均可重复执行；输出文件属于本地生成数据，不提交 Git。
+
 ## P6 Hybrid 历史 Profile
 
 P6 混合数据仍可用于回归：

@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo, sign, signCount } from '../../api/user';
 import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
+import { getFollowers } from '../../api/follow';
 import {
   deleteAgentMemory,
   getProfileAssets,
@@ -33,7 +34,14 @@ type ProfileSection =
   | 'vouchers'
   | 'reminders'
   | 'memory'
+  | 'followers'
   | 'following';
+
+interface ProfileUserSummary {
+  id: number;
+  nickName: string;
+  icon: string;
+}
 
 export default function MyProfile() {
   const navigate = useNavigate();
@@ -43,6 +51,9 @@ export default function MyProfile() {
   const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
   const [blogs, setBlogs] = useState<BlogData[]>([]);
   const [followBlogs, setFollowBlogs] = useState<BlogData[]>([]);
+  const [followers, setFollowers] = useState<ProfileUserSummary[]>([]);
+  const [followersLoaded, setFollowersLoaded] = useState(false);
+  const [followersLoading, setFollowersLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<ProfileSection>('notes');
   const [params, setParams] = useState({ minTime: 0, offset: 0 });
   const [loading, setLoading] = useState(false);
@@ -133,9 +144,22 @@ export default function MyProfile() {
     }
   }, [params, loading]);
 
+  const loadFollowers = useCallback(async () => {
+    if (followersLoading || followersLoaded) return;
+    setFollowersLoading(true);
+    try {
+      const response = await getFollowers();
+      setFollowers((response.data ?? response) as ProfileUserSummary[]);
+      setFollowersLoaded(true);
+    } finally {
+      setFollowersLoading(false);
+    }
+  }, [followersLoaded, followersLoading]);
+
   const handleSectionChange = (key: ProfileSection) => {
     setActiveSection(key);
     if (key === 'following') loadFollowBlogs(true);
+    if (key === 'followers') loadFollowers();
   };
 
   const handleScroll = useCallback(() => {
@@ -230,6 +254,8 @@ export default function MyProfile() {
 
   const sectionMeta = activeSection === 'notes'
     ? { label: t('profile.notes'), count: blogs.length, icon: <ContentOutline /> }
+    : activeSection === 'followers'
+      ? { label: t('profile.fans'), count: info.fans || 0, icon: <HeartOutline /> }
     : activeSection === 'following'
       ? { label: t('profile.following'), count: info.followee || 0, icon: <HeartOutline /> }
       : activityItems.find((item) => item.key === activeSection)!;
@@ -365,6 +391,21 @@ export default function MyProfile() {
       );
     }
 
+    if (activeSection === 'followers') {
+      if (followersLoading) return <div className={styles.loadingMore}>{t('home.loading')}</div>;
+      return followers.length ? followers.map((follower) => (
+        <button
+          className={styles.personCard}
+          key={follower.id}
+          onClick={() => navigate(`/user/${follower.id}`)}
+        >
+          <img src={follower.icon || '/imgs/icons/default-icon.png'} alt="" />
+          <span>{follower.nickName}</span>
+          <b>›</b>
+        </button>
+      )) : empty(t('profile.noFollowers'));
+    }
+
     return (
       <>
         {followBlogs.map((blog) => (
@@ -414,10 +455,13 @@ export default function MyProfile() {
               <div className={styles.statLabel}>{t('profile.notes')}</div>
             </button>
             <div className={styles.statDivider} />
-            <div className={styles.statItem}>
+            <button
+              className={`${styles.statItem} ${activeSection === 'followers' ? styles.statItemActive : ''}`}
+              onClick={() => handleSectionChange('followers')}
+            >
               <div className={styles.statNum}>{info.fans || 0}</div>
               <div className={styles.statLabel}>{t('profile.fans')}</div>
-            </div>
+            </button>
             <div className={styles.statDivider} />
             <button
               className={`${styles.statItem} ${activeSection === 'following' ? styles.statItemActive : ''}`}

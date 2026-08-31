@@ -87,6 +87,7 @@
     "noReminders": "Flash-sale reminders will appear here.",
     "noMemory": "No long-term preferences have been learned yet.",
     "noFollowingNotes": "Notes from people you follow will appear here.",
+    "noFollowers": "No followers yet.",
     "stops": "{{n}} stops",
     "paid": "Paid ${{amount}}",
     "shopUnavailable": "Shop unavailable",

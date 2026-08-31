@@ -11,3 +11,7 @@ export function follow(userId: number | string, followBool: boolean) {
 export function getCommonFollows(userId: number | string) {
   return client.get(`/follow/common/${userId}`);
 }
+
+export function getFollowers() {
+  return client.get('/follow/followers');
+}

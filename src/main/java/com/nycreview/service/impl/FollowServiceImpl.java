@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,6 +30,32 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
 
     @Resource
     private IUserInfoService userInfoService;
+
+    @Override
+    public Result followers() {
+        Long userId = UserHolder.getUser().getId();
+        List<Long> ids = query()
+                .eq("follow_user_id", userId)
+                .orderByDesc("create_time")
+                .last("LIMIT 500")
+                .list()
+                .stream()
+                .map(Follow::getUserId)
+                .toList();
+        if (ids.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        Map<Long, UserDTO> usersById = userService.listByIds(ids)
+                .stream()
+                .collect(Collectors.toMap(
+                        user -> user.getId(),
+                        user -> BeanUtil.copyProperties(user, UserDTO.class)
+                ));
+        return Result.ok(ids.stream()
+                .map(usersById::get)
+                .filter(java.util.Objects::nonNull)
+                .toList());
+    }
 
     @Override
     public Result followCommons(Long id) {

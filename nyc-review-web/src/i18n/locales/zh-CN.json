@@ -87,6 +87,7 @@
     "noReminders": "秒杀提醒会显示在这里。",
     "noMemory": "AI 尚未学习到长期偏好。",
     "noFollowingNotes": "关注用户发布的笔记会显示在这里。",
+    "noFollowers": "还没有粉丝。",
     "stops": "{{n}} 个地点",
     "paid": "支付 ${{amount}}",
     "shopUnavailable": "商铺不可用",

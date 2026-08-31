@@ -92,7 +92,7 @@ deploy/production/database-release.tsv
 - 一个变更编号上线后永远不要修改或复用；后续修正必须新增一行和新编号；
 - SQL 必须能安全重跑；需要同时改 Redis 时，使用 `redis-cli --pipe` 格式的 RESP；
 - `data/generated/...` 可以继续被 Git 忽略，一键脚本会按清单从 Mac 打包；
-- 当前清单已经包含 `015_password_auth_registration`、优惠券覆盖和用户社交数据；
+- 当前清单已经包含密码登录、优惠券覆盖、用户社交、评论互动和演示账户数据；
 - 自动流程不会创建数据库备份，这是当前生产策略；数据库变更无法通过旧 SHA 自动回滚。
 
 ## 哪些情况不使用这个脚本

@@ -82,10 +82,13 @@
 }
 
 .nickName {
+  overflow: hidden;
   font-size: 16px;
   font-weight: 700;
   color: var(--color-text-dark);
   margin-bottom: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .city {
@@ -401,6 +404,7 @@ button.statItem {
 }
 
 .blogItemInfo {
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -451,6 +455,9 @@ button.statItem {
 .voucherAsset {
   display: flex;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
@@ -515,9 +522,12 @@ button.statItem {
 }
 
 .assetMeta {
+  overflow: hidden;
   color: #b26952;
   font-size: 10px;
   line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assetArrow {
@@ -552,6 +562,47 @@ button.statItem {
   color: #f05b31;
   font-size: 9px;
   text-transform: capitalize;
+}
+
+.personCard {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  background: transparent;
+  padding: 10px 4px;
+  color: var(--color-text-dark);
+  text-align: left;
+  cursor: pointer;
+}
+
+.personCard img {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.personCard span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personCard b {
+  flex-shrink: 0;
+  color: #c8c2bf;
+  font-size: 20px;
+  font-weight: 400;
 }
 
 .memoryNotice {

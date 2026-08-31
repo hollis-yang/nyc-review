@@ -461,6 +461,22 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertTrue(all("synthetic" not in blog["content"].casefold() for blog in blogs))
             self.assertTrue(all("a practical visit to" not in blog["title"].casefold() for blog in blogs))
             self.assertGreater(len({blog["content"] for blog in blogs}), len(shops))
+            comment_counts = Counter(item["blogId"] for item in blog_comments)
+            comment_authors: dict[int, set[int]] = {}
+            for item in blog_comments:
+                comment_authors.setdefault(item["blogId"], set()).add(item["userId"])
+            volumes = [comment_counts[blog["id"]] for blog in blogs]
+            self.assertEqual(10, sum(volumes) / len(volumes))
+            self.assertGreaterEqual(min(volumes), 0)
+            self.assertLessEqual(max(volumes), 20)
+            self.assertGreater(len(set(volumes)), 10)
+            self.assertTrue(all(
+                len(comment_authors.get(blog["id"], set())) >= 2
+                for blog in blogs
+                if comment_counts[blog["id"]] >= 2
+            ))
+            self.assertTrue(all(0 <= blog["liked"] < 4_000 for blog in blogs))
+            self.assertGreater(len({blog["liked"] for blog in blogs}), len(blogs) // 2)
             self.assertEqual(len(users), len({blog["userId"] for blog in blogs}))
             self.assertEqual(len(users), len({user["icon"] for user in users}))
             self.assertTrue(follows)

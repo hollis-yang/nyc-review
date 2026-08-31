@@ -3,3 +3,6 @@
 015_password_auth_registration	schema	src/main/resources/db/migrations/015_password_auth_registration.sql	-
 20260830_voucher_coverage_v1	overlay	data/generated/nyc-real-p13-full/voucher_coverage_overlay.sql	data/generated/nyc-real-p13-full/voucher_coverage_redis.resp
 20260830_user_social_v1	overlay	data/generated/nyc-real-p13-full/user_social_overlay.sql	data/generated/nyc-real-p13-full/user_social_overlay.resp
+016_blog_comment_index	schema	src/main/resources/db/migrations/016_blog_comment_index.sql	-
+20260830_engagement_v2	overlay	data/generated/nyc-real-p13-full/engagement_overlay.sql	-
+20260830_demo_accounts_v1	overlay	data/generated/nyc-real-p13-full/demo_accounts_overlay.sql	-
