@@ -128,6 +128,7 @@ class CandidateSet(BaseModel):
 class EvidenceCitation(BaseModel):
     citation_id: str
     shop_id: int = Field(gt=0)
+    shop_external_id: str | None = None
     content_type: str
     document_kind: str = "evidence"
     excerpt: str = Field(max_length=600)

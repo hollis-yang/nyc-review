@@ -554,6 +554,7 @@ class InMemoryRagService:
                         EvidenceCitation(
                             citation_id=f"mock-review-{candidate.shop_id}",
                             shop_id=candidate.shop_id,
+                            shop_external_id=candidate.external_id,
                             content_type="shop_review",
                             excerpt=f"A review mentions {excerpt_tags}.",
                             source_id=f"review:{candidate.shop_id}",

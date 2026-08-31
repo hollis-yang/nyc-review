@@ -146,6 +146,7 @@ def iter_generated_documents(data_directory: Path) -> Iterator[RagDocument]:
             score=(shop.get("score") / 10 if shop.get("score") is not None else None),
             data_version=shop.get("dataVersion"),
             untrusted_content=True,
+            security_test=bool(comment.get("securityTest", False)),
             **_record_content_provenance(comment, shop, content_kind="blog comment"),
             **_shop_provenance(shop),
         )

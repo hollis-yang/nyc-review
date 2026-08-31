@@ -190,21 +190,21 @@ class MerchantRetrievalHit(BaseModel):
 
 ### 5.1 目标
 
-在改变算法前建立能区分 Dense、Sparse、Structured、Rewrite 和 Reranker 贡献的 RAG Eval v2。
+在改变算法前建立可复现的 RAG Eval v2，为后续逐阶段对比 Dense、Sparse、Structured、Rewrite 和 Reranker 提供基线。
 
 ### 5.2 工作项
 
-- [ ] 新建 `agent-service/evals/rag_v2/`，不要覆盖现有 P12 冻结用例。
-- [ ] 创建最少 160 条冻结查询：80 英文、60 中文、20 中英混合。
-- [ ] 按 50% development / 50% hidden test 划分，调参只能使用 development。
-- [ ] 每条查询标注 0–3 级 merchant relevance，而不只是 expected ID 集合。
-- [ ] 单独标注 hard-constraint violations：区域、类别、预算、营业时间、无障碍。
-- [ ] 增加同类别、同区域但违反关键条件的 hard negatives。
-- [ ] 增加别名词典未覆盖的口语、拼写错误、组合约束和否定表达。
-- [ ] 增加品牌重复、同名商户、跨 Borough、过期数据与 security-test 文档。
-- [ ] 冻结用例 JSON 的 SHA-256，并在报告中记录数据集 SHA、检索版本与 Embedding Metadata。
-- [ ] 让 Eval CLI 接受 Embedding、Rewrite、Global Retrieval 和 Reranker 参数。
-- [ ] 输出总体指标及 `en`、`zh`、`mixed` 分组指标。
+- [x] 新建 `agent-service/evals/rag_v2/`，不要覆盖现有 P12 冻结用例。
+- [x] 创建最少 160 条冻结查询：80 英文、60 中文、20 中英混合。
+- [x] 按 50% development / 50% policy holdout 划分，调参只能使用 development。仓库内 holdout 并非真正秘密数据，未来可在私有 CI artifact 中补充 hidden test。
+- [x] 每条查询标注 0–3 级 merchant relevance，而不只是 expected ID 集合。
+- [x] 单独标注 hard-constraint violations：区域、类别、预算、营业时间、无障碍。
+- [x] 增加覆盖 structured filtering 与 ranking 的 hard negatives；每个 split 466 个，其中 60 个进入 structured candidate pool，不能表述为纯 reranker benchmark。
+- [x] 增加面向词典外表达设计的口语、拼写错误、组合约束和否定表达，并冻结当前规则的实际识别覆盖审计。
+- [x] 增加 branch/geo isolation、同名商户、跨 Borough、过期数据与 security-test 文档。过期数据使用隔离 eval fixture，因为 P13 语料没有自然 expired record。
+- [x] 冻结 case SHA 与覆盖顶层评测语义的 suite contract SHA，并在报告中记录数据集 SHA、检索版本与 Embedding Metadata。
+- [x] 让 Eval CLI 接受 Embedding、Rewrite、Global Retrieval 和 Reranker 参数；尚未实现的启用值 fail-fast。
+- [x] 输出总体指标及 `en`、`zh`、`mixed` 和 scenario 分组指标。
 
 ### 5.3 新增指标
 
@@ -216,7 +216,8 @@ class MerchantRetrievalHit(BaseModel):
 - MRR@10
 - Hard-constraint satisfaction rate
 - Evidence coverage
-- Duplicate merchant/brand rate
+- Duplicate merchant ID、duplicate brand（第 2 个起）与 excessive brand concentration（第 3 个起）
+- Hard-negative final-return rate
 - Citation source mismatch rate
 - Security leakage count
 - Dataset/version mismatch rate
@@ -250,20 +251,32 @@ agent-service/evals/rag_v2/
 | --- | --- |
 | Security leakage | `0` |
 | Version mismatch | `0` |
-| Duplicate merchant rate | `0` |
+| Duplicate merchant ID rate | `0` |
+| Excessive brand concentration | 同品牌第 3 个及以后结果为 `0` |
+| Hard-negative final-return rate | 不得高于 baseline 0.5 个百分点以上 |
 | Evidence coverage | `>= 99%` |
 | Hard-constraint satisfaction | `>= 99%` |
 | Recall@10 | 不低于 v2 baseline 0.5 个百分点以上 |
 | nDCG@10 | 最终方案相对 v2 baseline 至少提升 3 个百分点 |
 | 中文 nDCG@10 | 不低于英文增益趋势，且不得回归超过 1 个百分点 |
-| P95 latency | 每阶段在启用对应功能后不超过同配置 baseline 的 1.25 倍；超出需单独审批 |
+| P95 latency | Total latency 不超过同一完整 profile baseline 的 1.25 倍；独立阶段只有在可可靠测量后再冻结门禁 |
 
 ### 5.6 验收标准
 
-- 同一配置重复运行结果稳定；非确定性服务需记录随机性与 provider response metadata。
-- Hash Embedding baseline 可以完整复现。
-- 报告能明确区分真实 Embedding 与 Hash Embedding。
-- 报告中不存在未标注的模型、维度、Collection 或数据版本。
+- [x] 同一配置的确定性排名结果可复现；非确定性 provider metadata 当前标记为 unavailable，不伪造数值。
+- [x] Hash Embedding baseline 可以完整复现。
+- [x] 报告能明确区分真实 Embedding 与 Hash Embedding。
+- [x] 报告中不存在未标注的模型、维度、Collection 或数据版本。
+
+### 5.7 M0 完成记录（2026-08-31）
+
+实现与运行说明见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)，冻结结果见 [`evals/rag_v2/baseline.hash64.local.json`](./evals/rag_v2/baseline.hash64.local.json)。当前 Hash/64 local-disk baseline：dev `Recall@10=59.62%`、`nDCG@10=76.28%`、`P95=9.91s`；policy holdout `Recall@10=71.14%`、`nDCG@10=79.79%`、`P95=6.82s`。两个 split 的证据覆盖率均为 100%，security/version/source/owner mismatch、重复 merchant ID 与第 3 个及以后同品牌集中均为 0；同品牌第 2 个结果分别出现 3/4 次，hard-negative final-return rate 为 2.66%/2.78%。完整重复运行 dev 后，原始 quality/integrity summary 与基线逐字段一致，relative gate 通过，重复 `P95=8.02s`。
+
+硬约束满足率分别为 94.63% 和 95.63%，尚未达到 99% 暂定目标；失败集中在营业时间场景，证明当前 structured candidate service 尚未执行 `visit_time`。M0 保留该失败信号，后续阶段不得通过删除用例或放宽 oracle 隐藏缺口。
+
+当前服务只能可靠拆出 Structured Search、Candidate Ranking、Evidence Retrieval、Embedding wrapper 和 Total 外层耗时；Query Planning、Qdrant、Fusion、Rewrite、learned Reranker 与 provider token/cost 在报告中明确标为 unavailable/disabled。
+
+评测边界已写入 suite contract：dev/test 的 intent 与 query 无重叠，但有 12 个 judged merchant（9 个 binary-relevant）重叠；语言 slice 不是同 intent 的成对翻译对照；`out_of_dictionary_paraphrase` 记录 phrase-bank 来源，并不保证规则完全未识别。冻结 baseline 生成于带并行 session 修改的 dirty worktree，manifest 已记录当时 Git SHA 和该事实。
 
 ## 6. M1：真实多语言 Embedding 与索引版本化
 
@@ -811,7 +824,7 @@ Switch back to previous Qdrant Collection
 
 | 阶段 | 预计工作量 | 前置条件 |
 | --- | --- | --- |
-| M0 Eval v2 | 3–5 天 | 人工相关性标注与 hard-negative 设计 |
+| M0 Eval v2 | 3–5 天 | 相关性标签策略与 hard-negative 设计；正式对外评测仍需人工 adjudication |
 | M1 Embedding | 4–6 天 | Provider 凭据、模型候选与新 Collection 空间 |
 | M2 Global Retrieval | 4–6 天 | M1 Collection 与 merchant aggregation contract |
 | M3 Multi-Query | 3–5 天 | 模型 Provider、prompt/schema 评测 |

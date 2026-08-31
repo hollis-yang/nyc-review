@@ -167,3 +167,16 @@ uv run python -m evals.p12.run_retrieval_eval \
 ```
 
 质量门禁配置保存在 `evals/p12/cases.json` 与 `evals/p12/quality_gate.json`，生成的评测报告只保留在本地。
+
+RAG Eval v2 在保留 P12 回归的同时，增加 160 条冻结的英文、中文和中英混合查询，以及 0–3 级相关性、hard negatives、硬约束、安全/旧版本 fixture、nDCG/MRR 和分阶段延迟。默认只使用 dev split；仓库中的 test split 是 policy holdout，不是真正隐藏数据：
+
+```bash
+uv run python -m evals.rag_v2.run_eval \
+  --split dev \
+  --reuse-index \
+  --qdrant-location ./.local/qdrant-p13-v5-8b645404 \
+  --collection hmdp_content_v2 \
+  --output ./.local/rag-v2-dev.json
+```
+
+完整的数据契约、指标公式、索引 manifest、质量门禁、冻结 Hash/64 基线和已知营业时间约束缺口见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)。该 holdout 对 intent/query 隔离但不是 merchant-disjoint；语言分组也是 observational slice，简历或报告中不应扩写成 hidden、人工标注或受控双语对照集。

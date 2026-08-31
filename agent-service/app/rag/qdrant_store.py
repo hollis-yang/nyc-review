@@ -617,6 +617,7 @@ class QdrantRagService:
                 EvidenceCitation(
                     citation_id=str(payload.get("document_id") or point.id),
                     shop_id=shop_id,
+                    shop_external_id=payload.get("shop_external_id"),
                     content_type=str(payload.get("content_type") or "unknown"),
                     document_kind=str(payload.get("document_kind") or "evidence"),
                     excerpt=excerpt,

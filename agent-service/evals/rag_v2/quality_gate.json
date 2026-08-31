@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "status": "m0-baseline-invariants",
+  "absolute": {
+    "minimums": {
+      "overall.evidenceCoverage": 0.99
+    },
+    "maximums": {
+      "overall.unjudgedReturnedRate": 0,
+      "integrity.securityLeakageCount": 0,
+      "integrity.versionMismatchCount": 0,
+      "integrity.citationOwnershipMismatchCount": 0,
+      "integrity.citationExternalIdMismatchCount": 0,
+      "integrity.citationSourceMismatchCount": 0,
+      "integrity.hardConstraintUnknownCount": 0,
+      "integrity.duplicateMerchantCount": 0,
+      "integrity.excessiveBrandCount": 0,
+      "integrity.emptyResultCount": 0
+    }
+  },
+  "relative": {
+    "maxDrops": {
+      "overall.recallAt10": 0.005,
+      "overall.precisionAt5": 0.005,
+      "overall.ndcgAt10": 0.005,
+      "overall.mrrAt10": 0.005,
+      "byLanguage.zh.ndcgAt10": 0.01
+    },
+    "maxIncreases": {
+      "overall.hardNegativeReturnRate": 0.005
+    },
+    "maxRatios": {
+      "latencyMs.total.p95": 1.25
+    }
+  },
+  "provisionalTargets": {
+    "overall.hardConstraintSatisfaction": 0.99,
+    "overall.evidenceCoverage": 0.99,
+    "futureNdcgAt10Gain": 0.03
+  },
+  "notes": [
+    "M0 enforces corpus/security/citation invariants and evidence coverage.",
+    "Hard-constraint satisfaction remains a visible target because the M0 baseline intentionally includes business-hours cases that the current candidate service does not enforce.",
+    "Quality, hard-negative leakage, and latency regression thresholds are evaluated only with --baseline-report; the committed compact baseline manifest is accepted directly."
+  ]
+}

@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "status": "frozen-m0-baseline",
+  "recordedAt": "2026-08-31",
+  "sourceGit": {
+    "sha": "74aabf134f15fd9a7a665211aae7ea48839b7fc3",
+    "dirty": true,
+    "note": "Full baseline reports were generated before the scoped M0 commit while concurrent sessions had unrelated worktree changes; a full dev repeat produced an exact non-latency summary match."
+  },
+  "postRunDerivations": {
+    "metricFields": [
+      "duplicateBrandCount",
+      "duplicateBrandRate",
+      "hardNegativeReturnCount",
+      "hardNegativeReturnRate"
+    ],
+    "metricMethod": "Deterministically recomputed from the frozen full reports' orderedCandidates and the unchanged case hardNegatives; the dev repeat produced the same four values.",
+    "fingerprintFields": [
+      "suiteContractSha256",
+      "latencyProfileFingerprint"
+    ],
+    "fingerprintMethod": "Recomputed after the contract and latency-profile coverage fixes from the unchanged suites and resolvedConfig snapshots."
+  },
+  "corpus": {
+    "profile": "p13-full",
+    "dataVersion": "nyc-real-v5-8b645404-m20260824",
+    "datasetSha256": "0bb014f6a2e0608a6437c09fc32ac0a6f0791599e988099466e80d272750f238",
+    "adversarialFixtureSha256": "a5e9ba37041c110890a8d4b72bd2272c617ba8e6db84f5b9d015f18ba62b511e",
+    "indexedDocuments": 145000
+  },
+  "configuration": {
+    "retrievalVersion": "p12-rag-v1",
+    "indexBuildVersion": "rag-document-transform-v2",
+    "indexBuildSourceFingerprint": "f4cf6c84404528ac5690e0e105f6692d9f0d8fe7edbd85c8ca26a481ec50499e",
+    "candidateRetrieval": "candidate-filtered",
+    "queryExpansion": "rules-v1",
+    "reranker": "heuristic-multi-signal",
+    "embedding": {
+      "provider": "hash",
+      "model": "deterministic-token-sha256",
+      "dimensions": 64,
+      "version": "hash-v1",
+      "metadataSource": "configured"
+    },
+    "candidateLimit": 10,
+    "discoveryPoolSize": 100,
+    "qdrantLocationKind": "local-disk",
+    "warmupCases": 1,
+    "concurrency": 1
+  },
+  "index": {
+    "collection": "hmdp_content_v2",
+    "manifestFingerprint": "10c0cdb1018ffb8750f5dc74053a48fb187fedacc19f4432005643e6ace0d93d",
+    "vectorDimensions": 64,
+    "collectionBytes": 691516006,
+    "initialSyncObservation": {
+      "durationMs": 356796.854291,
+      "upserted": 140000,
+      "unchanged": 5000,
+      "deleted": 0
+    }
+  },
+  "splits": {
+    "dev": {
+      "caseCount": 80,
+      "caseSha256": "1ff004b85b7421d7c6cafef47c1a5456bc921a6c79fca0fd32e4bbbd5617165b",
+      "suiteContractSha256": "4adda82a651de8c5d3fc340c1ea854881e5209fc94f303a90147e8c0ec5343d7",
+      "configFingerprint": "6df9816b72b90c5ee92b6b322465280e6690375277b239bfd0a3bd892033ae4e",
+      "latencyProfileFingerprint": "6df9816b72b90c5ee92b6b322465280e6690375277b239bfd0a3bd892033ae4e",
+      "qualityGatePassed": true,
+      "overall": {
+        "recallAt5": 0.350392,
+        "recallAt10": 0.596205,
+        "precisionAt5": 0.7975,
+        "ndcgAt5": 0.695699,
+        "ndcgAt10": 0.762753,
+        "mrrAt10": 0.89625,
+        "hardConstraintSatisfaction": 0.94625,
+        "evidenceCoverage": 1.0,
+        "duplicateMerchantRate": 0.0,
+        "duplicateBrandRate": 0.00375,
+        "excessiveBrandRate": 0.0,
+        "hardNegativeReturnRate": 0.026563,
+        "unjudgedReturnedRate": 0.0
+      },
+      "languageNdcgAt10": {
+        "en": 0.755355,
+        "zh": 0.753068,
+        "mixed": 0.821401
+      },
+      "integrity": {
+        "securityLeakageCount": 0,
+        "versionMismatchCount": 0,
+        "citationOwnershipMismatchCount": 0,
+        "citationExternalIdMismatchCount": 0,
+        "citationSourceMismatchCount": 0,
+        "hardConstraintViolationCount": 43,
+        "duplicateMerchantCount": 0,
+        "duplicateBrandCount": 3,
+        "hardNegativeReturnCount": 15,
+        "excessiveBrandCount": 0
+      },
+      "latencyMs": {
+        "totalP50": 5466.6485,
+        "totalP95": 9905.061833,
+        "totalP99": 13242.352042,
+        "embeddingP95": 0.267874
+      },
+      "repeatVerification": {
+        "qualityAndIntegrityExactMatch": true,
+        "relativeGatePassed": true,
+        "repeatTotalP95Ms": 8016.127125
+      }
+    },
+    "test": {
+      "policy": "committed-holdout; do not tune against this split",
+      "caseCount": 80,
+      "caseSha256": "900457975f8ba19c20f32c5927c3df0fe78982ef87ebb79b4def1223ca5b50e3",
+      "suiteContractSha256": "9082e3d7bf803c5c40ee73605616a10762f3bad0a6f50d9a0faa64460eaef560",
+      "configFingerprint": "bc1367e2c8958e9248b7537d5b9d87a1a08ccf1df3d302919af1aa1218955725",
+      "latencyProfileFingerprint": "bc1367e2c8958e9248b7537d5b9d87a1a08ccf1df3d302919af1aa1218955725",
+      "qualityGatePassed": true,
+      "overall": {
+        "recallAt5": 0.430738,
+        "recallAt10": 0.711366,
+        "precisionAt5": 0.81,
+        "ndcgAt5": 0.712393,
+        "ndcgAt10": 0.797863,
+        "mrrAt10": 0.95,
+        "hardConstraintSatisfaction": 0.95625,
+        "evidenceCoverage": 1.0,
+        "duplicateMerchantRate": 0.0,
+        "duplicateBrandRate": 0.005,
+        "excessiveBrandRate": 0.0,
+        "hardNegativeReturnRate": 0.027827,
+        "unjudgedReturnedRate": 0.0
+      },
+      "languageNdcgAt10": {
+        "en": 0.767247,
+        "zh": 0.818225,
+        "mixed": 0.859245
+      },
+      "integrity": {
+        "securityLeakageCount": 0,
+        "versionMismatchCount": 0,
+        "citationOwnershipMismatchCount": 0,
+        "citationExternalIdMismatchCount": 0,
+        "citationSourceMismatchCount": 0,
+        "hardConstraintViolationCount": 35,
+        "duplicateMerchantCount": 0,
+        "duplicateBrandCount": 4,
+        "hardNegativeReturnCount": 15,
+        "excessiveBrandCount": 0
+      },
+      "latencyMs": {
+        "totalP50": 5262.466375,
+        "totalP95": 6821.109833,
+        "totalP99": 7566.803833,
+        "embeddingP95": 0.098458
+      }
+    }
+  },
+  "limitations": [
+    "Relevance labels are deterministically derived from generated merchant attributes and are not human adjudicated.",
+    "The committed test split is a policy holdout, not a secret test set.",
+    "Language slices use different intents and are observational, not controlled translations of the same intents.",
+    "The policy holdout is intent/query-disjoint but not merchant-disjoint: 12 judged and 9 binary-relevant merchant IDs overlap across splits.",
+    "Each split declares 466 pipeline-level hard negatives; 60 are in the structured candidate pool, so this is not a pure reranker hard-negative benchmark.",
+    "The out_of_dictionary_paraphrase challenge label records phrase-bank provenance; some queries are recognized by current canonical tag rules.",
+    "Duplicate merchant IDs and third-or-later same-brand concentration are zero; second same-brand branches occur 3 times on dev and 4 times on holdout.",
+    "Local-disk Qdrant latency is environment-specific; compare latency only with the same profile.",
+    "Business-hours constraints are measured but not enforced by the current structured candidate service."
+  ]
+}
