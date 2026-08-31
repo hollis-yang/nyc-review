@@ -39,6 +39,7 @@ MIGRATIONS = [
     "014_cleanup_legacy.sql",
     "015_password_auth_registration.sql",
     "016_blog_comment_index.sql",
+    "017_shop_review_likes.sql",
 ]
 
 
@@ -89,6 +90,7 @@ def normalize_dump(raw: str) -> str:
         "UNIQUE KEY `uk_user_phone` (`phone`)",
         "UNIQUE KEY `uk_voucher_order_user_voucher` (`user_id`,`voucher_id`)",
         "KEY `idx_blog_comments_blog_time` (`blog_id`,`create_time`)",
+        "CREATE TABLE `tb_shop_review_like`",
     )
     missing = [token for token in required if token not in schema]
     if missing:

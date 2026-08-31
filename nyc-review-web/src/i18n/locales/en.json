@@ -169,6 +169,7 @@
     "commentSuccess": "Comment posted",
     "replySuccess": "Reply posted",
     "likes": "{{n}} likes",
+    "followingLiked": "Also liked by people you follow: {{names}}",
     "translate": "Translate",
     "translatedByAI": "Translated by DeepSeek",
     "original": "Original",
@@ -186,6 +187,10 @@
     "linkShop": "Link a Shop",
     "selectShop": "Select >",
     "searchShop": "Search shop name",
+    "categoryFilter": "Filter shops by category",
+    "shopResults": "{{count}} matching shops",
+    "loadMore": "Load more shops",
+    "noShops": "No matching shops",
     "loginRequired": "Please login first",
     "shopRequired": "Please select a shop"
   },

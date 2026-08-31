@@ -182,6 +182,24 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shops);
     }
 
+    @Override
+    public Result queryLinkOptions(Integer typeId, String search, Integer current, Integer size) {
+        int safeCurrent = current == null ? 1 : Math.max(1, current);
+        int safeSize = size == null ? 30 : Math.max(1, Math.min(50, size));
+        if (typeId != null && typeId <= 0) {
+            return Result.fail("Invalid category");
+        }
+        String normalizedSearch = StrUtil.trim(search);
+        Page<Shop> page = query()
+                .eq(typeId != null, "type_id", typeId)
+                .like(StrUtil.isNotBlank(normalizedSearch), "name", normalizedSearch)
+                .eq("business_status", "OPERATIONAL")
+                .orderByAsc("name")
+                .orderByAsc("id")
+                .page(new Page<>(safeCurrent, safeSize));
+        return Result.ok(page.getRecords(), page.getTotal());
+    }
+
     private Result queryByPopularity(
             Integer typeId,
             Integer current,

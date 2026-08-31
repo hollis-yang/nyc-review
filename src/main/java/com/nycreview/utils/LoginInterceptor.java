@@ -16,6 +16,7 @@ public class LoginInterceptor implements HandlerInterceptor {
             "/shop/map",
             "/shop/of/type",
             "/shop/of/name",
+            "/shop/link-options",
             "/shop-type/list",
             "/blog/hot",
             "/blog/of/user",

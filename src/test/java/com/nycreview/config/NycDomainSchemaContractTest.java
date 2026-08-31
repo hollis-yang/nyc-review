@@ -217,9 +217,21 @@ class NycDomainSchemaContractTest {
             assertTrue(schema.contains("CREATE TABLE `tb_agent_action_audit`"));
             assertTrue(schema.contains("UNIQUE KEY `uk_user_phone` (`phone`)"));
             assertTrue(schema.contains("UNIQUE KEY `uk_voucher_order_user_voucher` (`user_id`,`voucher_id`)"));
+            assertTrue(schema.contains("CREATE TABLE `tb_shop_review_like`"));
             assertFalse(schema.contains("legacy_hangzhou_"));
             assertFalse(schema.contains("CREATE TABLE `tb_sign`"));
             assertFalse(schema.contains("INSERT INTO"));
+        }
+    }
+
+    @Test
+    void shopReviewLikeMigrationDefinesPerUserUniqueness() throws IOException {
+        try (InputStream input = getClass().getResourceAsStream("/db/migrations/017_shop_review_likes.sql")) {
+            assertNotNull(input);
+            String migration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(migration.contains("CREATE TABLE IF NOT EXISTS `tb_shop_review_like`"));
+            assertTrue(migration.contains("PRIMARY KEY (`review_id`, `user_id`)"));
+            assertTrue(migration.contains("idx_shop_review_like_user"));
         }
     }
 }

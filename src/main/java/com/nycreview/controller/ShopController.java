@@ -118,4 +118,19 @@ public class ShopController {
         // 返回数据
         return Result.ok(page.getRecords());
     }
+
+    /**
+     * Search the complete operational merchant catalog when linking a note.
+     * Results can be narrowed by category and are explicitly paginated so the
+     * mobile selector is not limited to the first legacy page.
+     */
+    @GetMapping("/link-options")
+    public Result queryLinkOptions(
+            @RequestParam(value = "typeId", required = false) Integer typeId,
+            @RequestParam(value = "query", required = false) String query,
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "size", defaultValue = "30") Integer size
+    ) {
+        return shopService.queryLinkOptions(typeId, query, current, size);
+    }
 }

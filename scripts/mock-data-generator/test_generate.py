@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 import urllib.error
+from datetime import datetime
 from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
@@ -94,6 +95,28 @@ def parse_resp_commands(payload: bytes) -> list[list[bytes]]:
 
 
 class GenerateDatasetTest(unittest.TestCase):
+    def test_note_comment_times_are_scattered_and_replies_follow_parents(self):
+        users = [{"id": index} for index in range(1, 31)]
+        notes = [{
+            "id": index,
+            "userId": (index % 30) + 1,
+            "title": f"Note {index}",
+            "dataVersion": "fixture-v1",
+            "focusAspect": "timing",
+            "locationHint": "Fixture Street",
+        } for index in range(1, 21)]
+        comments = GENERATOR.generate_realistic_note_comments(
+            __import__("random").Random(42), 200, notes, users
+        )
+        by_id = {item["id"]: item for item in comments}
+        timestamps = [datetime.fromisoformat(item["createTime"].replace("Z", "+00:00")) for item in comments]
+        self.assertGreater((max(timestamps) - min(timestamps)).days, 120)
+        for item in comments:
+            if item["parentId"]:
+                child_time = datetime.fromisoformat(item["createTime"].replace("Z", "+00:00"))
+                parent_time = datetime.fromisoformat(by_id[item["parentId"]]["createTime"].replace("Z", "+00:00"))
+                self.assertGreater(child_time, parent_time)
+
     def test_osm_opening_hours_parser_covers_split_closed_and_overnight_rules(self):
         hours = GENERATOR.parse_osm_opening_hours(
             "Mo-Fr 11:30-15:00,17:00-22:00; Sa 17:00-01:00; Su off",

@@ -162,6 +162,14 @@ export default function ShopDetail() {
       const page = unwrapReviews(res);
       setReviews(page.records);
       setReviewTotal(page.total);
+      const shopResponse = await getShopById(id);
+      const shopData = unwrapData<ShopApiData>(shopResponse);
+      setShop({
+        ...shopData,
+        images: Array.isArray(shopData.images)
+          ? shopData.images
+          : shopData.images?.split(',').filter(Boolean) ?? [],
+      });
     } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: errorMessage(err) });
     } finally {
@@ -323,9 +331,14 @@ export default function ShopDetail() {
         <div className={styles.comments}>
           <div className={styles.commentsHead}>
             <div>{t('shopDetail.reviews')} <span>（{reviewTotal}）</span></div>
-            {reviewTotal > 3 && (
-              <div style={{ cursor: 'pointer' }} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</div>
-            )}
+            <div className={styles.reviewHeadActions}>
+              <button type="button" onClick={() => document.getElementById('write-shop-review')?.scrollIntoView({ behavior: 'smooth' })}>
+                {t('shopDetail.writeReview')}
+              </button>
+              {reviewTotal > 3 && (
+                <button type="button" onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>&gt;</button>
+              )}
+            </div>
           </div>
           <div className={styles.commentList}>
             {reviews.slice(0, 3).map((review) => (
@@ -344,7 +357,7 @@ export default function ShopDetail() {
 
         {/* 写评价 */}
         <div className={styles.divider} />
-        <div style={{ padding: '12px 14px' }}>
+        <div id="write-shop-review" style={{ padding: '12px 14px', scrollMarginTop: 56 }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{t('shopDetail.writeReview')}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 13, color: '#666' }}>{t('shopDetail.rating')}</span>

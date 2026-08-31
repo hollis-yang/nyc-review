@@ -15,6 +15,7 @@ import com.nycreview.utils.SystemConstants;
 import com.nycreview.utils.TransactionHooks;
 import com.nycreview.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +50,9 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private JdbcTemplate jdbcTemplate;
+
     @Override
     public Result queryByShopId(Long shopId, Integer current) {
         int safeCurrent = current == null ? 1 : Math.max(1, current);
@@ -59,12 +63,56 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
                 () -> loadThreads(shopId, safeCurrent, SystemConstants.DEFAULT_PAGE_SIZE, true),
                 CACHE_SHOP_REVIEW_TTL, TimeUnit.MINUTES,
                 LOCK_SHOP_TTL);
+        hydrateLikeStatus(records);
 
         long total = query()
                 .eq("shop_id", shopId)
                 .and(wrapper -> wrapper.isNull("parent_id").or().eq("parent_id", 0))
                 .count();
         return Result.ok(records, total);
+    }
+
+    @Override
+    @Transactional
+    public Result toggleLike(Long reviewId) {
+        if (UserHolder.getUser() == null || UserHolder.getUser().getId() == null) {
+            return Result.fail("Please sign in first");
+        }
+        ShopReview review = getById(reviewId);
+        if (review == null) {
+            return Result.fail("Review not found");
+        }
+        Long userId = UserHolder.getUser().getId();
+        int inserted = jdbcTemplate.update(
+                "INSERT IGNORE INTO tb_shop_review_like (review_id, user_id) VALUES (?, ?)",
+                reviewId,
+                userId
+        );
+        boolean liked;
+        if (inserted > 0) {
+            update().setSql("liked = liked + 1").eq("id", reviewId).update();
+            liked = true;
+        } else {
+            int deleted = jdbcTemplate.update(
+                    "DELETE FROM tb_shop_review_like WHERE review_id = ? AND user_id = ?",
+                    reviewId,
+                    userId
+            );
+            if (deleted > 0) {
+                update().setSql("liked = GREATEST(liked - 1, 0)").eq("id", reviewId).update();
+            }
+            liked = false;
+        }
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT liked FROM tb_shop_review WHERE id = ?",
+                Integer.class,
+                reviewId
+        );
+        Long shopId = review.getShopId();
+        TransactionHooks.afterCommit(() -> redisPatternCleaner.deleteByPattern(
+                CACHE_SHOP_REVIEW_KEY + shopId + ":*"
+        ));
+        return Result.ok(Map.of("liked", count == null ? 0 : count, "isLike", liked));
     }
 
     @Override
@@ -248,6 +296,38 @@ public class ShopReviewServiceImpl extends ServiceImpl<ShopReviewMapper, ShopRev
                 review.setReplyToNickName(repliedTo.getNickName());
             }
         });
+    }
+
+    private void hydrateLikeStatus(List<ShopReview> roots) {
+        List<ShopReview> reviews = new ArrayList<>();
+        flattenThreads(roots, reviews);
+        reviews.forEach(review -> review.setIsLike(false));
+        if (reviews.isEmpty() || UserHolder.getUser() == null || UserHolder.getUser().getId() == null) {
+            return;
+        }
+        List<Long> reviewIds = reviews.stream().map(ShopReview::getId).filter(Objects::nonNull).toList();
+        if (reviewIds.isEmpty()) {
+            return;
+        }
+        String placeholders = reviewIds.stream().map(ignored -> "?").collect(Collectors.joining(","));
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(UserHolder.getUser().getId());
+        arguments.addAll(reviewIds);
+        Set<Long> likedIds = new LinkedHashSet<>(jdbcTemplate.queryForList(
+                "SELECT review_id FROM tb_shop_review_like WHERE user_id = ? AND review_id IN (" + placeholders + ")",
+                Long.class,
+                arguments.toArray()
+        ));
+        reviews.forEach(review -> review.setIsLike(likedIds.contains(review.getId())));
+    }
+
+    private static void flattenThreads(List<ShopReview> source, List<ShopReview> target) {
+        for (ShopReview review : source) {
+            target.add(review);
+            if (review.getChildren() != null && !review.getChildren().isEmpty()) {
+                flattenThreads(review.getChildren(), target);
+            }
+        }
     }
 
     static List<ShopReview> buildThreadForest(List<ShopReview> roots, List<ShopReview> replies) {

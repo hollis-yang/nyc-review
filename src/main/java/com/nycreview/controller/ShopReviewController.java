@@ -25,4 +25,9 @@ public class ShopReviewController {
     public Result addReview(@RequestBody ShopReview review) {
         return shopReviewService.addReview(review);
     }
+
+    @PutMapping("/{reviewId}/like")
+    public Result toggleLike(@PathVariable("reviewId") Long reviewId) {
+        return shopReviewService.toggleLike(reviewId);
+    }
 }

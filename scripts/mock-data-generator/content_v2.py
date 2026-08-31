@@ -408,7 +408,18 @@ def generate_realistic_note_comments(
             location_hint = str(note.get("locationHint") or "the listed location")
             note_title = str(note.get("title") or "this visit note")
             visit_context = VISIT_CONTEXTS[(int(note["id"]) + local_index * 5) % len(VISIT_CONTEXTS)]
-            visit_moment = base_time + timedelta(minutes=comment_id * 7)
+            if parent:
+                parent_time = datetime.fromisoformat(str(parent["createTime"]).replace("Z", "+00:00"))
+                visit_moment = parent_time + timedelta(
+                    minutes=1 + _stable_int(f"{note['id']}:{local_index}:reply-time-v3", 43_200)
+                )
+            else:
+                note_time = datetime.fromisoformat(
+                    str(note.get("createTime") or base_time.isoformat()).replace("Z", "+00:00")
+                )
+                visit_moment = note_time + timedelta(
+                    minutes=1 + _stable_int(f"{note['id']}:{local_index}:root-time-v3", 259_200)
+                )
             comparison_time = visit_moment.strftime("%B %-d, %Y around %-I:%M %p")
             context_stamp = f"From my {comparison_time} visit: "
             security_test = comment_id > 1 and comment_id % 197 == 0
@@ -448,9 +459,7 @@ def generate_realistic_note_comments(
                 "liked": _engagement_count(rng, 120, 4.0),
                 "securityTest": security_test,
                 "sourceType": "SYNTHETIC", "dataVersion": note["dataVersion"],
-                "createTime": (
-                    base_time + timedelta(minutes=(note_index * 67 + local_index * 19) % 700_000)
-                ).isoformat().replace("+00:00", "Z"),
+                "createTime": visit_moment.isoformat().replace("+00:00", "Z"),
             }
             comments.append(row)
             if not is_reply:

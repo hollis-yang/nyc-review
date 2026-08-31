@@ -310,7 +310,11 @@ export default function MyProfile() {
 
     if (activeSection === 'itineraries') {
       return assets?.itineraries.length ? assets.itineraries.map((trip) => (
-        <div className={styles.assetCard} key={trip.id}>
+        <button
+          className={styles.assetCard}
+          key={trip.id}
+          onClick={() => navigate(`/ai?runId=${encodeURIComponent(trip.runId)}`)}
+        >
           <span className={styles.assetGlyph}>⌖</span>
           <span className={styles.assetBody}>
             <strong>{trip.title}</strong>
@@ -322,7 +326,8 @@ export default function MyProfile() {
               {' · '}{formatDate(trip.updatedAt)}
             </span>
           </span>
-        </div>
+          <span className={styles.assetArrow}>›</span>
+        </button>
       )) : empty(t('profile.noItineraries'));
     }
 
@@ -508,6 +513,7 @@ export default function MyProfile() {
           <span className={styles.sectionCount}>{sectionMeta.count}</span>
         </div>
         <div
+          key={activeSection}
           className={styles.tabContent}
           onScroll={activeSection === 'following' ? handleScroll : undefined}
           ref={activeSection === 'following' ? containerRef : undefined}

@@ -223,6 +223,46 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     }
 
     @Override
+    public Result queryBlogLikesByFollowees(Long id) {
+        UserDTO currentUser = UserHolder.getUser();
+        if (currentUser == null || currentUser.getId() == null) {
+            return Result.fail("Please sign in first");
+        }
+        Set<Long> followeeIds = followService.query()
+                .eq("user_id", currentUser.getId())
+                .list()
+                .stream()
+                .map(Follow::getFollowUserId)
+                .collect(Collectors.toSet());
+        if (followeeIds.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+
+        Set<String> likerIds = stringRedisTemplate.opsForZSet()
+                .reverseRange(BLOG_LIKED_KEY + id, 0, -1);
+        if (likerIds == null || likerIds.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        List<Long> matched = likerIds.stream()
+                .map(Long::valueOf)
+                .filter(followeeIds::contains)
+                .limit(3)
+                .toList();
+        if (matched.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        String idsStr = matched.stream().map(String::valueOf).collect(Collectors.joining(","));
+        List<UserDTO> users = userService.query()
+                .in("id", matched)
+                .last("ORDER BY FIELD(id, " + idsStr + ")")
+                .list()
+                .stream()
+                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
+                .toList();
+        return Result.ok(users);
+    }
+
+    @Override
     @Transactional
     public Result deleteBlog(Long id) {
         Blog blog = getById(id);

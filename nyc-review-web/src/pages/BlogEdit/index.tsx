@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CloseOutline, SearchOutline, CameraOutline } from 'antd-mobile-icons';
 import { Toast } from 'antd-mobile';
-import { getShopsByName } from '../../api/shop';
+import { getShopLinkOptions, getShopTypes } from '../../api/shop';
 import { uploadBlogImage, deleteBlogImage } from '../../api/upload';
 import { createBlog } from '../../api/blog';
 import { getMe } from '../../api/user';
@@ -13,12 +13,20 @@ interface ShopItem {
   id: number;
   name: string;
   area: string;
+  borough?: string;
+  typeId?: number;
+}
+
+interface ShopTypeItem {
+  id: number;
+  name: string;
 }
 
 export default function BlogEdit() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const shopRequestRef = useRef(0);
   const [fileList, setFileList] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -26,6 +34,11 @@ export default function BlogEdit() {
   const [shops, setShops] = useState<ShopItem[]>([]);
   const [shopName, setShopName] = useState('');
   const [selectedShop, setSelectedShop] = useState<ShopItem | null>(null);
+  const [shopTypes, setShopTypes] = useState<ShopTypeItem[]>([]);
+  const [selectedTypeId, setSelectedTypeId] = useState<number | undefined>();
+  const [shopPage, setShopPage] = useState(1);
+  const [shopTotal, setShopTotal] = useState(0);
+  const [shopsLoading, setShopsLoading] = useState(false);
 
   useEffect(() => {
     const token = sessionStorage.getItem('token');
@@ -39,13 +52,37 @@ export default function BlogEdit() {
     });
   }, [navigate, t]);
 
-  const queryShops = async () => {
+  const queryShops = useCallback(async (
+    page = 1,
+    replace = true,
+    typeId = selectedTypeId,
+    query = shopName,
+  ) => {
+    const requestId = ++shopRequestRef.current;
+    setShopsLoading(true);
     try {
-      const res = await getShopsByName(shopName);
-      setShops(res.data ?? res);
+      const res = await getShopLinkOptions({ typeId, query: query.trim(), current: page, size: 30 });
+      if (requestId !== shopRequestRef.current) return;
+      const envelope = res as unknown as { data?: ShopItem[]; total?: number };
+      const records = envelope.data ?? [];
+      setShops((previous) => replace ? records : [...previous, ...records]);
+      setShopTotal(typeof envelope.total === 'number' ? envelope.total : records.length);
+      setShopPage(page);
     } catch {
-      // ignore
+      if (replace && requestId === shopRequestRef.current) setShops([]);
+    } finally {
+      if (requestId === shopRequestRef.current) setShopsLoading(false);
     }
+  }, [selectedTypeId, shopName]);
+
+  const openShopDialog = async () => {
+    setShowDialog(true);
+    if (shopTypes.length === 0) {
+      getShopTypes()
+        .then((response) => setShopTypes(response.data ?? response))
+        .catch(() => setShopTypes([]));
+    }
+    await queryShops(1, true);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,7 +183,7 @@ export default function BlogEdit() {
 
       <div className={styles.divider} />
 
-      <div className={styles.blogShop} onClick={() => { setShowDialog(true); queryShops(); }}>
+      <div className={styles.blogShop} onClick={openShopDialog}>
         <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
         {selectedShop ? (
           <div>{selectedShop.name}</div>
@@ -161,19 +198,47 @@ export default function BlogEdit() {
           <div className={styles.shopDialog}>
             <div className={styles.dialogHeader}>
               <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
+              <button type="button" onClick={() => setShowDialog(false)}>{t('common.cancel')}</button>
+            </div>
+            <div className={styles.categoryList} aria-label={t('blogEdit.categoryFilter')}>
+              <button
+                type="button"
+                className={selectedTypeId == null ? styles.categoryActive : ''}
+                onClick={() => {
+                  setSelectedTypeId(undefined);
+                  queryShops(1, true, undefined, shopName);
+                }}
+              >
+                {t('shopList.allCategories')}
+              </button>
+              {shopTypes.map((type) => (
+                <button
+                  type="button"
+                  key={type.id}
+                  className={selectedTypeId === type.id ? styles.categoryActive : ''}
+                  onClick={() => {
+                    setSelectedTypeId(type.id);
+                    queryShops(1, true, type.id, shopName);
+                  }}
+                >
+                  {t(`shopTypes.${type.name}`, type.name)}
+                </button>
+              ))}
             </div>
             <div className={styles.searchBar}>
-              <div className={styles.citySelect}>NYC</div>
               <div className={styles.searchInput}>
-                <SearchOutline fontSize={14} onClick={queryShops} style={{ cursor: 'pointer' }} />
+                <SearchOutline fontSize={14} onClick={() => queryShops(1, true)} style={{ cursor: 'pointer' }} />
                 <input
                   value={shopName}
                   onChange={(e) => setShopName(e.target.value)}
                   type="text"
                   placeholder={t('blogEdit.searchShop')}
-                  onKeyDown={(e) => { if (e.key === 'Enter') queryShops(); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') queryShops(1, true); }}
                 />
               </div>
+            </div>
+            <div className={styles.resultSummary}>
+              {t('blogEdit.shopResults', { count: shopTotal })}
             </div>
             <div className={styles.shopList}>
               {shops.map((s) => (
@@ -183,9 +248,22 @@ export default function BlogEdit() {
                   onClick={() => { setSelectedShop(s); setShowDialog(false); }}
                 >
                   <div className={styles.shopItemName}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: '#999' }}>{s.area}</div>
+                  <div style={{ fontSize: 11, color: '#999' }}>{[s.area, s.borough].filter(Boolean).join(', ')}</div>
                 </div>
               ))}
+              {shopsLoading && <div className={styles.listStatus}>{t('home.loading')}</div>}
+              {!shopsLoading && shops.length === 0 && (
+                <div className={styles.listStatus}>{t('blogEdit.noShops')}</div>
+              )}
+              {!shopsLoading && shops.length < shopTotal && (
+                <button
+                  type="button"
+                  className={styles.loadMore}
+                  onClick={() => queryShops(shopPage + 1, false)}
+                >
+                  {t('blogEdit.loadMore')}
+                </button>
+              )}
             </div>
           </div>
         </>

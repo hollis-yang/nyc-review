@@ -27,6 +27,15 @@ export function getShopsByName(name: string, current: number = 1) {
   return client.get('/shop/of/name', { params: { name, current } });
 }
 
+export function getShopLinkOptions(params: {
+  typeId?: number;
+  query?: string;
+  current?: number;
+  size?: number;
+}) {
+  return client.get('/shop/link-options', { params });
+}
+
 export function getShopReviews(shopId: number | string, current: number = 1) {
   return client.get(`/shop-review/${shopId}`, { params: { current } });
 }
@@ -38,4 +47,8 @@ export function createShopReview(data: {
   images?: string;
 }) {
   return client.post('/shop-review', data);
+}
+
+export function toggleShopReviewLike(reviewId: number | string) {
+  return client.put(`/shop-review/${reviewId}/like`);
 }

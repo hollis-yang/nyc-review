@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Toast } from 'antd-mobile';
 import { CheckCircleFill, CloseCircleFill, RightOutline } from 'antd-mobile-icons';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   approveAgentAction,
   cancelAgentRun,
@@ -49,6 +49,8 @@ function errorMessage(error: unknown, fallback: string): string {
 export default function AiWorkspace() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedRunId = searchParams.get('runId');
   const isChinese = i18n.resolvedLanguage === 'zh-CN';
   const examples = [
     t('aiGuide.exampleOne'),
@@ -111,11 +113,34 @@ export default function AiWorkspace() {
   };
 
   const applySnapshot = (snapshot: AgentRunSnapshot) => {
+    setRunId(snapshot.run_id);
+    setQuery(snapshot.query);
     setEvents(snapshot.events);
     setActions(snapshot.actions || []);
-    if (snapshot.result) setResult(snapshot.result);
-    if (snapshot.error) setRunError(snapshot.error);
+    setResult(snapshot.result || null);
+    setRunError(snapshot.error || null);
   };
+
+  useEffect(() => {
+    if (!requestedRunId || !sessionStorage.getItem('token')) return;
+    let active = true;
+    getAgentRun(requestedRunId)
+      .then((snapshot) => {
+        if (!active) return;
+        applySnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (active) setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
+      })
+      .finally(() => {
+        if (active) setRunning(false);
+      });
+    return () => {
+      active = false;
+    };
+  // Restoring a saved itinerary is intentionally keyed only by the URL run ID.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedRunId]);
 
   const loadFinalSnapshot = async (currentRunId: string) => {
     try {
@@ -136,6 +161,7 @@ export default function AiWorkspace() {
       return;
     }
     closeStreamRef.current?.();
+    if (requestedRunId) setSearchParams({}, { replace: true });
     setRunning(true);
     setEvents([]);
     setActions([]);
@@ -271,7 +297,7 @@ export default function AiWorkspace() {
                 <button
                   key={item.run_id}
                   onClick={() => {
-                    setRunId(item.run_id);
+                    setSearchParams({ runId: item.run_id }, { replace: true });
                     applySnapshot(item);
                     setRunning(false);
                     setRunError(item.error || null);

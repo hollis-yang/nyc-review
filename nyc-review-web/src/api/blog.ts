@@ -12,6 +12,10 @@ export function getBlogLikes(id: number | string) {
   return client.get(`/blog/likes/${id}`);
 }
 
+export function getFollowingBlogLikes(id: number | string) {
+  return client.get(`/blog/likes/${id}/following`);
+}
+
 export function likeBlog(id: number | string) {
   return client.put(`/blog/like/${id}`);
 }

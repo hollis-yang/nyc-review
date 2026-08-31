@@ -7,15 +7,17 @@
 
 .header {
   height: 48px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) auto minmax(84px, 1fr);
   align-items: center;
+  padding: 0 10px;
   background: var(--color-primary-gradient);
   flex-shrink: 0;
 }
 
 .cancelBtn {
-  width: 15%;
-  text-align: center;
+  justify-self: start;
+  text-align: left;
   font-size: 14px;
   color: #fff;
   cursor: pointer;
@@ -27,7 +29,7 @@
 }
 
 .title {
-  flex: 1;
+  justify-self: center;
   text-align: center;
   font-size: 16px;
   font-weight: bold;
@@ -35,9 +37,9 @@
 }
 
 .commit {
-  width: 15%;
+  justify-self: end;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .commitBtn {
@@ -46,6 +48,7 @@
   padding: 5px 16px;
   border-radius: 14px;
   font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--transition-fast), transform var(--transition-fast);
 }
@@ -64,6 +67,8 @@
   margin: 8px 8px 0 8px;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
+  min-height: 86px;
+  overflow-x: auto;
 }
 
 .uploadBtn {
@@ -91,6 +96,9 @@
   font-size: 11px;
   line-height: 14px;
   margin-top: 4px;
+  max-width: 64px;
+  text-align: center;
+  overflow-wrap: normal;
 }
 
 .picList {
@@ -232,8 +240,46 @@
 }
 
 .dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 12px;
   border-bottom: 1px solid #f0f0f0;
+}
+
+.dialogHeader button {
+  border: 0;
+  padding: 4px 0;
+  color: var(--color-primary);
+  background: transparent;
+  font-size: 13px;
+}
+
+.categoryList {
+  display: flex;
+  flex-shrink: 0;
+  gap: 7px;
+  padding: 9px 12px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.categoryList::-webkit-scrollbar { display: none; }
+
+.categoryList button {
+  flex: 0 0 auto;
+  border: 1px solid #eee;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #666;
+  background: #fff;
+  font-size: 11px;
+}
+
+.categoryList .categoryActive {
+  border-color: #ffb39b;
+  color: var(--color-primary);
+  background: #fff4ef;
 }
 
 .searchBar {
@@ -241,12 +287,6 @@
   align-items: center;
   padding: 8px 12px;
   gap: 8px;
-}
-
-.citySelect {
-  font-size: 13px;
-  color: #666;
-  flex-shrink: 0;
 }
 
 .searchInput {
@@ -257,6 +297,13 @@
   border-radius: 20px;
   padding: 6px 12px;
   gap: 4px;
+}
+
+.resultSummary {
+  flex-shrink: 0;
+  padding: 0 14px 7px;
+  color: #999;
+  font-size: 10px;
 }
 
 .searchInput input {
@@ -288,4 +335,20 @@
   font-size: 14px;
   color: #333;
   margin-bottom: 4px;
+}
+
+.listStatus {
+  padding: 24px 0;
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+}
+
+.loadMore {
+  width: 100%;
+  border: 0;
+  padding: 13px 0 20px;
+  color: var(--color-primary);
+  background: transparent;
+  font-size: 12px;
 }

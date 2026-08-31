@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Rate, Toast } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
 import { translateReview } from '../../api/translate';
+import { toggleShopReviewLike } from '../../api/shop';
 import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './ReviewThread.module.css';
 
@@ -12,6 +13,7 @@ export interface ReviewData {
   content: string;
   images?: string;
   liked: number;
+  isLike?: boolean;
   nickName: string;
   icon: string;
   createTime: string;
@@ -35,6 +37,9 @@ export default function ReviewThread({ review, compact = false }: ReviewThreadPr
   const isChinese = i18n.resolvedLanguage === 'zh-CN';
   const [translation, setTranslation] = useState('');
   const [translating, setTranslating] = useState(false);
+  const [liked, setLiked] = useState(review.liked ?? 0);
+  const [isLike, setIsLike] = useState(Boolean(review.isLike));
+  const [likeBusy, setLikeBusy] = useState(false);
   const reviewImages = review.images ? review.images.split(',').filter(Boolean) : [];
   const depth = Math.min(2, Math.max(0, review.depth ?? 0));
 
@@ -58,6 +63,21 @@ export default function ReviewThread({ review, compact = false }: ReviewThreadPr
       });
     } finally {
       setTranslating(false);
+    }
+  };
+
+  const toggleLike = async () => {
+    if (likeBusy) return;
+    setLikeBusy(true);
+    try {
+      const response = await toggleShopReviewLike(review.id);
+      const result = (response.data ?? response) as { liked: number; isLike: boolean };
+      setLiked(result.liked);
+      setIsLike(result.isLike);
+    } catch (error: unknown) {
+      Toast.show({ icon: 'fail', content: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setLikeBusy(false);
     }
   };
 
@@ -107,7 +127,14 @@ export default function ReviewThread({ review, compact = false }: ReviewThreadPr
             </div>
           )}
           <div className={styles.footer}>
-            <span>{t('shopDetail.like', { n: review.liked ?? 0 })}</span>
+            <button
+              type="button"
+              className={`${styles.likeButton} ${isLike ? styles.likeButtonActive : ''}`}
+              disabled={likeBusy}
+              onClick={toggleLike}
+            >
+              ♡ {t('shopDetail.like', { n: liked })}
+            </button>
             {review.createTime && <time>{new Date(review.createTime).toLocaleDateString()}</time>}
           </div>
         </div>

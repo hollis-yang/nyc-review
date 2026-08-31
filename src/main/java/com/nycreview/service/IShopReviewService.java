@@ -12,6 +12,8 @@ public interface IShopReviewService extends IService<ShopReview> {
 
     Result addReview(ShopReview review);
 
+    Result toggleLike(Long reviewId);
+
     /**
      * Return complete, ordered root review threads for evidence construction.
      * The limit applies to roots, never to detached replies.

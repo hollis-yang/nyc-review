@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Toast, Dialog } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
-import { getBlogById, getBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
+import { getBlogById, getBlogLikes, getFollowingBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
 import { translateBlog, translateComment } from '../../api/translate';
 import { getShopById } from '../../api/shop';
 import { getMeOptional } from '../../api/user';
@@ -63,6 +63,7 @@ export default function BlogDetail() {
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [likes, setLikes] = useState<{ id: number; icon: string }[]>([]);
+  const [followingLikes, setFollowingLikes] = useState<{ id: number; icon: string; nickName: string }[]>([]);
   const [comments, setComments] = useState<CommentInfo[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: number } | null>(null);
   const [followed, setFollowed] = useState(false);
@@ -96,6 +97,9 @@ export default function BlogDetail() {
           .then((r) => {
             const u = r.data ?? r;
             setCurrentUser(u);
+            getFollowingBlogLikes(id)
+              .then((likesResponse) => setFollowingLikes(likesResponse.data ?? likesResponse))
+              .catch(() => setFollowingLikes([]));
             if (u.id !== data.userId) {
               isFollowed(data.userId)
                 .then((r2) => setFollowed(r2.data ?? r2))
@@ -120,6 +124,10 @@ export default function BlogDetail() {
       setBlog(data);
       const likesRes = await getBlogLikes(blog.id);
       setLikes(likesRes.data ?? likesRes);
+      if (currentUser) {
+        const followedLikesRes = await getFollowingBlogLikes(blog.id);
+        setFollowingLikes(followedLikesRes.data ?? followedLikesRes);
+      }
     } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
     }
@@ -517,6 +525,14 @@ export default function BlogDetail() {
               </div>
             ))}
             <div className={styles.likedCount}>{t('blogDetail.likes', { n: blog.liked })}</div>
+            {followingLikes.length > 0 && (
+              <div className={styles.followingLiked}>
+                {t('blogDetail.followingLiked', {
+                  names: followingLikes.map((user) => user.nickName).join(', '),
+                  count: followingLikes.length,
+                })}
+              </div>
+            )}
           </div>
         </div>
 

@@ -169,6 +169,7 @@
     "commentSuccess": "评论成功",
     "replySuccess": "回复成功",
     "likes": "{{n}}人点赞",
+    "followingLiked": "你关注的人也赞过：{{names}}",
     "translate": "翻译",
     "translatedByAI": "由 AI 翻译",
     "original": "原文",
@@ -186,6 +187,10 @@
     "linkShop": "关联商户",
     "selectShop": "去选择 >",
     "searchShop": "搜索商户名称",
+    "categoryFilter": "按类别筛选商户",
+    "shopResults": "找到 {{count}} 家商户",
+    "loadMore": "加载更多商户",
+    "noShops": "没有匹配的商户",
     "loginRequired": "请先登录",
     "shopRequired": "请选择关联商户"
   },
