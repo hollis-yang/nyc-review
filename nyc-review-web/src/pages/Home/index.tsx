@@ -93,6 +93,23 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(() => {
+      if (
+        el.scrollHeight <= el.clientHeight + 1 &&
+        !loadingRef.current &&
+        hasMore
+      ) {
+        void loadBlogs();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadBlogs]);
+
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -111,67 +128,75 @@ export default function Home() {
   return (
     <div className={styles.container}>
       <div className={styles.searchBar}>
-        <div className={styles.cityBtn}>NYC</div>
-        <div className={styles.searchInput}>
-          <div className={styles.inputWrapper}>
-            <SearchOutline fontSize={14} style={{ margin: '0 4px' }} />
-            <input
-              type="text"
-              placeholder={t('home.searchPlaceholder')}
-              value={searchText}
-              onChange={(e) => handleSearchInput(e.target.value)}
-              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && searchText.trim()) {
-                  setShowSuggestions(false);
-                  navigate(`/shop-list?query=${encodeURIComponent(searchText.trim())}`);
-                }
-              }}
-              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: '#333', width: '100%' }}
-            />
-          </div>
-          {showSuggestions && suggestions.length > 0 && (
-            <div className={styles.suggestions}>
-              <div className={styles.suggestTitle}>{t('home.searchResults')}</div>
-              {suggestions.map((s) => (
-                <div
-                  key={s.id}
-                  className={styles.suggestionItem}
-                  onMouseDown={() => {
-                    setSearchText(s.name);
+        <div className={styles.searchControls}>
+          <div className={styles.cityBtn}>NYC</div>
+          <div className={styles.searchInput}>
+            <div className={styles.inputWrapper}>
+              <SearchOutline fontSize={14} style={{ margin: '0 4px' }} />
+              <input
+                className={styles.searchField}
+                type="text"
+                placeholder={t('home.searchPlaceholder')}
+                value={searchText}
+                onChange={(e) => handleSearchInput(e.target.value)}
+                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchText.trim()) {
                     setShowSuggestions(false);
-                    navigate(`/shop-detail/${s.id}`);
-                  }}
-                >
-                  <img
-                    className={styles.suggestIcon}
-                    src={shopTypeIconUrl(s.typeId ? getTypeInfo(s.typeId)?.icon : undefined)}
-                    alt=""
-                  />
-                  <div className={styles.suggestInfo}>
-                    <div className={styles.suggestName}>{s.name}</div>
-                    <div className={styles.suggestHint}>
-                      {s.typeId && getTypeInfo(s.typeId)
-                        ? t(`shopTypes.${getTypeInfo(s.typeId)!.name}`, getTypeInfo(s.typeId)!.name)
-                        : t('home.viewDetails')}
+                    navigate(`/shop-list?query=${encodeURIComponent(searchText.trim())}`);
+                  }
+                }}
+              />
+            </div>
+            {showSuggestions && suggestions.length > 0 && (
+              <div className={styles.suggestions}>
+                <div className={styles.suggestTitle}>{t('home.searchResults')}</div>
+                {suggestions.map((s) => (
+                  <div
+                    key={s.id}
+                    className={styles.suggestionItem}
+                    onMouseDown={() => {
+                      setSearchText(s.name);
+                      setShowSuggestions(false);
+                      navigate(`/shop-detail/${s.id}`);
+                    }}
+                  >
+                    <img
+                      className={styles.suggestIcon}
+                      src={shopTypeIconUrl(s.typeId ? getTypeInfo(s.typeId)?.icon : undefined)}
+                      alt=""
+                    />
+                    <div className={styles.suggestInfo}>
+                      <div className={styles.suggestName}>{s.name}</div>
+                      <div className={styles.suggestHint}>
+                        {s.typeId && getTypeInfo(s.typeId)
+                          ? t(`shopTypes.${getTypeInfo(s.typeId)!.name}`, getTypeInfo(s.typeId)!.name)
+                          : t('home.viewDetails')}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className={styles.headerIcon} onClick={() => navigate('/profile')}>
-          <svg viewBox="0 0 1024 1024" width="18" height="18" fill="white">
-            <path d="M512 512c141.4 0 256-114.6 256-256S653.4 0 512 0 256 114.6 256 256s114.6 256 256 256zm0 128c-170.7 0-512 85.3-512 256v128h1024V896c0-170.7-341.3-256-512-256z" />
-          </svg>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className={styles.headerIcon}
+            onClick={() => navigate('/profile')}
+            aria-label={t('nav.profile')}
+          >
+            <svg viewBox="0 0 1024 1024" width="18" height="18" fill="white">
+              <path d="M512 512c141.4 0 256-114.6 256-256S653.4 0 512 0 256 114.6 256 256s114.6 256 256 256zm0 128c-170.7 0-512 85.3-512 256v128h1024V896c0-170.7-341.3-256-512-256z" />
+            </svg>
+          </button>
         </div>
       </div>
 
       <div className={styles.typeList}>
         {types.map((tp) => (
-          <div
+          <button
+            type="button"
             key={tp.id}
             className={styles.typeBox}
             onClick={() =>
@@ -182,7 +207,7 @@ export default function Home() {
               <img src={shopTypeIconUrl(tp.icon)} alt="" />
             </div>
             <div className={styles.typeText}>{t(`shopTypes.${tp.name}`, tp.name)}</div>
-          </div>
+          </button>
         ))}
       </div>
 

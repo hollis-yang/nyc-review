@@ -43,38 +43,53 @@ export default function FootBar({ activeBtn }: FootBarProps) {
   };
 
   return (
-    <div className={styles.foot}>
-      <div
+    <nav className={styles.foot} aria-label={t('login.brand')}>
+      <button
+        type="button"
         className={`${styles.footBox} ${activeBtn === 1 ? styles.active : ''}`}
         onClick={() => toPage(1)}
+        aria-current={activeBtn === 1 ? 'page' : undefined}
       >
         <div className={styles.footView}><HomeIcon size={26} /></div>
         <div className={styles.footText}>{t('nav.home')}</div>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         className={`${styles.footBox} ${activeBtn === 2 ? styles.active : ''}`}
         onClick={() => toPage(2)}
+        aria-current={activeBtn === 2 ? 'page' : undefined}
       >
         <div className={styles.footView}><EnvironmentOutline fontSize={26} /></div>
         <div className={styles.footText}>{t('nav.map')}</div>
-      </div>
-      <div className={styles.footBox} onClick={() => toPage(0)}>
-        <img className={styles.addBtn} src="/imgs/add.png" alt={t('nav.create')} />
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
+        className={`${styles.footBox} ${styles.createBox}`}
+        onClick={() => toPage(0)}
+        aria-label={t('nav.create')}
+      >
+        <div className={styles.footView}>
+          <img className={styles.addBtn} src="/imgs/add.png" alt="" />
+        </div>
+      </button>
+      <button
+        type="button"
         className={`${styles.footBox} ${activeBtn === 5 ? styles.active : ''}`}
         onClick={() => toPage(5)}
+        aria-current={activeBtn === 5 ? 'page' : undefined}
       >
         <div className={styles.footView}><AiIcon size={26} /></div>
         <div className={styles.footText}>{t('nav.ai')}</div>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         className={`${styles.footBox} ${activeBtn === 4 ? styles.active : ''}`}
         onClick={() => toPage(4)}
+        aria-current={activeBtn === 4 ? 'page' : undefined}
       >
         <div className={styles.footView}><UserOutline fontSize={26} /></div>
         <div className={styles.footText}>{t('nav.profile')}</div>
-      </div>
-    </div>
+      </button>
+    </nav>
   );
 }

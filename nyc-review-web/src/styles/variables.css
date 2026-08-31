@@ -35,4 +35,14 @@
   /* 布局 */
   --header-height: 7%;
   --footer-height: 8%;
+  --desktop-breakpoint: 1024px;
+  --desktop-nav-compact-width: 80px;
+  --desktop-nav-expanded-width: 216px;
+  --desktop-context-height: 64px;
+  --desktop-content-max: 1280px;
+  --desktop-content-wide-max: 1440px;
+  --desktop-page-gutter: 28px;
+  --desktop-grid-gap: 20px;
+  --desktop-reading-width: 820px;
+  --desktop-form-width: 560px;
 }

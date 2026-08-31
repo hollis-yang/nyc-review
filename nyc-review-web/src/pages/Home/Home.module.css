@@ -13,6 +13,16 @@
   align-items: center;
   padding: 0 8px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1000;
+  overflow: visible;
+}
+
+.searchControls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
 }
 
 .cityBtn {
@@ -40,7 +50,24 @@
   background: rgba(255, 255, 255, 0.8);
 }
 
+.searchField {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #333;
+  font: 13px/1.4 var(--font-family);
+}
+
 .headerIcon {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
   font-size: 14px;
   cursor: pointer;
   transition: transform var(--transition-fast);
@@ -64,6 +91,10 @@
 }
 
 .typeBox {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
   min-width: 0;
   text-align: center;
   cursor: pointer;
@@ -190,4 +221,157 @@
   font-size: 11px;
   color: #bbb;
   margin-top: 1px;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .container {
+    width: min(760px, 100%);
+    margin: 0 auto;
+    box-shadow: 0 0 30px rgba(47, 38, 34, 0.08);
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    height: 100dvh;
+    min-width: 0;
+    background: #f6f4f2;
+  }
+
+  .searchBar {
+    height: var(--desktop-context-height);
+    padding: 0 var(--desktop-page-gutter);
+    justify-content: center;
+    box-shadow: 0 8px 24px rgba(119, 70, 49, 0.12);
+  }
+
+  .searchControls {
+    max-width: 1040px;
+    gap: 18px;
+    justify-content: center;
+  }
+
+  .cityBtn {
+    flex: 0 0 48px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  .searchInput {
+    width: auto;
+    max-width: 720px;
+    flex: 1 1 560px;
+  }
+
+  .inputWrapper {
+    height: 40px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.56);
+    padding: 7px 13px;
+    box-shadow: 0 3px 12px rgba(116, 57, 34, 0.1);
+  }
+
+  .searchField {
+    font-size: 15px;
+  }
+
+  .headerIcon {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    border-radius: 50%;
+  }
+
+  .headerIcon:hover,
+  .headerIcon:focus-visible {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .headerIcon:focus-visible,
+  .typeBox:focus-visible,
+  .suggestionItem:focus-visible {
+    outline: 3px solid rgba(255, 102, 51, 0.24);
+    outline-offset: 2px;
+  }
+
+  .typeList {
+    width: min(1040px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    min-height: 0;
+    box-sizing: border-box;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: none;
+    gap: 14px;
+    margin: 18px auto 0;
+    border: 1px solid rgba(47, 38, 34, 0.05);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    box-shadow: 0 10px 32px rgba(47, 38, 34, 0.07);
+  }
+
+  .typeBox {
+    min-height: 104px;
+    border-radius: var(--radius-md);
+    padding: 8px 6px;
+  }
+
+  .typeBox:hover {
+    background: #fff8f4;
+    transform: translateY(-2px);
+  }
+
+  .typeBox:hover .typeView {
+    box-shadow: 0 6px 18px rgba(255, 102, 51, 0.13);
+  }
+
+  .typeText {
+    min-height: 32px;
+    margin-top: 7px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .blogList {
+    width: min(992px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px 16px;
+    justify-content: stretch;
+    align-content: start;
+    margin: 0 auto;
+    padding: 20px 0 30px;
+    overflow-x: visible;
+    overflow-y: auto;
+    background: transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .loading {
+    grid-column: 1 / -1;
+  }
+
+  .suggestions {
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    max-height: 360px;
+    border-radius: var(--radius-md);
+  }
+
+  .suggestionItem {
+    min-height: 48px;
+    box-sizing: border-box;
+  }
+
+  .suggestionItem:hover {
+    background: #fff7f3;
+  }
+}
+
+@media (min-width: 1200px) {
+  .blogList {
+    width: min(1216px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }

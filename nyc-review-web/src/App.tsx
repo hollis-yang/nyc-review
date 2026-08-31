@@ -1,5 +1,5 @@
 import './i18n';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd-mobile';
 import enUS from 'antd-mobile/es/locales/en-US';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
@@ -22,15 +22,29 @@ import MapPage from './pages/Map';
 import AiWorkspace from './pages/AiWorkspace';
 import ProtectedRoute from './components/ProtectedRoute';
 import LegacyRedirect from './components/LegacyRedirect';
+import styles from './App.module.css';
 
-export default function App() {
-  const { i18n } = useTranslation();
-  const mobileLocale = i18n.resolvedLanguage?.startsWith('zh') ? zhCN : enUS;
+const routesWithPrimaryNavigation = [
+  '/',
+  '/map',
+  '/ai',
+  '/profile',
+  '/profile-edit',
+  '/account-security',
+];
+
+function hasPrimaryNavigation(pathname: string) {
+  const normalizedPath = pathname === '/' ? pathname : pathname.replace(/\/+$/, '');
+  return routesWithPrimaryNavigation.includes(normalizedPath) || /^\/user\/[^/]+$/.test(normalizedPath);
+}
+
+function AppRoutes() {
+  const { pathname } = useLocation();
+  const withPrimaryNavigation = hasPrimaryNavigation(pathname);
 
   return (
-    <ConfigProvider locale={mobileLocale}>
-      <AuthProvider>
-        <BrowserRouter>
+    <div className={`${styles.shell} ${withPrimaryNavigation ? styles.withPrimaryNavigation : ''}`}>
+      <div className={styles.routeViewport}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -68,6 +82,20 @@ export default function App() {
           <Route path="/shop-list.html" element={<LegacyRedirect />} />
           <Route path="/other-info.html" element={<LegacyRedirect />} />
         </Routes>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const { i18n } = useTranslation();
+  const mobileLocale = i18n.resolvedLanguage?.startsWith('zh') ? zhCN : enUS;
+
+  return (
+    <ConfigProvider locale={mobileLocale}>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
         </BrowserRouter>
       </AuthProvider>
     </ConfigProvider>
