@@ -190,6 +190,15 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return Result.fail("Invalid category");
         }
         String normalizedSearch = StrUtil.trim(search);
+        // The project's lightweight pagination interceptor only applies
+        // LIMIT/OFFSET and intentionally does not issue a count query. Count
+        // the filtered catalog explicitly so the selector reports all
+        // matching merchants instead of falling back to the current 30 rows.
+        long total = query()
+                .eq(typeId != null, "type_id", typeId)
+                .like(StrUtil.isNotBlank(normalizedSearch), "name", normalizedSearch)
+                .eq("business_status", "OPERATIONAL")
+                .count();
         Page<Shop> page = query()
                 .eq(typeId != null, "type_id", typeId)
                 .like(StrUtil.isNotBlank(normalizedSearch), "name", normalizedSearch)
@@ -197,7 +206,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
                 .orderByAsc("name")
                 .orderByAsc("id")
                 .page(new Page<>(safeCurrent, safeSize));
-        return Result.ok(page.getRecords(), page.getTotal());
+        return Result.ok(page.getRecords(), total);
     }
 
     private Result queryByPopularity(

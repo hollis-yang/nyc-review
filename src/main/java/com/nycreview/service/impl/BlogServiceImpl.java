@@ -203,8 +203,10 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Override
     public Result queryBlogLikes(Long id) {
         String key = BLOG_LIKED_KEY + id;
-        // 1.查询top5的点赞用户 zrange key 0 4
-        Set<String> top5 = stringRedisTemplate.opsForZSet().range(key, 0, 4);
+        // 1. Query the five most recent likes. Generated/demo relationships
+        // are appended with current scores, so reverse order also keeps the
+        // visible avatar row consistent with the latest real interactions.
+        Set<String> top5 = stringRedisTemplate.opsForZSet().reverseRange(key, 0, 4);
         if (top5 == null || top5.isEmpty()) {
             return Result.ok(Collections.emptyList());
         }

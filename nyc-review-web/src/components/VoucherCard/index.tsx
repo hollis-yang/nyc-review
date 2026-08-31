@@ -44,13 +44,20 @@ function isEnd(v: VoucherData): boolean {
 }
 
 export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isAuthenticated } = useAuth();
   const v = voucher;
 
   if (isEnd(v)) return null;
 
-  const discount = ((v.payValue * 10) / v.actualValue).toFixed(1);
+  const hasValidPrice = v.actualValue > 0 && v.payValue >= 0;
+  const discount = hasValidPrice
+    ? i18n.resolvedLanguage === 'zh-CN'
+      // Chinese commerce convention: 50% of the original price is 5 折.
+      ? Number(((v.payValue * 10) / v.actualValue).toFixed(1))
+      // English convention: show the percentage saved, e.g. 50% off.
+      : Number((((v.actualValue - v.payValue) * 100) / v.actualValue).toFixed(1))
+    : 0;
   const price = formatPrice(v.payValue);
   const disabled = isNotBegin(v) || (v.type === 1 && v.stock < 1);
 
