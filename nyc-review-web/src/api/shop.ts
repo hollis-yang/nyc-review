@@ -42,9 +42,10 @@ export function getShopReviews(shopId: number | string, current: number = 1) {
 
 export function createShopReview(data: {
   shopId: number;
-  rating: number;
+  rating?: number;
   content: string;
   images?: string;
+  parentId?: number;
 }) {
   return client.post('/shop-review', data);
 }

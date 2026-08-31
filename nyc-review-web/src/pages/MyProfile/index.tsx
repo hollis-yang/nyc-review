@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BellOutline,
@@ -13,15 +13,14 @@ import { Toast } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../hooks/useAuth';
 import { getMe, getUserInfo, sign, signCount } from '../../api/user';
-import { getBlogsOfMe, getBlogsOfFollow, likeBlog, getBlogById } from '../../api/blog';
-import { getFollowers } from '../../api/follow';
+import { getBlogsOfMe } from '../../api/blog';
+import { getFollowers, getFollowing } from '../../api/follow';
 import {
   deleteAgentMemory,
   getProfileAssets,
   updateAgentMemory,
   type ProfileAssets,
 } from '../../api/profile';
-import FeedCard from '../../components/FeedCard';
 import FootBar from '../../components/FootBar';
 import type { BlogData } from '../../components/BlogCard';
 import MerchantVisual, { NoteVisual } from '../../components/MerchantVisual';
@@ -50,24 +49,26 @@ export default function MyProfile() {
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
   const [info, setInfo] = useState<{ introduce?: string; followee?: number; fans?: number; city?: string }>({});
   const [blogs, setBlogs] = useState<BlogData[]>([]);
-  const [followBlogs, setFollowBlogs] = useState<BlogData[]>([]);
   const [followers, setFollowers] = useState<ProfileUserSummary[]>([]);
   const [followersLoaded, setFollowersLoaded] = useState(false);
   const [followersLoading, setFollowersLoading] = useState(false);
+  const [following, setFollowing] = useState<ProfileUserSummary[]>([]);
+  const [followingLoaded, setFollowingLoaded] = useState(false);
+  const [followingLoading, setFollowingLoading] = useState(false);
   const [activeSection, setActiveSection] = useState<ProfileSection>('notes');
-  const [params, setParams] = useState({ minTime: 0, offset: 0 });
-  const [loading, setLoading] = useState(false);
   const [signDays, setSignDays] = useState(0);
   const [signedToday, setSignedToday] = useState(false);
   const [assets, setAssets] = useState<ProfileAssets | null>(null);
   const [assetsLoading, setAssetsLoading] = useState(true);
-  const [memoryDrafts, setMemoryDrafts] = useState<Record<number, string>>({});
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [memoryItemDrafts, setMemoryItemDrafts] = useState<Record<number, string[]>>({});
 
   const applyAssets = (profileAssets: ProfileAssets) => {
     setAssets(profileAssets);
-    setMemoryDrafts(Object.fromEntries(
-      profileAssets.memories.map((memory) => [memory.id, memory.value])
+    setMemoryItemDrafts(Object.fromEntries(
+      profileAssets.memories.map((memory) => [
+        memory.id,
+        memory.value.split(',').map((item) => item.trim()).filter(Boolean),
+      ])
     ));
   };
 
@@ -122,28 +123,6 @@ export default function MyProfile() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
-  const loadFollowBlogs = useCallback(async (clear = false) => {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const requestParams = clear
-        ? { offset: 0, lastId: Date.now() + 1 }
-        : { offset: params.offset, lastId: params.minTime || Date.now() + 1 };
-      const response = await getBlogsOfFollow(requestParams);
-      const data = response.data ?? response;
-      if (!data) return;
-      const { list, ...rest } = data;
-      const enriched = (list || []).map((blog: BlogData) => ({
-        ...blog,
-        img: blog.images ? blog.images.split(',')[0] : '',
-      }));
-      setFollowBlogs(clear ? enriched : (previous) => [...previous, ...enriched]);
-      setParams(rest);
-    } finally {
-      setLoading(false);
-    }
-  }, [params, loading]);
-
   const loadFollowers = useCallback(async () => {
     if (followersLoading || followersLoaded) return;
     setFollowersLoading(true);
@@ -156,31 +135,22 @@ export default function MyProfile() {
     }
   }, [followersLoaded, followersLoading]);
 
+  const loadFollowing = useCallback(async () => {
+    if (followingLoading || followingLoaded) return;
+    setFollowingLoading(true);
+    try {
+      const response = await getFollowing();
+      setFollowing((response.data ?? response) as ProfileUserSummary[]);
+      setFollowingLoaded(true);
+    } finally {
+      setFollowingLoading(false);
+    }
+  }, [followingLoaded, followingLoading]);
+
   const handleSectionChange = (key: ProfileSection) => {
     setActiveSection(key);
-    if (key === 'following') loadFollowBlogs(true);
+    if (key === 'following') loadFollowing();
     if (key === 'followers') loadFollowers();
-  };
-
-  const handleScroll = useCallback(() => {
-    const element = containerRef.current;
-    if (!element) return;
-    const { scrollTop, offsetHeight, scrollHeight } = element;
-    if (scrollTop === 0) loadFollowBlogs(true);
-    else if (scrollTop + offsetHeight + 1 > scrollHeight && !loading) loadFollowBlogs();
-  }, [loadFollowBlogs, loading]);
-
-  const handleLikeUpdate = async (blogId: number) => {
-    try {
-      await likeBlog(blogId);
-      const response = await getBlogById(blogId);
-      const data = response.data ?? response;
-      setFollowBlogs((previous) => previous.map((blog) =>
-        blog.id === blogId ? { ...blog, liked: data.liked, isLike: data.isLike } : blog
-      ));
-    } catch {
-      // Keep the optimistic feed stable when the refresh request fails.
-    }
   };
 
   const handleLogout = async () => {
@@ -208,12 +178,34 @@ export default function MyProfile() {
 
   const saveMemory = async (id: number) => {
     try {
-      await updateAgentMemory(id, memoryDrafts[id] || '');
+      const value = (memoryItemDrafts[id] || []).map((item) => item.trim()).filter(Boolean).join(', ');
+      await updateAgentMemory(id, value);
       await reloadAssets();
       Toast.show({ icon: 'success', content: t('profile.memoryUpdated') });
     } catch (error) {
       Toast.show({ icon: 'fail', content: String(error) });
     }
+  };
+
+  const updateMemoryItem = (memoryId: number, itemIndex: number, value: string) => {
+    setMemoryItemDrafts((previous) => ({
+      ...previous,
+      [memoryId]: (previous[memoryId] || []).map((item, index) => index === itemIndex ? value : item),
+    }));
+  };
+
+  const addMemoryItem = (memoryId: number) => {
+    setMemoryItemDrafts((previous) => ({
+      ...previous,
+      [memoryId]: [...(previous[memoryId] || []), ''],
+    }));
+  };
+
+  const removeMemoryItem = (memoryId: number, itemIndex: number) => {
+    setMemoryItemDrafts((previous) => ({
+      ...previous,
+      [memoryId]: (previous[memoryId] || []).filter((_, index) => index !== itemIndex),
+    }));
   };
 
   const removeMemory = async (id: number) => {
@@ -378,11 +370,31 @@ export default function MyProfile() {
           {assets?.memories.length ? assets.memories.map((memory) => (
             <div className={styles.memoryCard} key={memory.id}>
               <label>{t(`profile.memoryKeys.${memory.key}`, { defaultValue: memory.key })}</label>
-              <input value={memoryDrafts[memory.id] ?? memory.value}
-                onChange={(event) => setMemoryDrafts((previous) => ({
-                  ...previous,
-                  [memory.id]: event.target.value,
-                }))} />
+              <div className={styles.memoryValueList}>
+                {(memoryItemDrafts[memory.id] || []).map((item, itemIndex) => (
+                  <div className={styles.memoryValueRow} key={`${memory.id}-${itemIndex}`}>
+                    <input
+                      value={item}
+                      aria-label={t('profile.memoryItem', { n: itemIndex + 1 })}
+                      onChange={(event) => updateMemoryItem(memory.id, itemIndex, event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      aria-label={t('profile.removeMemoryItem')}
+                      onClick={() => removeMemoryItem(memory.id, itemIndex)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className={styles.addMemoryItem}
+                  onClick={() => addMemoryItem(memory.id)}
+                >
+                  + {t('profile.addMemoryItem')}
+                </button>
+              </div>
               <div className={styles.memoryActions}>
                 <span />
                 <button onClick={() => removeMemory(memory.id)}>{t('common.delete')}</button>
@@ -411,15 +423,18 @@ export default function MyProfile() {
       )) : empty(t('profile.noFollowers'));
     }
 
-    return (
-      <>
-        {followBlogs.map((blog) => (
-          <FeedCard key={blog.id} blog={blog} onLikeUpdate={() => handleLikeUpdate(blog.id)} />
-        ))}
-        {loading && <div className={styles.loadingMore}>{t('home.loading')}</div>}
-        {!loading && !followBlogs.length && empty(t('profile.noFollowingNotes'))}
-      </>
-    );
+    if (followingLoading) return <div className={styles.loadingMore}>{t('home.loading')}</div>;
+    return following.length ? following.map((followedUser) => (
+      <button
+        className={styles.personCard}
+        key={followedUser.id}
+        onClick={() => navigate(`/user/${followedUser.id}`)}
+      >
+        <img src={followedUser.icon || '/imgs/icons/default-icon.png'} alt="" />
+        <span>{followedUser.nickName}</span>
+        <b>›</b>
+      </button>
+    )) : empty(t('profile.noFollowingUsers'));
   };
 
   return (
@@ -515,8 +530,6 @@ export default function MyProfile() {
         <div
           key={activeSection}
           className={styles.tabContent}
-          onScroll={activeSection === 'following' ? handleScroll : undefined}
-          ref={activeSection === 'following' ? containerRef : undefined}
         >
           {renderSelectedContent()}
         </div>

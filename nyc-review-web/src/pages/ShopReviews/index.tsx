@@ -92,6 +92,19 @@ export default function ShopReviews() {
     else navigate('/');
   };
 
+  const refreshVisibleReviews = useCallback(async () => {
+    if (!id) return;
+    const loadedPages = Math.max(1, current - 1);
+    const responses = await Promise.all(
+      Array.from({ length: loadedPages }, (_, index) => getShopReviews(id, index + 1))
+    );
+    const pages = responses.map(unwrapReviews);
+    const records = pages.flatMap((page) => page.records);
+    const total = pages[0]?.total ?? records.length;
+    setReviews(records);
+    setHasMore(records.length < total);
+  }, [current, id]);
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -105,7 +118,11 @@ export default function ShopReviews() {
       <div className={styles.scroll} onScroll={handleScroll} ref={containerRef}>
         {reviews.map((review) => (
           <div className={styles.reviewBox} key={review.id}>
-            <ReviewThread review={review} />
+            <ReviewThread
+              review={review}
+              shopId={Number(id)}
+              onReplyCreated={refreshVisibleReviews}
+            />
           </div>
         ))}
         {loading && <div className={styles.loading}>{t('shopReviews.loading')}</div>}

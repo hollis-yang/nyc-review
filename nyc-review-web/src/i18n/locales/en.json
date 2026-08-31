@@ -87,6 +87,7 @@
     "noReminders": "Flash-sale reminders will appear here.",
     "noMemory": "No long-term preferences have been learned yet.",
     "noFollowingNotes": "Notes from people you follow will appear here.",
+    "noFollowingUsers": "People you follow will appear here.",
     "noFollowers": "No followers yet.",
     "stops": "{{n}} stops",
     "paid": "Paid ${{amount}}",
@@ -96,6 +97,9 @@
     "memorySource": "Source: {{source}}",
     "memoryUpdated": "AI preference updated",
     "memoryDeleted": "AI preference deleted",
+    "memoryItem": "Preference {{n}}",
+    "addMemoryItem": "Add preference",
+    "removeMemoryItem": "Remove preference",
     "memoryKeys": {
       "preferred_category": "Preferred category",
       "preferred_neighborhood": "Preferred neighborhood",
@@ -189,6 +193,7 @@
     "searchShop": "Search shop name",
     "categoryFilter": "Filter shops by category",
     "shopResults": "{{count}} matching shops",
+    "searchingShops": "Searching shops…",
     "loadMore": "Load more shops",
     "noShops": "No matching shops",
     "loginRequired": "Please login first",
@@ -302,7 +307,10 @@
     "synthetic": "Synthetic",
     "userSubmitted": "User submitted",
     "anonymous": "Anonymous",
-    "replyingTo": "Replying to {{name}}"
+    "replyingTo": "Replying to {{name}}",
+    "reply": "Reply",
+    "replyPlaceholder": "Write a reply...",
+    "replySuccess": "Reply posted"
   },
   "contentSource": {
     "synthetic": "Synthetic demo",

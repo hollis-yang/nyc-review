@@ -632,7 +632,7 @@ button.statItem {
   font-weight: 700;
 }
 
-.memoryCard input {
+.memoryValueRow input {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #e9e2df;
@@ -643,9 +643,49 @@ button.statItem {
   font-size: 12px;
 }
 
-.memoryCard input:focus {
+.memoryValueRow input:focus {
   border-color: #ff8968;
   box-shadow: 0 0 0 2px rgba(255, 102, 51, 0.08);
+}
+
+.memoryValueList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memoryValueRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memoryValueRow input {
+  min-width: 0;
+  flex: 1;
+}
+
+.memoryValueRow button {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f0ddd6;
+  border-radius: 50%;
+  background: #fff8f5;
+  color: #d66a49;
+  font-size: 18px;
+}
+
+.memoryValueList .addMemoryItem {
+  align-self: flex-start;
+  border: 0;
+  padding: 3px 1px;
+  color: var(--color-primary);
+  background: transparent;
+  font-size: 10px;
 }
 
 .memoryActions {

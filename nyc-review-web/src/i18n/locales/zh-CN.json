@@ -87,6 +87,7 @@
     "noReminders": "秒杀提醒会显示在这里。",
     "noMemory": "AI 尚未学习到长期偏好。",
     "noFollowingNotes": "关注用户发布的笔记会显示在这里。",
+    "noFollowingUsers": "你关注的用户会显示在这里。",
     "noFollowers": "还没有粉丝。",
     "stops": "{{n}} 个地点",
     "paid": "支付 ${{amount}}",
@@ -96,6 +97,9 @@
     "memorySource": "来源：{{source}}",
     "memoryUpdated": "AI 偏好已更新",
     "memoryDeleted": "AI 偏好已删除",
+    "memoryItem": "偏好 {{n}}",
+    "addMemoryItem": "添加偏好",
+    "removeMemoryItem": "删除偏好",
     "memoryKeys": {
       "preferred_category": "偏好分类",
       "preferred_neighborhood": "偏好街区",
@@ -189,6 +193,7 @@
     "searchShop": "搜索商户名称",
     "categoryFilter": "按类别筛选商户",
     "shopResults": "找到 {{count}} 家商户",
+    "searchingShops": "正在搜索商户…",
     "loadMore": "加载更多商户",
     "noShops": "没有匹配的商户",
     "loginRequired": "请先登录",
@@ -302,7 +307,10 @@
     "synthetic": "合成内容",
     "userSubmitted": "用户提交",
     "anonymous": "匿名用户",
-    "replyingTo": "回复 {{name}}"
+    "replyingTo": "回复 {{name}}",
+    "reply": "回复",
+    "replyPlaceholder": "写下回复...",
+    "replySuccess": "回复成功"
   },
   "contentSource": {
     "synthetic": "合成演示内容",

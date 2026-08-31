@@ -33,4 +33,9 @@ public class FollowController {
     public Result followers() {
         return followService.followers();
     }
+
+    @GetMapping("/following")
+    public Result following() {
+        return followService.following();
+    }
 }

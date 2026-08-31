@@ -66,7 +66,8 @@ export default function BlogEdit() {
       const envelope = res as unknown as { data?: ShopItem[]; total?: number };
       const records = envelope.data ?? [];
       setShops((previous) => replace ? records : [...previous, ...records]);
-      setShopTotal(typeof envelope.total === 'number' ? envelope.total : records.length);
+      const reportedTotal = typeof envelope.total === 'number' ? envelope.total : records.length;
+      setShopTotal(Math.max(reportedTotal, (page - 1) * 30 + records.length));
       setShopPage(page);
     } catch {
       if (replace && requestId === shopRequestRef.current) setShops([]);
@@ -75,15 +76,22 @@ export default function BlogEdit() {
     }
   }, [selectedTypeId, shopName]);
 
-  const openShopDialog = async () => {
+  const openShopDialog = () => {
     setShowDialog(true);
     if (shopTypes.length === 0) {
       getShopTypes()
         .then((response) => setShopTypes(response.data ?? response))
         .catch(() => setShopTypes([]));
     }
-    await queryShops(1, true);
   };
+
+  useEffect(() => {
+    if (!showDialog) return;
+    const timer = window.setTimeout(() => {
+      void queryShops(1, true, selectedTypeId, shopName);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [queryShops, selectedTypeId, shopName, showDialog]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -206,7 +214,6 @@ export default function BlogEdit() {
                 className={selectedTypeId == null ? styles.categoryActive : ''}
                 onClick={() => {
                   setSelectedTypeId(undefined);
-                  queryShops(1, true, undefined, shopName);
                 }}
               >
                 {t('shopList.allCategories')}
@@ -218,7 +225,6 @@ export default function BlogEdit() {
                   className={selectedTypeId === type.id ? styles.categoryActive : ''}
                   onClick={() => {
                     setSelectedTypeId(type.id);
-                    queryShops(1, true, type.id, shopName);
                   }}
                 >
                   {t(`shopTypes.${type.name}`, type.name)}
@@ -238,7 +244,9 @@ export default function BlogEdit() {
               </div>
             </div>
             <div className={styles.resultSummary}>
-              {t('blogEdit.shopResults', { count: shopTotal })}
+              {shopsLoading
+                ? t('blogEdit.searchingShops')
+                : t('blogEdit.shopResults', { count: shopTotal })}
             </div>
             <div className={styles.shopList}>
               {shops.map((s) => (

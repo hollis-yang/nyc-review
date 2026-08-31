@@ -288,11 +288,12 @@ export default function BlogDetail() {
 
   const formatDateTime = (d: string) => {
     const date = new Date(d);
+    const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const hour = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
-    return `${month}-${day} ${hour}:${min}`;
+    return `${year}-${month}-${day} ${hour}:${min}`;
   };
 
   const handleAuthorClick = () => {
@@ -527,10 +528,22 @@ export default function BlogDetail() {
             <div className={styles.likedCount}>{t('blogDetail.likes', { n: blog.liked })}</div>
             {followingLikes.length > 0 && (
               <div className={styles.followingLiked}>
-                {t('blogDetail.followingLiked', {
+                <div className={styles.followingLikeAvatars}>
+                  {followingLikes.map((user) => (
+                    <button
+                      type="button"
+                      key={user.id}
+                      onClick={() => navigate(`/user/${user.id}`)}
+                      aria-label={user.nickName}
+                    >
+                      <img src={user.icon || '/imgs/icons/default-icon.png'} alt="" />
+                    </button>
+                  ))}
+                </div>
+                <span>{t('blogDetail.followingLiked', {
                   names: followingLikes.map((user) => user.nickName).join(', '),
                   count: followingLikes.length,
-                })}
+                })}</span>
               </div>
             )}
           </div>

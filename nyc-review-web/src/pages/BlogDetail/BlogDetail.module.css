@@ -284,13 +284,40 @@
 }
 
 .followingLiked {
+  display: flex;
+  align-items: center;
   flex-basis: 100%;
+  gap: 7px;
   margin-top: 6px;
   font-size: 11px;
   line-height: 1.45;
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
+
+.followingLiked span {
+  min-width: 0;
+  flex: 1;
+}
+
+.followingLikeAvatars {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.followingLikeAvatars button {
+  width: 24px;
+  height: 24px;
+  margin-left: -5px;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  padding: 0;
+  background: #f3f3f3;
+}
+
+.followingLikeAvatars button:first-child { margin-left: 0; }
+.followingLikeAvatars img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ===== 评论卡片 ===== */
 .comments {

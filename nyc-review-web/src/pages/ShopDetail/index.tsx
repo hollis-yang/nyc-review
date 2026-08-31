@@ -129,6 +129,14 @@ export default function ShopDetail() {
     }
   };
 
+  const refreshReviews = async () => {
+    if (!id) return;
+    const response = await getShopReviews(id);
+    const page = unwrapReviews(response);
+    setReviews(page.records);
+    setReviewTotal(page.total);
+  };
+
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);
     else navigate('/');
@@ -158,10 +166,7 @@ export default function ShopDetail() {
       setReviewRating(5);
       setReviewTotal((prev) => prev + 1);
       // refresh reviews
-      const res = await getShopReviews(id);
-      const page = unwrapReviews(res);
-      setReviews(page.records);
-      setReviewTotal(page.total);
+      await refreshReviews();
       const shopResponse = await getShopById(id);
       const shopData = unwrapData<ShopApiData>(shopResponse);
       setShop({
@@ -343,7 +348,12 @@ export default function ShopDetail() {
           <div className={styles.commentList}>
             {reviews.slice(0, 3).map((review) => (
               <div className={styles.commentBox} key={review.id}>
-                <ReviewThread review={review} compact />
+                <ReviewThread
+                  review={review}
+                  compact
+                  shopId={shop.id}
+                  onReplyCreated={refreshReviews}
+                />
               </div>
             ))}
             {reviewTotal > 3 && (

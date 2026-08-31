@@ -58,6 +58,32 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
     }
 
     @Override
+    public Result following() {
+        Long userId = UserHolder.getUser().getId();
+        List<Long> ids = query()
+                .eq("user_id", userId)
+                .orderByDesc("create_time")
+                .last("LIMIT 500")
+                .list()
+                .stream()
+                .map(Follow::getFollowUserId)
+                .toList();
+        if (ids.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        Map<Long, UserDTO> usersById = userService.listByIds(ids)
+                .stream()
+                .collect(Collectors.toMap(
+                        user -> user.getId(),
+                        user -> BeanUtil.copyProperties(user, UserDTO.class)
+                ));
+        return Result.ok(ids.stream()
+                .map(usersById::get)
+                .filter(java.util.Objects::nonNull)
+                .toList());
+    }
+
+    @Override
     public Result followCommons(Long id) {
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();

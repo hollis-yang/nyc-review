@@ -15,3 +15,7 @@ export function getCommonFollows(userId: number | string) {
 export function getFollowers() {
   return client.get('/follow/followers');
 }
+
+export function getFollowing() {
+  return client.get('/follow/following');
+}
