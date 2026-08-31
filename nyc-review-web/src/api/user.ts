@@ -25,6 +25,21 @@ export function signCount() {
   return client.get('/user/sign/count');
 }
 
+export interface SignCalendarData {
+  year: number;
+  month: number;
+  checkedDays: number[];
+  currentStreak: number;
+  signedToday: boolean;
+  today: string;
+}
+
+export function getSignCalendar(year?: number, month?: number) {
+  return client.get<SignCalendarData>('/user/sign/calendar', {
+    params: year != null && month != null ? { year, month } : undefined,
+  });
+}
+
 export function updateUser(data: { nickName?: string; icon?: string }) {
   return client.put('/user/me', data);
 }

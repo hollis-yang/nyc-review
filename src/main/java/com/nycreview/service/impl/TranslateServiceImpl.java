@@ -141,7 +141,7 @@ public class TranslateServiceImpl implements TranslateService {
         String cached = getCached("text", cacheId, targetLang);
         if (cached != null) return Result.ok(cached);
         String translated = callDeepSeek(normalized, langName, null);
-        if (translated == null) return Result.fail("DeepSeek translation is temporarily unavailable");
+        if (translated == null) return Result.fail("AI translation is temporarily unavailable");
         setCached("text", cacheId, targetLang, translated);
         return Result.ok(translated);
     }

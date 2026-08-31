@@ -20,6 +20,10 @@ public class AuthRateLimiter {
     private static final Duration IP_LOGIN_WINDOW = Duration.ofMinutes(10);
     private static final int IP_REGISTER_LIMIT = 10;
     private static final Duration IP_REGISTER_WINDOW = Duration.ofHours(1);
+    private static final int PASSWORD_RESET_FAILURE_LIMIT = 5;
+    private static final Duration PASSWORD_RESET_FAILURE_WINDOW = Duration.ofMinutes(30);
+    private static final int IP_PASSWORD_RESET_LIMIT = 20;
+    private static final Duration IP_PASSWORD_RESET_WINDOW = Duration.ofMinutes(30);
     private static final DefaultRedisScript<Long> INCREMENT_WITH_EXPIRY =
             new DefaultRedisScript<>("""
                     local count = redis.call('INCR', KEYS[1])
@@ -51,6 +55,29 @@ public class AuthRateLimiter {
     public boolean allowRegistration(String clientAddress) {
         return consume("auth:register:ip:", clientAddress, IP_REGISTER_LIMIT, IP_REGISTER_WINDOW)
                 <= IP_REGISTER_LIMIT;
+    }
+
+    public boolean allowPasswordResetAttempt(String phone, String clientAddress) {
+        return belowLimit("auth:password-reset:phone:", phone, PASSWORD_RESET_FAILURE_LIMIT)
+                && consume(
+                        "auth:password-reset:ip:",
+                        clientAddress,
+                        IP_PASSWORD_RESET_LIMIT,
+                        IP_PASSWORD_RESET_WINDOW
+                ) <= IP_PASSWORD_RESET_LIMIT;
+    }
+
+    public void recordPasswordResetFailure(String phone) {
+        consume(
+                "auth:password-reset:phone:",
+                phone,
+                PASSWORD_RESET_FAILURE_LIMIT,
+                PASSWORD_RESET_FAILURE_WINDOW
+        );
+    }
+
+    public void recordPasswordResetSuccess(String phone) {
+        redisTemplate.delete(key("auth:password-reset:phone:", phone));
     }
 
     private boolean belowLimit(String prefix, String identifier, int limit) {

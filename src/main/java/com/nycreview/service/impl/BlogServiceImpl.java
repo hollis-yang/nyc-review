@@ -248,7 +248,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         List<Long> matched = likerIds.stream()
                 .map(Long::valueOf)
                 .filter(followeeIds::contains)
-                .limit(3)
+                .limit(5)
                 .toList();
         if (matched.isEmpty()) {
             return Result.ok(Collections.emptyList());

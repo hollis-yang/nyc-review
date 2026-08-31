@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Input, Toast } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
@@ -40,6 +40,14 @@ export default function Login() {
 
   const redirect = searchParams.get('redirect') || '/';
   const registerUrl = `/register?redirect=${encodeURIComponent(redirect)}`;
+
+  useEffect(() => {
+    if (searchParams.get('passwordChanged') === '1') {
+      Toast.show({ icon: 'success', content: t('login.passwordChanged') });
+    } else if (searchParams.get('passwordReset') === '1') {
+      Toast.show({ icon: 'success', content: t('login.passwordReset') });
+    }
+  }, [searchParams, t]);
 
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);
@@ -110,6 +118,9 @@ export default function Login() {
             </button>
           </div>
           <div className={styles.fieldDivider} />
+          <div className={styles.forgotLink}>
+            <Link to="/forgot-password">{t('login.forgotPassword')}</Link>
+          </div>
           <button className={styles.loginBtn} onClick={handleLogin} disabled={submitting}>
             {submitting ? t('auth.submitting') : t('login.loginBtn')}
           </button>

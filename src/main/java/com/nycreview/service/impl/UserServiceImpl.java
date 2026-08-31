@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.nycreview.dto.LoginFormDTO;
 import com.nycreview.dto.RegisterFormDTO;
 import com.nycreview.dto.Result;
+import com.nycreview.dto.SignCalendarDTO;
 import com.nycreview.dto.UserDTO;
 import com.nycreview.entity.User;
 import com.nycreview.mapper.UserMapper;
@@ -21,14 +22,16 @@ import com.nycreview.utils.PhoneNumberNormalizer;
 import com.nycreview.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +44,9 @@ import static com.nycreview.utils.SystemConstants.USER_NICK_NAME_PREFIX;
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
     private static final int DEFAULT_AVATAR_COUNT = 12;
+    private static final ZoneId NYC_ZONE = ZoneId.of("America/New_York");
+    private static final DateTimeFormatter SIGN_KEY_MONTH = DateTimeFormatter.ofPattern("yyyyMM");
+    private static final int MAX_STREAK_LOOKBACK_DAYS = 3660;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -59,18 +65,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result sign() {
-        // 1.获取当前登录用户
         Long userId = UserHolder.getUser().getId();
-        // 2.获取日期
-        LocalDateTime now = LocalDateTime.now();
-        // 3.拼接key
-        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
-        String key = USER_SIGN_KEY + userId + keySuffix;
-        // 4.获取今天是本月的第几天
-        int dayOfMonth = now.getDayOfMonth();
-        // 5.写入Redis SETBIT key offset 1，返回旧值判断是否已签到
+        LocalDate today = nycToday();
+        String key = signKey(userId, YearMonth.from(today));
         Boolean alreadySigned = stringRedisTemplate.opsForValue()
-                .setBit(key, dayOfMonth - 1, true);
+                .setBit(key, today.getDayOfMonth() - 1L, true);
         if (Boolean.TRUE.equals(alreadySigned)) {
             return Result.fail("You have already checked in today");
         }
@@ -79,44 +78,72 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result signCount() {
-        // 1.获取当前登录用户
         Long userId = UserHolder.getUser().getId();
-        // 2.获取日期
-        LocalDateTime now = LocalDateTime.now();
-        // 3.拼接key
-        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
-        String key = USER_SIGN_KEY + userId + keySuffix;
-        // 4.获取今天是本月的第几天
-        int dayOfMonth = now.getDayOfMonth();
-        // 5.获取本月截止今天为止的所有的签到记录，返回的是一个十进制的数字 BITFIELD sign:5:202203 GET u14 0
-        List<Long> result = stringRedisTemplate.opsForValue().bitField(
-                key,
-                BitFieldSubCommands.create()
-                        .get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0)
-        );
-        if (result == null || result.isEmpty()) {
-            // 没有任何签到结果
-            return Result.ok(0);
-        }
-        Long num = result.get(0);
-        if (num == null || num == 0) {
-            return Result.ok(0);
-        }
-        // 6.循环遍历
-        int count = 0;
-        while (true) {
-            // 6.1.让这个数字与1做与运算，得到数字的最后一个bit位  // 判断这个bit位是否为0
-            if ((num & 1) == 0) {
-                // 如果为0，说明未签到，结束
-                break;
-            } else {
-                // 如果不为0，说明已签到，计数器+1
-                count++;
+        return Result.ok(currentStreak(userId, nycToday()));
+    }
+
+    @Override
+    public Result signCalendar(Integer year, Integer month) {
+        Long userId = UserHolder.getUser().getId();
+        LocalDate today = nycToday();
+        YearMonth requestedMonth;
+        if (year == null && month == null) {
+            requestedMonth = YearMonth.from(today);
+        } else if (year == null || month == null) {
+            throw new IllegalArgumentException("Year and month must be provided together");
+        } else {
+            try {
+                requestedMonth = YearMonth.of(year, month);
+            } catch (RuntimeException exception) {
+                throw new IllegalArgumentException("Invalid calendar month");
             }
-            // 把数字右移一位，抛弃最后一个bit位，继续下一个bit位
-            num >>>= 1;
         }
-        return Result.ok(count);
+        if (requestedMonth.isBefore(YearMonth.of(2000, 1))
+                || requestedMonth.isAfter(YearMonth.from(today).plusMonths(12))) {
+            throw new IllegalArgumentException("Calendar month is outside the supported range");
+        }
+        return Result.ok(signCalendarFor(userId, requestedMonth, today));
+    }
+
+    SignCalendarDTO signCalendarFor(Long userId, YearMonth requestedMonth, LocalDate today) {
+        List<Integer> checkedDays = new ArrayList<>();
+        String key = signKey(userId, requestedMonth);
+        for (int day = 1; day <= requestedMonth.lengthOfMonth(); day++) {
+            if (Boolean.TRUE.equals(stringRedisTemplate.opsForValue().getBit(key, day - 1L))) {
+                checkedDays.add(day);
+            }
+        }
+        return new SignCalendarDTO(
+                requestedMonth.getYear(),
+                requestedMonth.getMonthValue(),
+                List.copyOf(checkedDays),
+                currentStreak(userId, today),
+                hasSigned(userId, today),
+                today.toString()
+        );
+    }
+
+    private int currentStreak(Long userId, LocalDate today) {
+        int streak = 0;
+        LocalDate cursor = today;
+        while (streak < MAX_STREAK_LOOKBACK_DAYS && hasSigned(userId, cursor)) {
+            streak++;
+            cursor = cursor.minusDays(1);
+        }
+        return streak;
+    }
+
+    private boolean hasSigned(Long userId, LocalDate date) {
+        String key = signKey(userId, YearMonth.from(date));
+        return Boolean.TRUE.equals(stringRedisTemplate.opsForValue().getBit(key, date.getDayOfMonth() - 1L));
+    }
+
+    static String signKey(Long userId, YearMonth month) {
+        return USER_SIGN_KEY + userId + ":" + SIGN_KEY_MONTH.format(month);
+    }
+
+    static LocalDate nycToday() {
+        return LocalDate.now(NYC_ZONE);
     }
 
     @Override

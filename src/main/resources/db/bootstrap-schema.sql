@@ -532,6 +532,7 @@ CREATE TABLE `tb_user` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
   `phone` varchar(20) COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Canonical E.164 phone number',
   `password` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'BCrypt or transitional legacy password hash',
+  `recovery_key_hash` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'BCrypt recovery-key hash',
   `nick_name` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '昵称',
   `icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT '' COMMENT '人物头像',
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

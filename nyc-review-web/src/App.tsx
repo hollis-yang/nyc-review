@@ -8,6 +8,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
 import ShopList from './pages/ShopList';
 import ShopDetail from './pages/ShopDetail';
 import ShopReviews from './pages/ShopReviews';
@@ -15,6 +16,7 @@ import BlogDetail from './pages/BlogDetail';
 import BlogEdit from './pages/BlogEdit';
 import MyProfile from './pages/MyProfile';
 import ProfileEdit from './pages/ProfileEdit';
+import AccountSecurity from './pages/AccountSecurity';
 import OtherProfile from './pages/OtherProfile';
 import MapPage from './pages/Map';
 import AiWorkspace from './pages/AiWorkspace';
@@ -33,6 +35,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/login2" element={<Navigate to="/login" replace />} />
           <Route path="/shop-list" element={<ShopList />} />
           <Route path="/shop-detail/:id" element={<ShopDetail />} />
@@ -46,6 +49,9 @@ export default function App() {
           } />
           <Route path="/profile-edit" element={
             <ProtectedRoute><ProfileEdit /></ProtectedRoute>
+          } />
+          <Route path="/account-security" element={
+            <ProtectedRoute><AccountSecurity /></ProtectedRoute>
           } />
           <Route path="/user/:id" element={<OtherProfile />} />
           <Route path="/map" element={<MapPage />} />

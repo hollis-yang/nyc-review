@@ -301,6 +301,156 @@ button.statItem {
   color: #39845e;
 }
 
+.checkInPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
+}
+
+.streakSummary {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #ffe0d5;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #fff8f5, #fff1eb);
+  padding: 11px 13px;
+}
+
+.streakNumber {
+  display: flex;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-primary-gradient);
+  color: #fff;
+  font-size: 21px;
+  font-weight: 750;
+  box-shadow: 0 5px 12px rgba(255, 93, 50, 0.18);
+}
+
+.streakSummary > span:last-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.streakSummary strong {
+  color: var(--color-text-dark);
+  font-size: 14px;
+}
+
+.streakSummary small {
+  color: var(--color-text-hint);
+  font-size: 12px;
+}
+
+.calendarToolbar {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendarToolbar strong {
+  overflow: hidden;
+  color: var(--color-text-dark);
+  font-size: 14px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendarToolbar button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #f0e4df;
+  border-radius: 50%;
+  background: #fffaf8;
+  color: #ff5d32;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.weekday {
+  padding: 3px 0 5px;
+  color: var(--color-text-hint);
+  font-size: 10px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.calendarSpacer {
+  aspect-ratio: 1;
+}
+
+.calendarDay {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #fafafa;
+  color: var(--color-text-dark);
+  font-size: 12px;
+}
+
+.calendarDayToday {
+  border-color: #ff9c80;
+}
+
+.calendarDayChecked {
+  background: #fff0ea;
+  color: #e95028;
+  font-weight: 700;
+}
+
+.calendarDayChecked b {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  color: #ff6b42;
+  font-size: 8px;
+}
+
+.checkInTodayButton {
+  min-height: 42px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--color-primary-gradient);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 5px 13px rgba(255, 93, 50, 0.18);
+}
+
+.checkInTodayButton:disabled {
+  background: #e3f2e8;
+  color: #328357;
+  box-shadow: none;
+}
+
+.nycDateNote {
+  margin: -5px 0 0;
+  color: var(--color-text-hint);
+  font-size: 10px;
+  text-align: center;
+}
+
 /* ===== 内容区域 ===== */
 .content {
   flex: 1;

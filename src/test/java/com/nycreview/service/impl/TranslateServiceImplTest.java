@@ -85,6 +85,17 @@ class TranslateServiceImplTest {
         assertEquals(0, restTemplate.calls);
     }
 
+    @Test
+    void exposesProviderNeutralErrorWhenTextTranslationIsUnavailable() {
+        restTemplate.unavailable = true;
+
+        Result result = translateService.translateText("A quiet table", "zh-CN");
+
+        assertFalse(result.getSuccess());
+        assertEquals("AI translation is temporarily unavailable", result.getErrorMsg());
+        assertEquals(1, restTemplate.calls);
+    }
+
     private static final class StubShopReviewService extends ShopReviewServiceImpl {
         private ShopReview review;
         private int reads;
@@ -133,6 +144,7 @@ class TranslateServiceImplTest {
     private static final class StubRestTemplate extends RestTemplate {
         private int calls;
         private String lastUserText;
+        private boolean unavailable;
 
         @Override
         @SuppressWarnings("unchecked")
@@ -146,6 +158,9 @@ class TranslateServiceImplTest {
             Map<String, Object> requestBody = (Map<String, Object>) ((HttpEntity<?>) request).getBody();
             List<Map<String, Object>> messages = (List<Map<String, Object>>) requestBody.get("messages");
             lastUserText = (String) messages.get(1).get("content");
+            if (unavailable) {
+                return (ResponseEntity<T>) ResponseEntity.ok(Map.of("choices", List.of()));
+            }
             Map<String, Object> responseBody = Map.of(
                     "choices", List.of(Map.of("message", Map.of("content", "房间很安静。")))
             );

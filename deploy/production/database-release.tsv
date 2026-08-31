@@ -13,3 +13,6 @@
 019_voucher_validity	schema	src/main/resources/db/migrations/019_voucher_validity.sql	-
 20260831_demo_assets_v2	overlay	data/generated/nyc-real-p13-full/demo_assets_v2_overlay.sql	data/generated/nyc-real-p13-full/demo_assets_v2_overlay.resp
 020_clean_note_comment_visit_prefix	schema	src/main/resources/db/migrations/020_clean_note_comment_visit_prefix.sql	-
+021_account_recovery	schema	src/main/resources/db/migrations/021_account_recovery.sql	-
+022_demo_checkin_history	overlay	src/main/resources/db/migrations/022_demo_checkin_history.sql	src/main/resources/db/migrations/022_demo_checkin_history.resp
+20260831_demo_likes_v3	overlay	data/generated/nyc-real-p13-full/demo_likes_v3_overlay.sql	data/generated/nyc-real-p13-full/demo_likes_v3_overlay.resp

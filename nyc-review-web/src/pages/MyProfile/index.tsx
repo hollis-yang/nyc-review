@@ -13,7 +13,13 @@ import {
 import { Toast } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../hooks/useAuth';
-import { getMe, getUserInfo, sign, signCount } from '../../api/user';
+import {
+  getMe,
+  getSignCalendar,
+  getUserInfo,
+  sign,
+  type SignCalendarData,
+} from '../../api/user';
 import { getBlogsOfMe } from '../../api/blog';
 import { getFollowers, getFollowing } from '../../api/follow';
 import {
@@ -35,7 +41,8 @@ type ProfileSection =
   | 'reminders'
   | 'memory'
   | 'followers'
-  | 'following';
+  | 'following'
+  | 'checkin';
 
 interface ProfileUserSummary {
   id: number;
@@ -59,6 +66,8 @@ export default function MyProfile() {
   const [activeSection, setActiveSection] = useState<ProfileSection>('notes');
   const [signDays, setSignDays] = useState(0);
   const [signedToday, setSignedToday] = useState(false);
+  const [signCalendar, setSignCalendar] = useState<SignCalendarData | null>(null);
+  const [signCalendarLoading, setSignCalendarLoading] = useState(false);
   const [assets, setAssets] = useState<ProfileAssets | null>(null);
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [memoryItemDrafts, setMemoryItemDrafts] = useState<Record<number, string[]>>({});
@@ -77,6 +86,19 @@ export default function MyProfile() {
     const response = await getProfileAssets();
     applyAssets((response.data ?? response) as ProfileAssets);
   };
+
+  const loadSignCalendar = useCallback(async (year?: number, month?: number) => {
+    setSignCalendarLoading(true);
+    try {
+      const response = await getSignCalendar(year, month);
+      const calendar = (response.data ?? response) as unknown as SignCalendarData;
+      setSignCalendar(calendar);
+      setSignDays(calendar.currentStreak);
+      setSignedToday(calendar.signedToday);
+    } finally {
+      setSignCalendarLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     getMe()
@@ -105,24 +127,14 @@ export default function MyProfile() {
 
   useEffect(() => {
     const checkSign = () => {
-      signCount()
-        .then((res) => {
-          const count = res.data ?? res;
-          if (typeof count === 'number' && count > 0) {
-            setSignDays(count);
-            setSignedToday(true);
-          } else {
-            setSignDays(0);
-            setSignedToday(false);
-          }
-        })
+      loadSignCalendar()
         .catch(() => {});
     };
     checkSign();
     const onVisible = () => { if (document.visibilityState === 'visible') checkSign(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+  }, [loadSignCalendar]);
 
   const loadFollowers = useCallback(async () => {
     if (followersLoading || followersLoaded) return;
@@ -152,6 +164,7 @@ export default function MyProfile() {
     setActiveSection(key);
     if (key === 'following') loadFollowing();
     if (key === 'followers') loadFollowers();
+    if (key === 'checkin' && !signCalendar) loadSignCalendar().catch(() => {});
   };
 
   const handleLogout = async () => {
@@ -167,10 +180,7 @@ export default function MyProfile() {
   const handleSign = async () => {
     try {
       await sign();
-      const response = await signCount();
-      const count = response.data ?? response;
-      setSignDays(typeof count === 'number' ? count : 0);
-      setSignedToday(true);
+      await loadSignCalendar(signCalendar?.year, signCalendar?.month);
       Toast.show({ icon: 'success', content: t('sign.success') });
     } catch (error) {
       Toast.show({ icon: 'fail', content: String(error) });
@@ -231,6 +241,29 @@ export default function MyProfile() {
     }).format(new Date(value))
     : '';
 
+  const changeSignCalendarMonth = (amount: number) => {
+    if (!signCalendar) return;
+    const monthIndex = signCalendar.year * 12 + signCalendar.month - 1 + amount;
+    const year = Math.floor(monthIndex / 12);
+    const month = monthIndex - year * 12 + 1;
+    loadSignCalendar(year, month).catch(() => {});
+  };
+
+  const signCalendarTitle = signCalendar
+    ? new Intl.DateTimeFormat(i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en-US', {
+      year: 'numeric',
+      month: 'long',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(signCalendar.year, signCalendar.month - 1, 1)))
+    : '';
+
+  const weekdayLabels = Array.from({ length: 7 }, (_, index) => (
+    new Intl.DateTimeFormat(i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en-US', {
+      weekday: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(2026, 7, 30 + index)))
+  ));
+
   const empty = (label: string) => (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}>◇</div>
@@ -239,7 +272,7 @@ export default function MyProfile() {
   );
 
   const activityItems: Array<{
-    key: Exclude<ProfileSection, 'notes' | 'following'>;
+    key: Exclude<ProfileSection, 'notes' | 'followers' | 'following' | 'checkin'>;
     count: number;
     label: string;
     icon: ReactNode;
@@ -257,9 +290,83 @@ export default function MyProfile() {
       ? { label: t('profile.fans'), count: info.fans || 0, icon: <HeartOutline /> }
     : activeSection === 'following'
       ? { label: t('profile.following'), count: info.followee || 0, icon: <HeartOutline /> }
+      : activeSection === 'checkin'
+        ? { label: t('profile.checkInCalendar'), count: signDays, icon: <CheckCircleOutline /> }
       : activityItems.find((item) => item.key === activeSection)!;
 
   const renderSelectedContent = () => {
+    if (activeSection === 'checkin') {
+      if (signCalendarLoading && !signCalendar) {
+        return <div className={styles.loadingMore}>{t('home.loading')}</div>;
+      }
+      if (!signCalendar) return empty(t('profile.checkInUnavailable'));
+
+      const firstWeekday = new Date(Date.UTC(signCalendar.year, signCalendar.month - 1, 1)).getUTCDay();
+      const daysInMonth = new Date(Date.UTC(signCalendar.year, signCalendar.month, 0)).getUTCDate();
+      const checkedDays = new Set(signCalendar.checkedDays);
+      const todayPrefix = `${signCalendar.year}-${String(signCalendar.month).padStart(2, '0')}-`;
+      const todayInMonth = signCalendar.today.startsWith(todayPrefix)
+        ? Number(signCalendar.today.slice(-2))
+        : null;
+
+      return (
+        <div className={styles.checkInPanel}>
+          <div className={styles.streakSummary}>
+            <span className={styles.streakNumber}>{signCalendar.currentStreak}</span>
+            <span>
+              <strong>{t('profile.currentStreak')}</strong>
+              <small>{t('profile.streakDays', { n: signCalendar.currentStreak })}</small>
+            </span>
+          </div>
+          <div className={styles.calendarToolbar}>
+            <button
+              type="button"
+              onClick={() => changeSignCalendarMonth(-1)}
+              aria-label={t('profile.previousMonth')}
+            >‹</button>
+            <strong>{signCalendarTitle}</strong>
+            <button
+              type="button"
+              onClick={() => changeSignCalendarMonth(1)}
+              aria-label={t('profile.nextMonth')}
+            >›</button>
+          </div>
+          <div className={styles.calendarGrid} aria-label={signCalendarTitle}>
+            {weekdayLabels.map((label) => (
+              <span className={styles.weekday} key={label}>{label}</span>
+            ))}
+            {Array.from({ length: firstWeekday }, (_, index) => (
+              <span className={styles.calendarSpacer} key={`spacer-${index}`} />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, index) => index + 1).map((day) => {
+              const checked = checkedDays.has(day);
+              return (
+                <span
+                  key={day}
+                  className={`${styles.calendarDay} ${checked ? styles.calendarDayChecked : ''} ${todayInMonth === day ? styles.calendarDayToday : ''}`}
+                  aria-label={checked
+                    ? t('profile.checkedInDay', { day })
+                    : t('profile.notCheckedInDay', { day })}
+                >
+                  <span>{day}</span>
+                  {checked && <b>✓</b>}
+                </span>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className={styles.checkInTodayButton}
+            onClick={handleSign}
+            disabled={signedToday || signCalendarLoading}
+          >
+            {signedToday ? t('profile.checkedInToday') : t('profile.checkInToday')}
+          </button>
+          <p className={styles.nycDateNote}>{t('profile.nycDateNote')}</p>
+        </div>
+      );
+    }
+
     if (activeSection === 'notes') {
       return blogs.length ? blogs.map((blog) => (
         <button key={blog.id} className={styles.blogItem}
@@ -522,9 +629,8 @@ export default function MyProfile() {
           ))}
           <button
             type="button"
-            className={`${styles.activityItem} ${styles.checkInItem} ${signedToday ? styles.checkInItemComplete : ''}`}
-            onClick={handleSign}
-            disabled={signedToday}
+            className={`${styles.activityItem} ${styles.checkInItem} ${activeSection === 'checkin' ? styles.activityItemActive : ''} ${signedToday ? styles.checkInItemComplete : ''}`}
+            onClick={() => handleSectionChange('checkin')}
             aria-label={signedToday
               ? t('profile.signedIn', { n: signDays })
               : t('profile.signIn')}
@@ -536,7 +642,7 @@ export default function MyProfile() {
                 ? t('profile.signedIn', { n: signDays })
                 : t('profile.checkInReady')}</small>
             </span>
-            {!signedToday && <span className={styles.activityArrow}>›</span>}
+            <span className={styles.activityArrow}>›</span>
           </button>
         </div>
       </section>

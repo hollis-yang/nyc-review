@@ -138,10 +138,10 @@ export default function ReviewThread({ review, compact = false, shopId, onReplyC
               onClick={toggleTranslation}
             >
               {translating
-                ? t('shopDetail.translatingDeepSeek')
+                ? t('shopDetail.translatingAI')
                 : translation
                   ? t('shopDetail.hideTranslation')
-                  : `✦ ${t('shopDetail.deepSeekTranslate')}`}
+                  : `✦ ${t('shopDetail.aiTranslate')}`}
             </button>
           )}
           {reviewImages.length > 0 && (

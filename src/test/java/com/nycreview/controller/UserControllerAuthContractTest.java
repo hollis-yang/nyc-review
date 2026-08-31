@@ -1,6 +1,7 @@
 package com.nycreview.controller;
 
 import com.nycreview.dto.Result;
+import com.nycreview.service.AccountSecurityService;
 import com.nycreview.service.IUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,19 +15,23 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class UserControllerAuthContractTest {
 
     private IUserService userService;
+    private AccountSecurityService accountSecurityService;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         userService = mock(IUserService.class);
+        accountSecurityService = mock(AccountSecurityService.class);
         UserController controller = new UserController();
         ReflectionTestUtils.setField(controller, "userService", userService);
+        ReflectionTestUtils.setField(controller, "accountSecurityService", accountSecurityService);
         mvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -71,5 +76,35 @@ class UserControllerAuthContractTest {
                 .andExpect(jsonPath("$.data").value("register-token"));
 
         verify(userService).register(any(), eq("203.0.113.8"));
+    }
+
+    @Test
+    void passwordResetUsesPhoneRecoveryKeyAndNewPassword() throws Exception {
+        mvc.perform(post("/user/password/reset")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "regionCode":"US",
+                                  "phoneNumber":"2125550123",
+                                  "recoveryKey":"Recovery-Key-123!",
+                                  "newPassword":"New-password-2!"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(accountSecurityService).resetPassword(any(), eq("127.0.0.1"));
+    }
+
+    @Test
+    void checkInCalendarAcceptsAnExplicitMonth() throws Exception {
+        when(userService.signCalendar(2026, 8)).thenReturn(Result.ok());
+
+        mvc.perform(get("/user/sign/calendar")
+                        .param("year", "2026")
+                        .param("month", "8"))
+                .andExpect(status().isOk());
+
+        verify(userService).signCalendar(2026, 8);
     }
 }

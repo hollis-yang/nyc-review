@@ -12,3 +12,14 @@ export function isStrongRegistrationPassword(password: string): boolean {
     && /\p{N}/u.test(password)
     && /[^\p{L}\p{N}\s]/u.test(password);
 }
+
+export function isStrongRecoveryKey(recoveryKey: string): boolean {
+  const characters = Array.from(recoveryKey).length;
+  const bytes = new TextEncoder().encode(recoveryKey).length;
+  return characters >= 12
+    && characters <= 64
+    && bytes <= 72
+    && /\p{L}/u.test(recoveryKey)
+    && /\p{N}/u.test(recoveryKey)
+    && /[^\p{L}\p{N}\s]/u.test(recoveryKey);
+}

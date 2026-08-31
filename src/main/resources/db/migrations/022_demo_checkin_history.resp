@@ -1,0 +1,11 @@
+*5
+$4
+EVAL
+$100
+for _,key in ipairs(KEYS) do for offset=24,30 do redis.call('setbit',key,offset,1) end end return 14
+$1
+2
+$16
+sign:1001:202608
+$16
+sign:1002:202608

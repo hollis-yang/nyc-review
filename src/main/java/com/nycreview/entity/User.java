@@ -34,6 +34,9 @@ public class User implements Serializable {
      */
     private String password;
 
+    /** BCrypt hash of the user-managed recovery key; never exposed via API DTOs. */
+    private String recoveryKeyHash;
+
     /**
      * 昵称，默认是随机字符
      */

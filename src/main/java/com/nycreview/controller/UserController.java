@@ -3,13 +3,17 @@ package com.nycreview.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.nycreview.dto.LoginFormDTO;
+import com.nycreview.dto.ChangePasswordDTO;
+import com.nycreview.dto.RecoveryKeyDTO;
 import com.nycreview.dto.RegisterFormDTO;
+import com.nycreview.dto.ResetPasswordDTO;
 import com.nycreview.dto.Result;
 import com.nycreview.dto.UserDTO;
 import com.nycreview.entity.User;
 import com.nycreview.entity.UserInfo;
 import com.nycreview.service.IUserInfoService;
 import com.nycreview.service.IUserService;
+import com.nycreview.service.AccountSecurityService;
 import com.nycreview.utils.RedisConstants;
 import com.nycreview.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +36,9 @@ public class UserController {
     private IUserInfoService userInfoService;
 
     @Resource
+    private AccountSecurityService accountSecurityService;
+
+    @Resource
     private StringRedisTemplate stringRedisTemplate;
 
     @PostMapping("code")
@@ -48,6 +55,39 @@ public class UserController {
     @PostMapping("/register")
     public Result register(@RequestBody RegisterFormDTO registerForm, HttpServletRequest request) {
         return userService.register(registerForm, clientAddress(request));
+    }
+
+    @PostMapping("/password/reset")
+    public Result resetPassword(@RequestBody ResetPasswordDTO resetForm, HttpServletRequest request) {
+        accountSecurityService.resetPassword(resetForm, clientAddress(request));
+        return Result.ok();
+    }
+
+    @GetMapping("/security/status")
+    public Result securityStatus() {
+        return Result.ok(accountSecurityService.status(UserHolder.getUser().getId()));
+    }
+
+    @PutMapping("/security/recovery-key")
+    public Result setRecoveryKey(@RequestBody RecoveryKeyDTO recoveryKey, HttpServletRequest request) {
+        accountSecurityService.setRecoveryKey(
+                UserHolder.getUser().getId(),
+                recoveryKey,
+                clientAddress(request)
+        );
+        return Result.ok();
+    }
+
+    @PutMapping("/security/password")
+    public Result changePassword(@RequestBody ChangePasswordDTO password, HttpServletRequest request) {
+        accountSecurityService.changePassword(
+                UserHolder.getUser().getId(),
+                password,
+                request.getHeader("authorization"),
+                clientAddress(request)
+        );
+        UserHolder.removeUser();
+        return Result.ok();
     }
 
     /**
@@ -110,6 +150,14 @@ public class UserController {
         return userService.signCount();
     }
 
+    @GetMapping("/sign/calendar")
+    public Result signCalendar(
+            @RequestParam(value = "year", required = false) Integer year,
+            @RequestParam(value = "month", required = false) Integer month
+    ) {
+        return userService.signCalendar(year, month);
+    }
+
     /**
      * 更新用户基本信息（昵称、头像）
      */
@@ -123,6 +171,7 @@ public class UserController {
         user.setId(userDTO.getId());
         user.setPhone(null);
         user.setPassword(null);
+        user.setRecoveryKeyHash(null);
         userService.updateById(user);
         // 更新Redis中的用户缓存
         String token = request.getHeader("authorization");

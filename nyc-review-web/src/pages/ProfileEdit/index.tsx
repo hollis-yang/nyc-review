@@ -212,6 +212,16 @@ export default function ProfileEdit() {
           </div>
         </div>
 
+        <div className={styles.infoBox}>
+          <div className={styles.infoItem} onClick={() => navigate('/account-security')}>
+            <div className={styles.infoLabel}>{t('profileEdit.accountSecurity')}</div>
+            <div className={styles.infoBtn}>
+              <div className={styles.infoValue}>{t('profileEdit.passwordAndRecovery')}</div>
+              <RightOutline fontSize={14} color="#ccc" />
+            </div>
+          </div>
+        </div>
+
         {/* 详细信息 */}
         <div className={styles.infoBox}>
           <div className={styles.infoItem} onClick={() => setGenderVisible(true)}>

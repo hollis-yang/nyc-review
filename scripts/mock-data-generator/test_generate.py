@@ -67,6 +67,14 @@ DEMO_ASSETS_V2 = importlib.util.module_from_spec(DEMO_ASSETS_V2_SPEC)
 assert DEMO_ASSETS_V2_SPEC and DEMO_ASSETS_V2_SPEC.loader
 sys.modules[DEMO_ASSETS_V2_SPEC.name] = DEMO_ASSETS_V2
 DEMO_ASSETS_V2_SPEC.loader.exec_module(DEMO_ASSETS_V2)
+DEMO_LIKES_V3_PATH = MODULE_PATH.with_name("build_demo_likes_v3_overlay.py")
+DEMO_LIKES_V3_SPEC = importlib.util.spec_from_file_location(
+    "build_demo_likes_v3_overlay_test", DEMO_LIKES_V3_PATH
+)
+DEMO_LIKES_V3 = importlib.util.module_from_spec(DEMO_LIKES_V3_SPEC)
+assert DEMO_LIKES_V3_SPEC and DEMO_LIKES_V3_SPEC.loader
+sys.modules[DEMO_LIKES_V3_SPEC.name] = DEMO_LIKES_V3
+DEMO_LIKES_V3_SPEC.loader.exec_module(DEMO_LIKES_V3)
 USER_SOCIAL_OVERLAY_PATH = MODULE_PATH.with_name("build_user_social_overlay.py")
 USER_SOCIAL_OVERLAY_SPEC = importlib.util.spec_from_file_location(
     "build_user_social_overlay_test", USER_SOCIAL_OVERLAY_PATH
@@ -403,6 +411,25 @@ class GenerateDatasetTest(unittest.TestCase):
         self.assertEqual(b"ZADD", commands[0][0])
         self.assertEqual(b"blog:liked:3078", commands[0][1])
         self.assertEqual(8, len(commands[0]))
+
+    def test_demo_likes_v3_varies_followed_liker_identity_and_count(self):
+        blogs = [
+            {"id": blog_id, "userId": 851}
+            for blog_id in range(3078, 3108)
+        ]
+        commands = parse_resp_commands(DEMO_LIKES_V3.build_resp(blogs))
+        selections = [
+            tuple(int(value) for value in command[3::2])
+            for command in commands
+            if command[0] == b"ZADD"
+        ]
+
+        self.assertIn("INSERT IGNORE INTO `tb_follow`", DEMO_LIKES_V3.build_sql("fixture-v1", 30))
+        self.assertEqual(30, sum(command[0] == b"ZREM" for command in commands))
+        self.assertEqual(30, len(selections))
+        self.assertGreater(len({len(selection) for selection in selections}), 3)
+        self.assertGreater(len(set(selections)), 20)
+        self.assertTrue(all(1 <= len(selection) <= 5 for selection in selections))
 
     def test_real_data_version_is_scoped_by_profile_snapshot_and_seed(self):
         snapshot_sha = "a" * 64

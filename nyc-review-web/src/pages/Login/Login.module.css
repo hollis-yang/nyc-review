@@ -125,6 +125,17 @@
   font-size: 12px;
 }
 
+.forgotLink {
+  margin-top: 10px;
+  text-align: right;
+}
+
+.forgotLink a {
+  color: var(--color-primary-short);
+  font-size: 12px;
+  text-decoration: none;
+}
+
 .loginBtn {
   width: 100%;
   margin-top: 16px;

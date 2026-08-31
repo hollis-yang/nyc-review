@@ -317,7 +317,7 @@ export default function BlogDetail() {
 
   const renderComment = (c: CommentInfo, depth: number): JSX.Element => (
     <div key={c.id}>
-      <div className={`${styles.commentItem} ${depth > 0 ? styles.commentNested : ''}`}>
+      <div className={`${styles.commentItem} ${depth === 1 ? styles.commentNested : ''} ${depth > 1 ? styles.commentNestedDeep : ''}`}>
         <div className={styles.commentIcon}>
           <img src={c.icon || '/imgs/icons/default-icon.png'} alt="" />
         </div>
@@ -334,16 +334,15 @@ export default function BlogDetail() {
               {commentTL[c.id]}
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className={styles.commentActions}>
+            <div className={styles.commentActionGroup}>
               <div className={styles.commentTime}>{formatDateTime(c.createTime)}</div>
               {currentUser && (
                 <span className={styles.replyBtn} onClick={() => { setReplyTo(c); setReplyText(''); }}>
                   {t('blogDetail.reply')}
                 </span>
               )}
-                {isChinese && <span className={styles.replyBtn}
-                  style={{ marginLeft: 4, display: 'inline' }}
+                {isChinese && <span className={`${styles.replyBtn} ${styles.translationAction}`}
                   onClick={async () => {
                     if (commentTL[c.id]) {
                       const next = { ...commentTL };
@@ -356,12 +355,12 @@ export default function BlogDetail() {
                       setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
                     } catch {}
                   }}>
-                  ✦ {t('blogDetail.deepSeekTranslate')}
+                  ✦ {t('blogDetail.aiTranslate')}
                 </span>}
             </div>
             {currentUser && currentUser.id === c.userId && (
               <div
-                style={{ fontSize: 18, color: '#ccc', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+                className={styles.deleteCommentButton}
                 onClick={() => {
                   Dialog.confirm({
                     content: t('blogDetail.deleteCommentConfirm'),
@@ -474,7 +473,7 @@ export default function BlogDetail() {
           {isChinese && <div style={{ padding: '4px 0 8px', textAlign: 'right' }}>
             <span style={{ fontSize: 12, color: '#999', cursor: 'pointer' }}
               onClick={handleTranslateBlog}>
-              {blogTLLoading ? t('blogDetail.translatingDeepSeek') : blogTL ? t('blogDetail.original') : `✦ ${t('blogDetail.deepSeekTranslate')}`}
+              {blogTLLoading ? t('blogDetail.translatingAI') : blogTL ? t('blogDetail.original') : `✦ ${t('blogDetail.aiTranslate')}`}
             </span>
           </div>}
           {blogTL && (

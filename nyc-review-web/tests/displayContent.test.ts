@@ -25,3 +25,24 @@ test('blog detail displays followed likers without requesting generic liker avat
   assert.match(source, /\bgetFollowingBlogLikes\b/);
   assert.match(source, /followingLikes\.map/);
 });
+
+test('translation controls use provider-neutral copy throughout the frontend', () => {
+  const en = JSON.parse(readFileSync(new URL('../src/i18n/locales/en.json', import.meta.url), 'utf8'));
+  const zh = JSON.parse(readFileSync(new URL('../src/i18n/locales/zh-CN.json', import.meta.url), 'utf8'));
+
+  assert.equal(en.blogDetail.aiTranslate, 'Translate with AI');
+  assert.equal(zh.blogDetail.aiTranslate, '使用 AI 翻译');
+  assert.equal(en.shopDetail.translationLoginRequired, 'Please sign in again to use AI translation.');
+  assert.equal(zh.aiGuide.translationSuccess, '已使用 AI 翻译为英文');
+});
+
+test('nested blog replies use wrapping action rows and capped mobile indentation', () => {
+  const source = readFileSync(new URL('../src/pages/BlogDetail/index.tsx', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../src/pages/BlogDetail/BlogDetail.module.css', import.meta.url), 'utf8');
+
+  assert.match(source, /styles\.commentActionGroup/);
+  assert.match(source, /styles\.translationAction/);
+  assert.match(styles, /\.commentActionGroup\s*\{[^}]*flex-wrap:\s*wrap;/s);
+  assert.match(styles, /\.replyToTag\s*\{[^}]*text-overflow:\s*ellipsis;/s);
+  assert.match(styles, /@media \(max-width: 480px\)/);
+});
