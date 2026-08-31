@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LeftOutline, EnvironmentOutline } from 'antd-mobile-icons';
+import { LeftOutline, EnvironmentOutline, HeartFill, HeartOutline } from 'antd-mobile-icons';
 import { Rate, Toast } from 'antd-mobile';
 import { getShopById, getShopReviews, createShopReview } from '../../api/shop';
 import { getVoucherList, seckillVoucher } from '../../api/voucher';
+import { favoriteShop, getShopFavoriteStatus, unfavoriteShop } from '../../api/profile';
 import VoucherCard, { type VoucherData } from '../../components/VoucherCard';
 import ReviewThread, { type ReviewData } from '../../components/ReviewThread';
 import MerchantVisual from '../../components/MerchantVisual';
+import { useAuth } from '../../hooks/useAuth';
 import styles from './ShopDetail.module.css';
 
 interface ShopImageAsset {
@@ -105,6 +107,7 @@ export default function ShopDetail() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [shop, setShop] = useState<ShopInfo | null>(null);
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
@@ -112,6 +115,11 @@ export default function ShopDetail() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [favoriteStatus, setFavoriteStatus] = useState<{ shopId: string; value: boolean }>({
+    shopId: '',
+    value: false,
+  });
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,6 +145,21 @@ export default function ShopDetail() {
       setError(msg || t('shopDetail.notFound'));
     });
   }, [id, t]);
+
+  useEffect(() => {
+    let active = true;
+    if (!id || !isAuthenticated) return () => { active = false; };
+
+    getShopFavoriteStatus(id)
+      .then((response) => {
+        if (active) setFavoriteStatus({ shopId: id, value: Boolean(response.data ?? response) });
+      })
+      .catch(() => {
+        if (active) Toast.show({ icon: 'fail', content: t('shopDetail.favoriteLoadFailed') });
+      });
+
+    return () => { active = false; };
+  }, [id, isAuthenticated, t]);
 
   const handleSeckill = async (voucherId: number) => {
     try {
@@ -200,6 +223,36 @@ export default function ShopDetail() {
     }
   };
 
+  const handleFavorite = async () => {
+    if (!id) return;
+    if (!isAuthenticated) {
+      Toast.show({ icon: 'fail', content: t('shopDetail.favoriteLoginRequired') });
+      setTimeout(() => {
+        navigate(`/login?redirect=${encodeURIComponent(`/shop-detail/${id}`)}`);
+      }, 200);
+      return;
+    }
+    if (favoriteLoading) return;
+
+    setFavoriteLoading(true);
+    try {
+      const isFavorite = favoriteStatus.shopId === id && favoriteStatus.value;
+      if (isFavorite) {
+        await unfavoriteShop(id);
+        setFavoriteStatus({ shopId: id, value: false });
+        Toast.show({ icon: 'success', content: t('shopDetail.unfavoriteSuccess') });
+      } else {
+        await favoriteShop(id);
+        setFavoriteStatus({ shopId: id, value: true });
+        Toast.show({ icon: 'success', content: t('shopDetail.favoriteSuccess') });
+      }
+    } catch {
+      Toast.show({ icon: 'fail', content: t('shopDetail.favoriteFailed') });
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
   if (error) {
     return (
       <div className={styles.container}>
@@ -224,6 +277,7 @@ export default function ShopDetail() {
   if (imageAssets.length === 0) imageAssets.push({ displayUrl: '', sortOrder: 0 });
   const displayReviewCount = shop.localReviewCount ?? shop.comments;
   const operational = !shop.businessStatus || shop.businessStatus === 'OPERATIONAL';
+  const favorite = isAuthenticated && favoriteStatus.shopId === id && favoriteStatus.value;
 
   return (
     <div className={styles.container}>
@@ -236,7 +290,19 @@ export default function ShopDetail() {
       </div>
       <div className={styles.scroll}>
         <div className={styles.infoBox}>
-          <div className={styles.shopTitle}>{shop.name}</div>
+          <div className={styles.shopTitleRow}>
+            <div className={styles.shopTitle}>{shop.name}</div>
+            <button
+              type="button"
+              className={`${styles.favoriteButton} ${favorite ? styles.favoriteButtonActive : ''}`}
+              aria-pressed={favorite}
+              disabled={favoriteLoading}
+              onClick={handleFavorite}
+            >
+              {favorite ? <HeartFill fontSize={17} /> : <HeartOutline fontSize={17} />}
+              <span>{favorite ? t('shopDetail.favorited') : t('shopDetail.favorite')}</span>
+            </button>
+          </div>
           <div className={styles.shopRate}>
             {shop.score != null ? (
               <>

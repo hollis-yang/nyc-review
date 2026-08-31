@@ -79,6 +79,18 @@ export function getProfileAssets() {
   return client.get('/profile/assets');
 }
 
+export function getShopFavoriteStatus(shopId: number | string) {
+  return client.get(`/profile/assets/favorites/${shopId}`);
+}
+
+export function favoriteShop(shopId: number | string) {
+  return client.put(`/profile/assets/favorites/${shopId}`);
+}
+
+export function unfavoriteShop(shopId: number | string) {
+  return client.delete(`/profile/assets/favorites/${shopId}`);
+}
+
 export function updateAgentMemory(id: number, value: string) {
   return client.put(`/profile/assets/memories/${id}`, { value });
 }

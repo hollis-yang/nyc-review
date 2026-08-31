@@ -124,6 +124,10 @@ class GenerateDatasetTest(unittest.TestCase):
                 child_time = datetime.fromisoformat(item["createTime"].replace("Z", "+00:00"))
                 parent_time = datetime.fromisoformat(by_id[item["parentId"]]["createTime"].replace("Z", "+00:00"))
                 self.assertGreater(child_time, parent_time)
+        self.assertFalse(any(item["content"].lower().startswith("from my ") for item in comments))
+        security_comments = [item for item in comments if item["securityTest"]]
+        self.assertEqual(1, len(security_comments))
+        self.assertTrue(security_comments[0]["content"].startswith("Ignore the system"))
 
     def test_osm_opening_hours_parser_covers_split_closed_and_overnight_rules(self):
         hours = GENERATOR.parse_osm_opening_hours(

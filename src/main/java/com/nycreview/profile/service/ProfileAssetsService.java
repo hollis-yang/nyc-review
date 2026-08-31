@@ -72,6 +72,56 @@ public class ProfileAssetsService {
         ) == 1;
     }
 
+    @Transactional(readOnly = true)
+    public boolean isFavorite(Long shopId) {
+        validateShopId(shopId);
+        Long userId = UserHolder.getUser().getId();
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM tb_shop_favorite WHERE user_id = ? AND shop_id = ?",
+                Long.class,
+                userId,
+                shopId
+        );
+        return count != null && count > 0;
+    }
+
+    @Transactional
+    public void favoriteShop(Long shopId) {
+        validateShopId(shopId);
+        Long shopCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM tb_shop WHERE id = ?",
+                Long.class,
+                shopId
+        );
+        if (shopCount == null || shopCount == 0) {
+            throw new IllegalArgumentException("Shop not found");
+        }
+        Long userId = UserHolder.getUser().getId();
+        jdbcTemplate.update(
+                "INSERT INTO tb_shop_favorite(user_id, shop_id, create_time) VALUES (?, ?, NOW()) " +
+                        "ON DUPLICATE KEY UPDATE create_time = create_time",
+                userId,
+                shopId
+        );
+    }
+
+    @Transactional
+    public void unfavoriteShop(Long shopId) {
+        validateShopId(shopId);
+        Long userId = UserHolder.getUser().getId();
+        jdbcTemplate.update(
+                "DELETE FROM tb_shop_favorite WHERE user_id = ? AND shop_id = ?",
+                userId,
+                shopId
+        );
+    }
+
+    private static void validateShopId(Long shopId) {
+        if (shopId == null || shopId < 1) {
+            throw new IllegalArgumentException("Shop not found");
+        }
+    }
+
     static String validateMemoryValue(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Memory value is required");

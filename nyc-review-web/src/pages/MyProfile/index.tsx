@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BellOutline,
+  CheckCircleOutline,
   ContentOutline,
   CouponOutline,
   FillinOutline,
@@ -499,13 +500,6 @@ export default function MyProfile() {
               <div className={styles.statLabel}>{t('profile.following')}</div>
             </button>
           </div>
-          <div className={styles.signSection}>
-            {signedToday ? (
-              <div className={styles.signedBadge}>{t('profile.signedIn', { n: signDays })}</div>
-            ) : (
-              <button className={styles.signBtn} onClick={handleSign}>{t('profile.signIn')}</button>
-            )}
-          </div>
         </div>
       )}
 
@@ -526,6 +520,24 @@ export default function MyProfile() {
               <span className={styles.activityArrow}>›</span>
             </button>
           ))}
+          <button
+            type="button"
+            className={`${styles.activityItem} ${styles.checkInItem} ${signedToday ? styles.checkInItemComplete : ''}`}
+            onClick={handleSign}
+            disabled={signedToday}
+            aria-label={signedToday
+              ? t('profile.signedIn', { n: signDays })
+              : t('profile.signIn')}
+          >
+            <span className={styles.activityIcon}><CheckCircleOutline /></span>
+            <span className={styles.activityText}>
+              <strong>{t('profile.signIn')}</strong>
+              <small>{signedToday
+                ? t('profile.signedIn', { n: signDays })
+                : t('profile.checkInReady')}</small>
+            </span>
+            {!signedToday && <span className={styles.activityArrow}>›</span>}
+          </button>
         </div>
       </section>
 

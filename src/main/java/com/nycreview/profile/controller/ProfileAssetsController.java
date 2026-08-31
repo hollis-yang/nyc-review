@@ -25,6 +25,27 @@ public class ProfileAssetsController {
         return Result.ok(profileAssetsService.assets());
     }
 
+    @GetMapping("/favorites/{shopId}")
+    public Result favoriteStatus(@PathVariable("shopId") Long shopId) {
+        return Result.ok(profileAssetsService.isFavorite(shopId));
+    }
+
+    @PutMapping("/favorites/{shopId}")
+    public Result favoriteShop(@PathVariable("shopId") Long shopId) {
+        try {
+            profileAssetsService.favoriteShop(shopId);
+            return Result.ok(true);
+        } catch (IllegalArgumentException exception) {
+            return Result.fail(exception.getMessage());
+        }
+    }
+
+    @DeleteMapping("/favorites/{shopId}")
+    public Result unfavoriteShop(@PathVariable("shopId") Long shopId) {
+        profileAssetsService.unfavoriteShop(shopId);
+        return Result.ok(false);
+    }
+
     @PutMapping("/memories/{id}")
     public Result updateMemory(@PathVariable("id") Long id, @RequestBody MemoryUpdateRequest request) {
         try {

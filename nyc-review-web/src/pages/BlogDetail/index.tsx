@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Toast, Dialog } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
-import { getBlogById, getBlogLikes, getFollowingBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
+import { getBlogById, getFollowingBlogLikes, likeBlog, getBlogComments, createBlogComment, deleteBlog, deleteBlogComment } from '../../api/blog';
 import { translateBlog, translateComment } from '../../api/translate';
 import { getShopById } from '../../api/shop';
 import { getMeOptional } from '../../api/user';
@@ -62,7 +62,6 @@ export default function BlogDetail() {
   const navigate = useNavigate();
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
-  const [likes, setLikes] = useState<{ id: number; icon: string }[]>([]);
   const [followingLikes, setFollowingLikes] = useState<{ id: number; icon: string; nickName: string }[]>([]);
   const [comments, setComments] = useState<CommentInfo[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: number } | null>(null);
@@ -91,7 +90,6 @@ export default function BlogDetail() {
             setShop(s);
           }).catch(() => {});
         }
-        getBlogLikes(id).then((r) => setLikes(r.data ?? r)).catch(() => {});
         getBlogComments(id).then((r) => setComments(r.data ?? r)).catch(() => {});
         getMeOptional()
           .then((r) => {
@@ -122,8 +120,6 @@ export default function BlogDetail() {
       const data = res.data ?? res;
       data.images = data.images ? data.images.split(',') : [];
       setBlog(data);
-      const likesRes = await getBlogLikes(blog.id);
-      setLikes(likesRes.data ?? likesRes);
       if (currentUser) {
         const followedLikesRes = await getFollowingBlogLikes(blog.id);
         setFollowingLikes(followedLikesRes.data ?? followedLikesRes);
@@ -520,11 +516,6 @@ export default function BlogDetail() {
             </svg>
           </div>
           <div className={styles.zanList}>
-            {likes.map((u) => (
-              <div key={u.id} className={styles.userIconMini}>
-                <img src={u.icon || '/imgs/icons/default-icon.png'} alt="" />
-              </div>
-            ))}
             <div className={styles.likedCount}>{t('blogDetail.likes', { n: blog.liked })}</div>
             {followingLikes.length > 0 && (
               <div className={styles.followingLiked}>

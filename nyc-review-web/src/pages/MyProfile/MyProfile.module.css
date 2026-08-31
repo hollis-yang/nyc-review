@@ -187,35 +187,6 @@ button.statItem {
   background: var(--color-divider);
 }
 
-/* ===== 签到区域 ===== */
-.signSection {
-  border-top: 1px solid var(--color-divider);
-  padding: 10px 14px;
-  display: flex;
-  justify-content: center;
-}
-
-.signBtn {
-  border: 0;
-  background: var(--color-primary-gradient);
-  color: #fff;
-  padding: 8px 28px;
-  border-radius: 20px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform var(--transition-fast);
-}
-
-.signBtn:active {
-  transform: scale(0.95);
-}
-
-.signedBadge {
-  font-size: 14px;
-  color: var(--color-text-hint);
-}
-
 .activityCard {
   flex-shrink: 0;
   margin: 0 12px 8px;
@@ -251,10 +222,6 @@ button.statItem {
   color: var(--color-text-dark);
   text-align: left;
   cursor: pointer;
-}
-
-.activityItem:last-child {
-  grid-column: 1 / -1;
 }
 
 .activityItemActive {
@@ -305,11 +272,33 @@ button.statItem {
   font-size: 18px;
 }
 
-.signDaysNum {
-  font-size: 20px;
-  font-weight: 700;
-  color: #ff6633;
-  margin: 0 2px;
+.checkInItem {
+  border-color: #ffd8cb;
+  background: linear-gradient(135deg, #fff8f5, #fff2ed);
+}
+
+.checkInItem:not(:disabled):active {
+  border-color: #ff9b7e;
+  background: #ffebe4;
+}
+
+.checkInItem:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.checkInItemComplete {
+  border-color: #d8eadf;
+  background: #f3fbf6;
+}
+
+.checkInItemComplete .activityIcon {
+  background: #dff3e6;
+  color: #2b9960;
+}
+
+.checkInItemComplete .activityText small {
+  color: #39845e;
 }
 
 /* ===== 内容区域 ===== */
