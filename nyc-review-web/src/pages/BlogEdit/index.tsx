@@ -27,6 +27,12 @@ export default function BlogEdit() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const editorWorkspaceRef = useRef<HTMLDivElement>(null);
+  const desktopNavigationRef = useRef<HTMLDivElement>(null);
+  const shopTriggerRef = useRef<HTMLButtonElement>(null);
+  const shopDialogRef = useRef<HTMLDivElement>(null);
+  const shopSearchRef = useRef<HTMLInputElement>(null);
   const shopRequestRef = useRef(0);
   const [fileList, setFileList] = useState<string[]>([]);
   const [title, setTitle] = useState('');
@@ -94,6 +100,63 @@ export default function BlogEdit() {
     return () => window.clearTimeout(timer);
   }, [queryShops, selectedTypeId, shopName, showDialog]);
 
+  useEffect(() => {
+    if (!showDialog) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const backgroundElements = [
+      headerRef.current,
+      editorWorkspaceRef.current,
+      desktopNavigationRef.current,
+    ].filter((element): element is HTMLDivElement => Boolean(element));
+
+    backgroundElements.forEach((element) => {
+      element.inert = true;
+      element.setAttribute('aria-hidden', 'true');
+    });
+
+    const focusTimer = window.setTimeout(() => shopSearchRef.current?.focus(), 0);
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShowDialog(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const dialog = shopDialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), '
+        + 'select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (activeElement === last || !dialog.contains(activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      backgroundElements.forEach((element) => {
+        element.inert = false;
+        element.removeAttribute('aria-hidden');
+      });
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, [showDialog]);
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -142,7 +205,7 @@ export default function BlogEdit() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div ref={headerRef} className={styles.header}>
         <div className={styles.cancelBtn} onClick={handleBack}>{t('blogEdit.cancel')}</div>
         <div className={styles.title}>{t('blogEdit.title')}</div>
         <div className={styles.commit}>
@@ -150,63 +213,82 @@ export default function BlogEdit() {
         </div>
       </div>
 
-      <div className={styles.uploadBox}>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          accept="image/jpeg,image/png,image/webp"
-          style={{ display: 'none' }}
-        />
-        <div className={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>
-          <CameraOutline fontSize={22} />
-          <div className={styles.uploadText}>{t('blogEdit.uploadPhoto')}</div>
-        </div>
-        <div className={styles.picList}>
-          {fileList.map((f, i) => (
-            <div key={i} className={styles.picBox}>
-              <img src={f} alt="" />
-              <div className={styles.closeIcon} onClick={() => handleDeletePic(i)}>
-                <CloseOutline fontSize={14} color="#fff" />
-              </div>
+      <div ref={editorWorkspaceRef} className={styles.editorWorkspace}>
+        <div className={styles.mediaPanel}>
+          <div className={styles.uploadBox}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+            />
+            <div className={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>
+              <CameraOutline fontSize={22} />
+              <div className={styles.uploadText}>{t('blogEdit.uploadPhoto')}</div>
             </div>
-          ))}
+            <div className={styles.picList}>
+              {fileList.map((f, i) => (
+                <div key={i} className={styles.picBox}>
+                  <img src={f} alt="" />
+                  <div className={styles.closeIcon} onClick={() => handleDeletePic(i)}>
+                    <CloseOutline fontSize={14} color="#fff" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className={styles.blogTitle}>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          type="text"
-          placeholder={t('blogEdit.titlePlaceholder')}
-        />
-      </div>
-      <div className={styles.blogContent}>
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder={t('blogEdit.contentPlaceholder')}
-        />
-      </div>
+        <main className={styles.editorPanel}>
+          <div className={styles.blogTitle}>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              type="text"
+              placeholder={t('blogEdit.titlePlaceholder')}
+            />
+          </div>
+          <div className={styles.blogContent}>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder={t('blogEdit.contentPlaceholder')}
+            />
+          </div>
+        </main>
 
-      <div className={styles.divider} />
+        <div className={styles.shopPanel}>
+          <div className={styles.divider} />
 
-      <div className={styles.blogShop} onClick={openShopDialog}>
-        <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
-        {selectedShop ? (
-          <div>{selectedShop.name}</div>
-        ) : (
-          <div className={styles.selectHint}>{t('blogEdit.selectShop')}</div>
-        )}
+          <button
+            ref={shopTriggerRef}
+            type="button"
+            className={styles.blogShop}
+            onClick={openShopDialog}
+          >
+            <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
+            {selectedShop ? (
+              <div>{selectedShop.name}</div>
+            ) : (
+              <div className={styles.selectHint}>{t('blogEdit.selectShop')}</div>
+            )}
+          </button>
+        </div>
       </div>
 
       {showDialog && (
         <>
           <div className={styles.mask} onClick={() => setShowDialog(false)} />
-          <div className={styles.shopDialog}>
+          <div
+            ref={shopDialogRef}
+            className={styles.shopDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shop-dialog-title"
+          >
             <div className={styles.dialogHeader}>
-              <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
+              <div id="shop-dialog-title" className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
               <button type="button" onClick={() => setShowDialog(false)}>{t('common.cancel')}</button>
             </div>
             <div className={styles.categoryList} aria-label={t('blogEdit.categoryFilter')}>
@@ -236,6 +318,7 @@ export default function BlogEdit() {
               <div className={styles.searchInput}>
                 <SearchOutline fontSize={14} onClick={() => queryShops(1, true)} style={{ cursor: 'pointer' }} />
                 <input
+                  ref={shopSearchRef}
                   value={shopName}
                   onChange={(e) => setShopName(e.target.value)}
                   type="text"
@@ -251,14 +334,15 @@ export default function BlogEdit() {
             </div>
             <div className={styles.shopList}>
               {shops.map((s) => (
-                <div
+                <button
+                  type="button"
                   key={s.id}
                   className={styles.shopItem}
                   onClick={() => { setSelectedShop(s); setShowDialog(false); }}
                 >
                   <div className={styles.shopItemName}>{s.name}</div>
                   <div style={{ fontSize: 11, color: '#999' }}>{[s.area, s.borough].filter(Boolean).join(', ')}</div>
-                </div>
+                </button>
               ))}
               {shopsLoading && <div className={styles.listStatus}>{t('home.loading')}</div>}
               {!shopsLoading && shops.length === 0 && (
@@ -278,8 +362,8 @@ export default function BlogEdit() {
         </>
       )}
 
-      <div className={styles.desktopNavigation}>
-        <FootBar activeBtn={0} />
+      <div ref={desktopNavigationRef} className={styles.desktopNavigation}>
+        <FootBar activeBtn={3} />
       </div>
     </div>
   );

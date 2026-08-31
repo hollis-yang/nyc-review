@@ -1,11 +1,13 @@
 # NYC Review desktop layout plan
 
-Status: Phase 4 complete
+Status: Phase 5 complete
 Baseline: `b379b86` (`feat: add account security and check-in calendar`)
 Phase 1 commit: `3f26310` (`feat(web): add desktop shell and home layout`)
 Phase 2 commit: `52e39f2` (`feat(web): add desktop discovery layouts`)
 Phase 3 commit: `bfa0f5f` (`feat(web): add desktop detail and conversation layouts`)
 Post-Phase 3 stabilization commit: `53e8e80` (`fix(web): repair desktop home feed and create navigation`)
+Phase 4 commit: `44675bd` (`feat(web): add desktop profile and authentication layouts`)
+Post-Phase 4 stabilization commit: `00e9722` (`fix(web): polish desktop feeds and navigation`)
 Scope: the current 15 React page routes in `nyc-review-web/src/App.tsx`
 
 ## Goal and non-negotiable constraints
@@ -268,6 +270,34 @@ Completed in Phase 4:
 ### Phase 5 — creation and AI surfaces
 
 - Implement Blog Edit and AI Workspace desktop layouts and dialog behavior.
+
+Completed in Phase 5:
+
+- organized Blog Edit into an approximately `760px + 320px` responsive editor
+  workspace, with the title/body canvas on the left and the unchanged photo and
+  linked-shop controls on the right;
+- converted the existing shop picker from a mobile bottom sheet to a bounded,
+  route-centered desktop dialog above the navigation rail, while preserving
+  category filtering, debounced search, stale-request protection, loading,
+  empty, pagination, selection, and every upload/publish API contract;
+- kept Blog Edit's mobile upload-title-body-shop order and bottom-sheet
+  behavior through layout-only wrappers, and marked Create a Note as the active
+  desktop navigation destination;
+- implemented AI Workspace's idle desktop state as a centered intro, run
+  history, examples, and composer surface;
+- implemented the active AI state as an input/history rail plus a work area for
+  agent collaboration, event history, errors, candidate selection, selected
+  merchant evidence, verification notes, and approval actions;
+- split wide-screen AI results into a candidate rail and merchant
+  evidence/approval column without duplicating result DOM or changing
+  translation, cancellation, selection, citation, or approval logic;
+- restored active saved AI runs with their running state intact and reconnected
+  their existing event stream so desktop history handoff continues updating;
+- retained the existing single-column mobile and tablet presentation, with the
+  page scroll area remaining the primary vertical scroll owner;
+- added three Phase 5 behavior/layout contracts; all 29 static/unit tests,
+  lint, production build, bilingual frontend contracts, and the visual audit
+  pass.
 
 ### Phase 6 — parity and release validation
 

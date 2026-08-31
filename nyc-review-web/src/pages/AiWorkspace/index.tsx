@@ -23,6 +23,11 @@ import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './AiWorkspace.module.css';
 
 const MULTI_AGENTS = ['Supervisor', 'Discovery', 'Evidence', 'Itinerary', 'Verifier'] as const;
+const ACTIVE_RUN_STATUSES = new Set<AgentRunSnapshot['status']>([
+  'created',
+  'planning',
+  'tool_running',
+]);
 
 const EVENT_KEYS: Record<string, string> = {
   'run.created': 'runCreated',
@@ -133,41 +138,59 @@ export default function AiWorkspace() {
     setActions(snapshot.actions || []);
     setResult(snapshot.result || null);
     setRunError(snapshot.error || null);
+    setRunning(ACTIVE_RUN_STATUSES.has(snapshot.status));
   };
 
   useEffect(() => {
     if (!requestedRunId || !sessionStorage.getItem('token')) return;
     let active = true;
+    closeStreamRef.current?.();
     getAgentRun(requestedRunId)
       .then((snapshot) => {
         if (!active) return;
         applySnapshot(snapshot);
+        if (ACTIVE_RUN_STATUSES.has(snapshot.status)) attachRunStream(snapshot.run_id);
       })
       .catch((error) => {
-        if (active) setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
-      })
-      .finally(() => {
-        if (active) setRunning(false);
+        if (!active) return;
+        setRunning(false);
+        setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
       });
     return () => {
       active = false;
+      closeStreamRef.current?.();
     };
   // Restoring a saved itinerary is intentionally keyed only by the URL run ID.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedRunId]);
 
-  const loadFinalSnapshot = async (currentRunId: string) => {
+  async function loadFinalSnapshot(currentRunId: string) {
     try {
       applySnapshot(await getAgentRun(currentRunId));
       if (sessionStorage.getItem('token')) {
         listAgentRuns(5).then(setHistory).catch(() => {});
       }
     } catch (error) {
-      setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
-    } finally {
       setRunning(false);
+      setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
     }
-  };
+  }
+
+  function attachRunStream(currentRunId: string) {
+    closeStreamRef.current?.();
+    closeStreamRef.current = subscribeToAgentRun(
+      currentRunId,
+      (event) => {
+        setEvents((current) => {
+          const bySequence = new Map(current.map((item) => [item.sequence, item]));
+          bySequence.set(event.sequence, event);
+          return [...bySequence.values()].sort((a, b) => a.sequence - b.sequence);
+        });
+      },
+      () => { void loadFinalSnapshot(currentRunId); },
+      () => { void loadFinalSnapshot(currentRunId); },
+    );
+  }
 
   const submit = async () => {
     if (!query.trim()) {
@@ -190,18 +213,7 @@ export default function AiWorkspace() {
         longitude: -73.9776,
       });
       setRunId(created.run_id);
-      closeStreamRef.current = subscribeToAgentRun(
-        created.run_id,
-        (event) => {
-          setEvents((current) => {
-            const bySequence = new Map(current.map((item) => [item.sequence, item]));
-            bySequence.set(event.sequence, event);
-            return [...bySequence.values()].sort((a, b) => a.sequence - b.sequence);
-          });
-        },
-        () => loadFinalSnapshot(created.run_id),
-        () => loadFinalSnapshot(created.run_id),
-      );
+      attachRunStream(created.run_id);
     } catch (error) {
       setRunning(false);
       setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
@@ -284,6 +296,15 @@ export default function AiWorkspace() {
     t(`agentActions.${action.action_type}.description`);
   const selectedEvidence = selectedShop ? evidenceByShop.get(selectedShop.shop_id) : undefined;
   const selectedStop = selectedShop ? itineraryByShop.get(selectedShop.shop_id) : undefined;
+  const hasRunWorkspace = Boolean(
+    requestedRunId
+    || runId
+    || running
+    || events.length > 0
+    || actions.length > 0
+    || result
+    || runError,
+  );
 
   return (
     <div className={styles.page}>
@@ -293,81 +314,86 @@ export default function AiWorkspace() {
         <div className={styles.headerSide} />
       </header>
 
-      <main className={styles.scroll}>
-        <section className={styles.intro}>
-          <div className={styles.sparkle}>✦</div>
-          <div>
-            <span>{t('aiGuide.eyebrow')}</span>
-            <h1>{t('aiGuide.heroTitle')}</h1>
-            <p>{t('aiGuide.heroSubtitle')}</p>
-          </div>
-        </section>
-
-        {history.length > 0 && (
-          <section className={styles.history}>
-            <div className={styles.historyHeading}>
-              <strong>{t('aiGuide.recentPlans')}</strong>
-              <span>{t('aiGuide.savedRuns', { count: history.length })}</span>
-            </div>
-            <div className={styles.historyList}>
-              {history.map((item) => (
-                <button
-                  key={item.run_id}
-                  onClick={() => {
-                    setSearchParams({ runId: item.run_id }, { replace: true });
-                    applySnapshot(item);
-                    setRunning(false);
-                    setRunError(item.error || null);
-                  }}
-                >
-                  <span>{item.query}</span>
-                  <small>{t(`aiGuide.runStatus.${item.status}`)}</small>
-                </button>
-              ))}
+      <main
+        className={`${styles.scroll} ${hasRunWorkspace ? styles.activeWorkspace : styles.idleWorkspace}`}
+        data-workspace-state={hasRunWorkspace ? 'active' : 'idle'}
+      >
+        <div className={styles.inputRail}>
+          <section className={styles.intro}>
+            <div className={styles.sparkle}>✦</div>
+            <div>
+              <span>{t('aiGuide.eyebrow')}</span>
+              <h1>{t('aiGuide.heroTitle')}</h1>
+              <p>{t('aiGuide.heroSubtitle')}</p>
             </div>
           </section>
-        )}
 
-        <section className={styles.composer}>
-          <label className={styles.promptLabel} htmlFor="agent-query">
-            {t('aiGuide.promptLabel')}
-          </label>
-          <textarea
-            id="agent-query"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('aiGuide.placeholder')}
-            rows={4}
-            maxLength={2000}
-          />
-          <div className={styles.composerActions}>
-            {isChinese ? (
-              <button className={styles.translateButton} onClick={translateQuery} disabled={translating || running}>
-                ✦ {translating ? t('aiGuide.translating') : t('aiGuide.translatePrompt')}
-              </button>
-            ) : <span />}
-            <span>{query.length}/2000</span>
-          </div>
+          {history.length > 0 && (
+            <section className={styles.history}>
+              <div className={styles.historyHeading}>
+                <strong>{t('aiGuide.recentPlans')}</strong>
+                <span>{t('aiGuide.savedRuns', { count: history.length })}</span>
+              </div>
+              <div className={styles.historyList}>
+                {history.map((item) => (
+                  <button
+                    key={item.run_id}
+                    onClick={() => {
+                      setSearchParams({ runId: item.run_id }, { replace: true });
+                      applySnapshot(item);
+                      setRunError(item.error || null);
+                    }}
+                  >
+                    <span>{item.query}</span>
+                    <small>{t(`aiGuide.runStatus.${item.status}`)}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
-          <div className={styles.examples}>
-            {examples.map((example) => (
-              <button key={example} onClick={() => setQuery(example)}>{example}</button>
-            ))}
-          </div>
+          <section className={styles.composer}>
+            <label className={styles.promptLabel} htmlFor="agent-query">
+              {t('aiGuide.promptLabel')}
+            </label>
+            <textarea
+              id="agent-query"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('aiGuide.placeholder')}
+              rows={4}
+              maxLength={2000}
+            />
+            <div className={styles.composerActions}>
+              {isChinese ? (
+                <button className={styles.translateButton} onClick={translateQuery} disabled={translating || running}>
+                  ✦ {translating ? t('aiGuide.translating') : t('aiGuide.translatePrompt')}
+                </button>
+              ) : <span />}
+              <span>{query.length}/2000</span>
+            </div>
 
-          <button className={styles.runButton} disabled={running} onClick={submit}>
-            <span>{running ? t('aiGuide.running') : t('aiGuide.run')}</span>
-            {!running && <RightOutline fontSize={15} />}
-          </button>
-          {running && <button className={styles.cancelButton} onClick={cancel}>{t('aiGuide.cancel')}</button>}
-          <div className={styles.safetyNote}>
-            <strong>{t('aiGuide.safetyTitle')}</strong>
-            <span>{t('aiGuide.safetyText')}</span>
-          </div>
-        </section>
+            <div className={styles.examples}>
+              {examples.map((example) => (
+                <button key={example} onClick={() => setQuery(example)}>{example}</button>
+              ))}
+            </div>
 
-        {(running || events.length > 0) && (
-          <section className={styles.collaboration}>
+            <button className={styles.runButton} disabled={running} onClick={submit}>
+              <span>{running ? t('aiGuide.running') : t('aiGuide.run')}</span>
+              {!running && <RightOutline fontSize={15} />}
+            </button>
+            {running && <button className={styles.cancelButton} onClick={cancel}>{t('aiGuide.cancel')}</button>}
+            <div className={styles.safetyNote}>
+              <strong>{t('aiGuide.safetyTitle')}</strong>
+              <span>{t('aiGuide.safetyText')}</span>
+            </div>
+          </section>
+        </div>
+
+        <div className={styles.workArea}>
+          {(running || events.length > 0) && (
+            <section className={styles.collaboration}>
             <div className={styles.sectionHeading}>
               <div>
                 <span>{t('aiGuide.liveRun')}</span>
@@ -405,18 +431,18 @@ export default function AiWorkspace() {
                 </div>
               ))}
             </div>
-          </section>
-        )}
+            </section>
+          )}
 
-        {runError && (
-          <div className={styles.errorCard}>
-            <CloseCircleFill />
-            <div><strong>{t('aiGuide.runFailed')}</strong><span>{runError}</span></div>
-          </div>
-        )}
+          {runError && (
+            <div className={styles.errorCard}>
+              <CloseCircleFill />
+              <div><strong>{t('aiGuide.runFailed')}</strong><span>{runError}</span></div>
+            </div>
+          )}
 
-        {result && (
-          <section className={styles.results}>
+          {result && (
+            <section className={styles.results}>
             <div className={styles.resultSummary}>
               <div className={displayVerified ? styles.verified : styles.reviewNeeded}>
                 {displayVerified ? <CheckCircleFill /> : <span className={styles.reviewIcon}>i</span>}
@@ -560,8 +586,9 @@ export default function AiWorkspace() {
                 })}
               </section>
             )}
-          </section>
-        )}
+            </section>
+          )}
+        </div>
       </main>
 
       <FootBar activeBtn={5} />

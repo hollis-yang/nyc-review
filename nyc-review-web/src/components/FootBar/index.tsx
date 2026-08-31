@@ -84,9 +84,10 @@ export default function FootBar({ activeBtn }: FootBarProps) {
       </button>
       <button
         type="button"
-        className={styles.footBox}
+        className={`${styles.footBox} ${activeBtn === 3 ? styles.active : ''}`}
         onClick={() => toPage(0)}
         aria-label={t('nav.create')}
+        aria-current={activeBtn === 3 ? 'page' : undefined}
       >
         <div className={styles.footView}>
           <img className={`${styles.addBtn} ${styles.createMobileIcon}`} src="/imgs/add.png" alt="" />

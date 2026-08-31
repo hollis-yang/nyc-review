@@ -33,6 +33,11 @@
   padding: 8px 8px 20px;
 }
 
+.inputRail,
+.workArea {
+  display: contents;
+}
+
 .intro {
   min-height: 76px;
   padding: 14px;
@@ -788,5 +793,409 @@
     width: min(760px, 100%);
     margin: 0 auto;
     box-sizing: border-box;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .header {
+    height: var(--desktop-context-height);
+    padding: 0 var(--desktop-page-gutter);
+  }
+
+  .headerTitle {
+    font-size: 20px;
+  }
+
+  .scroll {
+    width: min(var(--desktop-content-max), 100%);
+    margin: 0 auto;
+    padding: 24px var(--desktop-page-gutter) 32px;
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+
+  .idleWorkspace {
+    display: block;
+  }
+
+  .idleWorkspace .inputRail {
+    width: min(820px, 100%);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .idleWorkspace .workArea {
+    display: none;
+  }
+
+  .activeWorkspace {
+    display: grid;
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+  }
+
+  .activeWorkspace .inputRail,
+  .activeWorkspace .workArea {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .activeWorkspace .workArea {
+    gap: 16px;
+  }
+
+  .activeWorkspace .workArea > * {
+    margin-top: 0;
+  }
+
+  .intro {
+    min-height: 104px;
+    padding: 20px;
+    gap: 16px;
+  }
+
+  .sparkle {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+
+  .intro span {
+    font-size: 11px;
+  }
+
+  .intro h1 {
+    margin: 4px 0 5px;
+    font-size: 26px;
+  }
+
+  .intro p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .history {
+    margin-top: 12px;
+    padding: 14px 16px;
+  }
+
+  .historyHeading strong {
+    font-size: 14px;
+  }
+
+  .historyHeading span {
+    font-size: 11px;
+  }
+
+  .historyList {
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .idleWorkspace .historyList {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    overflow: visible;
+  }
+
+  .idleWorkspace .historyList button,
+  .activeWorkspace .historyList button {
+    width: 100%;
+  }
+
+  .activeWorkspace .historyList {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .historyList button {
+    padding: 10px 11px;
+    cursor: pointer;
+  }
+
+  .historyList button span {
+    font-size: 12px;
+  }
+
+  .historyList button small {
+    font-size: 10px;
+  }
+
+  .composer {
+    margin-top: 12px;
+    padding: 20px;
+  }
+
+  .promptLabel {
+    font-size: 16px;
+  }
+
+  .composer textarea {
+    min-height: 118px;
+    padding: 13px 14px;
+    font-size: 15px;
+  }
+
+  .composerActions {
+    font-size: 12px;
+  }
+
+  .translateButton {
+    font-size: 13px;
+  }
+
+  .idleWorkspace .examples {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .activeWorkspace .examples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .examples button {
+    min-height: 32px;
+    padding: 7px 11px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .runButton {
+    min-height: 46px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .cancelButton {
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .safetyNote {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .collaboration,
+  .resultSummary,
+  .candidatePicker,
+  .shopCard,
+  .approvals {
+    padding: 20px;
+  }
+
+  .sectionHeading span {
+    font-size: 11px;
+  }
+
+  .sectionHeading h2,
+  .approvalHeading h2 {
+    font-size: 19px;
+  }
+
+  .liveBadge,
+  .doneBadge {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .agentDot {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+  }
+
+  .agentFlow::before {
+    top: 16px;
+  }
+
+  .agentStep > span {
+    font-size: 10px;
+  }
+
+  .eventLog {
+    max-height: 220px;
+    margin-top: 16px;
+    padding-top: 10px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(119, 70, 49, 0.28) transparent;
+  }
+
+  .eventLog div {
+    grid-template-columns: 76px minmax(0, 1fr) auto;
+    padding: 6px 0;
+    font-size: 12px;
+  }
+
+  .eventLog small {
+    font-size: 10px;
+  }
+
+  .errorCard {
+    padding: 16px 18px;
+    font-size: 14px;
+  }
+
+  .errorCard span {
+    font-size: 13px;
+  }
+
+  .resultSummary h2 {
+    font-size: 21px;
+  }
+
+  .verified,
+  .reviewNeeded {
+    font-size: 13px;
+  }
+
+  .personalizedNote,
+  .relaxationNote,
+  .verificationNote {
+    font-size: 12px;
+  }
+
+  .candidatePickerHeading h3 {
+    font-size: 16px;
+  }
+
+  .candidatePickerHeading p {
+    font-size: 12px;
+  }
+
+  .candidateList button {
+    padding: 11px 12px;
+    cursor: pointer;
+  }
+
+  .candidateList strong {
+    font-size: 14px;
+  }
+
+  .candidateList small {
+    font-size: 11px;
+  }
+
+  .shopVisual {
+    height: 190px;
+    margin: -20px -20px 16px;
+  }
+
+  .shopCategory {
+    font-size: 11px;
+  }
+
+  .shopCard h3 {
+    font-size: 21px;
+  }
+
+  .shopTop p,
+  .shopCard blockquote p {
+    font-size: 13px;
+  }
+
+  .price {
+    font-size: 21px;
+  }
+
+  .facts span,
+  .tags span {
+    font-size: 11px;
+  }
+
+  .openShop {
+    min-height: 38px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .approvalHeading p {
+    font-size: 12px;
+  }
+
+  .actionCard {
+    padding: 13px;
+  }
+
+  .actionTop h3 {
+    font-size: 14px;
+  }
+
+  .actionTop p {
+    font-size: 11px;
+  }
+
+  .actionStatus,
+  .actionError {
+    font-size: 10px;
+  }
+
+  .actionButtons button {
+    min-height: 36px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .historyList button:hover,
+  .examples button:hover,
+  .candidateList button:hover {
+    border-color: #ffd0bf;
+    background: #fff8f5;
+  }
+
+  .historyList button:focus-visible,
+  .examples button:focus-visible,
+  .runButton:focus-visible,
+  .cancelButton:focus-visible,
+  .candidateList button:focus-visible,
+  .openShop:focus-visible,
+  .actionButtons button:focus-visible {
+    outline: 3px solid rgba(255, 102, 51, 0.24);
+    outline-offset: 2px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .activeWorkspace {
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .activeWorkspace .results {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
+    align-items: start;
+    gap: 16px;
+  }
+
+  .activeWorkspace .resultSummary {
+    grid-column: 1 / -1;
+  }
+
+  .activeWorkspace .candidatePicker {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    margin-top: 0;
+  }
+
+  .activeWorkspace .shopCard,
+  .activeWorkspace .approvals {
+    grid-column: 2;
+    margin-top: 0;
+  }
+}
+
+@media (min-width: 1600px) {
+  .scroll {
+    width: min(var(--desktop-content-wide-max), 100%);
   }
 }

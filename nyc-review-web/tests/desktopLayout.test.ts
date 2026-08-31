@@ -64,6 +64,8 @@ test('primary navigation keeps the five existing actions and gains a desktop rai
   assert.match(navigation, /styles\.createMobileIcon/);
   assert.match(navigation, /styles\.createDesktopIcon/);
   assert.match(navigation, /styles\.createText[^\n]*nav\.create/);
+  assert.match(navigation, /activeBtn === 3 \? styles\.active/);
+  assert.match(navigation, /aria-current=\{activeBtn === 3 \? 'page'/);
   assert.match(styles, /\.createDesktopIcon,\s*\.createText\s*\{\s*display:\s*none;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createMobileIcon\s*\{\s*display:\s*none;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createDesktopIcon\s*\{[^}]*display:\s*flex;/s);
@@ -125,7 +127,7 @@ test('blog editor keeps primary navigation on desktop without adding a mobile fo
 
   assert.match(navigationList, /'\/blog-edit'/);
   assert.match(editor, /styles\.desktopNavigation/);
-  assert.match(editor, /<FootBar activeBtn=\{0\}/);
+  assert.match(editor, /<FootBar activeBtn=\{3\}/);
   assert.match(editorStyles, /\.desktopNavigation\s*\{\s*display:\s*none;/s);
   assert.match(editorStyles, /@media \(min-width: 1024px\)[\s\S]*?\.desktopNavigation\s*\{\s*display:\s*block;/s);
 });
