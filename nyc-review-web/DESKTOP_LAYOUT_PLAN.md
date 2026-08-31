@@ -204,6 +204,19 @@ Completed in Phase 3:
 The existing `visual:audit` failure for `MyProfile/index.tsx` remains the same
 pre-Phase-1 baseline and is not part of the Phase 3 detail/conversation scope.
 
+### Post-Phase 3 stabilization — Home feed and desktop navigation
+
+- made Home's failed and empty first-load states visible and retryable instead
+  of leaving a permanently blank desktop feed;
+- de-duplicated adjacent hot-blog pages by note ID while preserving the first
+  occurrence and existing ordering;
+- stabilized the desktop feed's flex/grid scroll boundary with explicit minimum
+  sizing and one clipped route viewport;
+- replaced the desktop-only circular create control with the same navigation-row
+  treatment as Home, Map, AI Guide, and Profile, using a note-edit icon and the
+  existing localized label;
+- retained the current circular plus action in the mobile bottom navigation.
+
 ### Phase 4 — profile and security surfaces
 
 - Implement My Profile, the check-in calendar, Other Profile, Profile Edit,

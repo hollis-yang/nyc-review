@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { getHotBlogs } from '../../api/blog';
 import BlogCard, { type BlogData } from '../../components/BlogCard';
 import FootBar from '../../components/FootBar';
+import { takeUnseenById } from '../../utils/feedPagination';
 import styles from './Home.module.css';
 
 interface ShopType {
@@ -27,8 +28,11 @@ export default function Home() {
   const [current, setCurrent] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [paginationPaused, setPaginationPaused] = useState(false);
   const loadingRef = useRef(false);
-  const underfillAttemptLength = useRef<number | null>(null);
+  const loadedBlogIdsRef = useRef<Set<number>>(new Set());
+  const underfillAttemptPage = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [searchText, setSearchText] = useState('');
   const [suggestions, setSuggestions] = useState<{ id: number; name: string; typeId?: number }[]>([]);
@@ -66,11 +70,15 @@ export default function Home() {
 
   const loadBlogs = useCallback(async () => {
     if (loadingRef.current || !hasMore) return;
+    underfillAttemptPage.current = current;
     loadingRef.current = true;
     setLoading(true);
+    setLoadError(false);
+    setPaginationPaused(false);
     try {
       const res = await getHotBlogs(current);
       const data: BlogData[] = res.data ?? res;
+      if (!Array.isArray(data)) throw new Error('Invalid hot blog response');
       const enriched = data.map((b) => ({
         ...b,
         img: b.img || (b.images ? b.images.split(',')[0] : ''),
@@ -78,11 +86,16 @@ export default function Home() {
       if (enriched.length === 0) {
         setHasMore(false);
       } else {
-        setBlogs((prev) => [...prev, ...enriched]);
+        const uniqueBlogs = takeUnseenById(enriched, loadedBlogIdsRef.current);
+        if (uniqueBlogs.length === 0) {
+          setPaginationPaused(true);
+        } else {
+          setBlogs((prev) => [...prev, ...uniqueBlogs]);
+        }
         setCurrent((prev) => prev + 1);
       }
     } catch {
-      // ignore
+      setLoadError(true);
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -100,14 +113,14 @@ export default function Home() {
 
     const fillUnderfilledViewport = () => {
       if (
-        blogs.length === 0 ||
         el.scrollHeight > el.clientHeight + 1 ||
         loadingRef.current ||
         !hasMore ||
-        underfillAttemptLength.current === blogs.length
+        loadError ||
+        paginationPaused ||
+        underfillAttemptPage.current === current
       ) return;
 
-      underfillAttemptLength.current = blogs.length;
       void loadBlogs();
     };
 
@@ -126,16 +139,22 @@ export default function Home() {
       window.clearTimeout(initialTimer);
       observer.disconnect();
     };
-  }, [blogs.length, hasMore, loadBlogs]);
+  }, [blogs.length, current, hasMore, loadBlogs, loadError, paginationPaused]);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     const { scrollTop, offsetHeight, scrollHeight } = el;
-    if (scrollTop + offsetHeight >= scrollHeight - 50 && !loadingRef.current && hasMore) {
+    if (
+      scrollTop + offsetHeight >= scrollHeight - 50 &&
+      !loadingRef.current &&
+      hasMore &&
+      !loadError &&
+      !paginationPaused
+    ) {
       loadBlogs();
     }
-  }, [loadBlogs, hasMore]);
+  }, [loadBlogs, hasMore, loadError, paginationPaused]);
 
   const handleLikeUpdate = (blogId: number, liked: number, isLike: boolean) => {
     setBlogs((prev) =>
@@ -234,6 +253,25 @@ export default function Home() {
           <BlogCard key={b.id} blog={b} onLikeUpdate={handleLikeUpdate} />
         ))}
         {loading && <div className={styles.loading}>{t('home.loading')}</div>}
+        {!loading && loadError && (
+          <div className={styles.feedState} role="alert">
+            <span>{t('home.loadFailed')}</span>
+            <button type="button" onClick={() => void loadBlogs()}>
+              {t('home.retry')}
+            </button>
+          </div>
+        )}
+        {!loading && paginationPaused && (
+          <div className={styles.feedState} role="status">
+            <span>{t('home.noNewNotes')}</span>
+            <button type="button" onClick={() => void loadBlogs()}>
+              {t('home.continue')}
+            </button>
+          </div>
+        )}
+        {!loading && !loadError && !paginationPaused && blogs.length === 0 && !hasMore && (
+          <div className={styles.feedState} role="status">{t('home.empty')}</div>
+        )}
       </div>
 
       <FootBar activeBtn={1} />

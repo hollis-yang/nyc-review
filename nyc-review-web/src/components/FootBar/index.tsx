@@ -18,6 +18,26 @@ function AiIcon({ size = 26 }: { size?: number }) {
     </svg>
   );
 }
+
+function CreateNoteIcon({ size = 26 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.5 5H6.8A2.8 2.8 0 0 0 4 7.8v9.4A2.8 2.8 0 0 0 6.8 20h9.4a2.8 2.8 0 0 0 2.8-2.8v-6.7" />
+      <path d="m12 14 1.1-3.5 5.8-5.8a1.6 1.6 0 0 1 2.3 2.3l-5.8 5.8L12 14Z" />
+      <path d="M8 9h2.5M8 13h1.5" />
+    </svg>
+  );
+}
 import styles from './FootBar.module.css';
 
 interface FootBarProps {
@@ -64,13 +84,15 @@ export default function FootBar({ activeBtn }: FootBarProps) {
       </button>
       <button
         type="button"
-        className={`${styles.footBox} ${styles.createBox}`}
+        className={styles.footBox}
         onClick={() => toPage(0)}
         aria-label={t('nav.create')}
       >
         <div className={styles.footView}>
-          <img className={styles.addBtn} src="/imgs/add.png" alt="" />
+          <img className={`${styles.addBtn} ${styles.createMobileIcon}`} src="/imgs/add.png" alt="" />
+          <span className={styles.createDesktopIcon}><CreateNoteIcon size={26} /></span>
         </div>
+        <div className={`${styles.footText} ${styles.createText}`}>{t('nav.create')}</div>
       </button>
       <button
         type="button"

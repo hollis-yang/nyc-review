@@ -1,5 +1,6 @@
 .container {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -143,6 +144,8 @@
 
 .blogList {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   background-color: #f5f5f5;
   display: flex;
   flex-wrap: wrap;
@@ -158,6 +161,37 @@
   padding: 16px;
   color: #999;
   font-size: 13px;
+}
+
+.feedState {
+  width: 100%;
+  min-height: 160px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: #777;
+  font-size: 14px;
+  text-align: center;
+}
+
+.feedState button {
+  min-width: 88px;
+  min-height: 38px;
+  border: 1px solid rgba(255, 102, 51, 0.3);
+  border-radius: 999px;
+  padding: 7px 18px;
+  background: #fff;
+  color: var(--color-primary);
+  font: 600 13px/1.2 var(--font-family);
+  cursor: pointer;
+}
+
+.feedState button:active {
+  transform: scale(0.97);
 }
 
 .suggestions {
@@ -235,6 +269,7 @@
   .container {
     height: 100dvh;
     min-width: 0;
+    overflow: hidden;
     background: #f6f4f2;
   }
 
@@ -332,10 +367,14 @@
   }
 
   .blogList {
+    flex: 1 1 0;
     width: min(992px, calc(100% - (var(--desktop-page-gutter) * 2)));
+    min-width: 0;
+    min-height: 0;
     box-sizing: border-box;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: max-content;
     gap: 20px 16px;
     justify-content: stretch;
     align-content: start;
@@ -349,6 +388,21 @@
 
   .loading {
     grid-column: 1 / -1;
+  }
+
+  .feedState {
+    grid-column: 1 / -1;
+  }
+
+  .feedState button:hover,
+  .feedState button:focus-visible {
+    border-color: var(--color-primary);
+    background: #fff7f3;
+  }
+
+  .feedState button:focus-visible {
+    outline: 3px solid rgba(255, 102, 51, 0.2);
+    outline-offset: 2px;
   }
 
   .suggestions {

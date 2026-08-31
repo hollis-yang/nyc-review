@@ -60,6 +60,15 @@ test('primary navigation keeps the five existing actions and gains a desktop rai
   assert.match(styles, /\.foot\s*\{[^}]*height:\s*var\(--footer-height\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.foot\s*\{[^}]*position:\s*fixed;[^}]*flex-direction:\s*column;/s);
   assert.match(styles, /@media \(min-width: 1280px\)/);
+  assert.match(navigation, /function CreateNoteIcon/);
+  assert.match(navigation, /styles\.createMobileIcon/);
+  assert.match(navigation, /styles\.createDesktopIcon/);
+  assert.match(navigation, /styles\.createText[^\n]*nav\.create/);
+  assert.match(styles, /\.createDesktopIcon,\s*\.createText\s*\{\s*display:\s*none;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createMobileIcon\s*\{\s*display:\s*none;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createDesktopIcon\s*\{[^}]*display:\s*flex;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createText\s*\{\s*display:\s*block;/s);
+  assert.doesNotMatch(styles, /\.createBox\s*\{/);
 });
 
 test('home retains its mobile contract and defines the desktop grid contract', () => {
@@ -71,14 +80,29 @@ test('home retains its mobile contract and defines the desktop grid contract', (
   assert.match(home, /blogs\.map/);
   assert.match(home, /onScroll=\{handleScroll\}/);
   assert.match(home, /onLikeUpdate=\{handleLikeUpdate\}/);
-  assert.match(home, /blogs\.length === 0/);
+  assert.match(home, /const \[loadError, setLoadError\]/);
+  assert.match(home, /const \[paginationPaused, setPaginationPaused\]/);
+  assert.match(home, /setLoadError\(true\)/);
+  assert.match(home, /loadedBlogIdsRef = useRef<Set<number>>\(new Set\(\)\)/);
+  assert.match(home, /takeUnseenById\(enriched, loadedBlogIdsRef\.current\)/);
+  assert.match(home, /uniqueBlogs\.length === 0/);
+  assert.match(home, /setPaginationPaused\(true\)/);
+  assert.match(home, /hasMore &&\s*!loadError &&\s*!paginationPaused/s);
+  assert.match(home, /home\.loadFailed/);
+  assert.match(home, /home\.retry/);
+  assert.match(home, /home\.noNewNotes/);
+  assert.match(home, /home\.continue/);
+  assert.match(home, /home\.empty/);
   assert.match(home, /el\.scrollHeight > el\.clientHeight \+ 1/);
-  assert.match(home, /underfillAttemptLength\.current === blogs\.length/);
+  assert.match(home, /underfillAttemptPage\.current === current/);
+  assert.match(home, /if \(loadingRef\.current \|\| !hasMore\) return;\s*underfillAttemptPage\.current = current;\s*loadingRef\.current = true;/s);
   assert.match(home, /new ResizeObserver\(fillUnderfilledViewport\)/);
   assert.match(homeStyles, /\.typeList\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(cardStyles, /\.box\s*\{[^}]*width:\s*48%;/s);
   assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?grid-template-columns:\s*repeat\(6,/s);
   assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?\.blogList\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,/s);
+  assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?\.container\s*\{[^}]*overflow:\s*hidden;/s);
+  assert.match(homeStyles, /@media \(min-width: 1024px\)[\s\S]*?\.blogList\s*\{[^}]*min-height:\s*0;/s);
   assert.match(homeStyles, /@media \(min-width: 1200px\)[\s\S]*?grid-template-columns:\s*repeat\(4,/s);
   assert.match(homeStyles, /\.loading\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s);
   assert.match(cardStyles, /@media \(min-width: 1024px\)[\s\S]*?\.box\s*\{[^}]*width:\s*100%;/s);

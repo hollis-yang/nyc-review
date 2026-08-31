@@ -10,6 +10,11 @@
     "searchPlaceholder": "Search shops, locations...",
     "searchResults": "Search Results",
     "loading": "Loading...",
+    "loadFailed": "Couldn't load notes",
+    "retry": "Retry",
+    "noNewNotes": "No new notes on this page",
+    "continue": "Continue loading",
+    "empty": "No notes yet",
     "viewDetails": "View details"
   },
   "login": {

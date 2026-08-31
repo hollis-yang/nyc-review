@@ -10,6 +10,11 @@
     "searchPlaceholder": "请输入商户名、地点",
     "searchResults": "搜索结果",
     "loading": "加载中...",
+    "loadFailed": "笔记加载失败",
+    "retry": "重试",
+    "noNewNotes": "这一页没有新笔记",
+    "continue": "继续加载",
+    "empty": "暂无笔记",
     "viewDetails": "查看详情"
   },
   "login": {

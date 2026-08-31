@@ -52,6 +52,11 @@
   text-align: center;
 }
 
+.createDesktopIcon,
+.createText {
+  display: none;
+}
+
 .active {
   color: #ff6633;
 }
@@ -116,8 +121,20 @@
     background: #fff1eb;
   }
 
-  .createBox {
-    color: var(--color-primary);
+  .createMobileIcon {
+    display: none;
+  }
+
+  .createDesktopIcon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .createText {
+    display: block;
   }
 }
 
@@ -150,15 +167,4 @@
     white-space: nowrap;
   }
 
-  .addBtn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .createBox {
-    width: 56px;
-    align-self: center;
-    justify-content: center;
-    padding: 0;
-  }
 }
