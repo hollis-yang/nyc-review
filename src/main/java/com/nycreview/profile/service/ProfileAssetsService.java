@@ -165,20 +165,32 @@ public class ProfileAssetsService {
     private List<ProfileAssetsResponse.FlashSaleReminder> reminders(Long userId) {
         return jdbcTemplate.query(
                 "SELECT r.id, r.voucher_id, v.shop_id, v.title AS voucher_title, s.name AS shop_name, " +
-                        "r.remind_at, sv.begin_time, r.status FROM tb_seckill_reminder r " +
+                        "r.remind_at, sv.begin_time, sv.end_time, r.status, " +
+                        "EXISTS (SELECT 1 FROM tb_voucher_order o WHERE o.user_id = r.user_id " +
+                        "AND o.voucher_id = r.voucher_id AND o.status IN (1, 2, 3)) AS purchased " +
+                        "FROM tb_seckill_reminder r " +
                         "JOIN tb_voucher v ON v.id = r.voucher_id LEFT JOIN tb_shop s ON s.id = v.shop_id " +
                         "LEFT JOIN tb_seckill_voucher sv ON sv.voucher_id = r.voucher_id " +
                         "WHERE r.user_id = ? ORDER BY r.remind_at ASC LIMIT 100",
-                (rs, row) -> new ProfileAssetsResponse.FlashSaleReminder(
-                        rs.getLong("id"),
-                        rs.getLong("voucher_id"),
-                        rs.getObject("shop_id", Long.class),
-                        rs.getString("voucher_title"),
-                        rs.getString("shop_name"),
-                        localDateTime(rs.getTimestamp("remind_at")),
-                        localDateTime(rs.getTimestamp("begin_time")),
-                        rs.getString("status")
-                ),
+                (rs, row) -> {
+                    LocalDateTime remindAt = localDateTime(rs.getTimestamp("remind_at"));
+                    return new ProfileAssetsResponse.FlashSaleReminder(
+                            rs.getLong("id"),
+                            rs.getLong("voucher_id"),
+                            rs.getObject("shop_id", Long.class),
+                            rs.getString("voucher_title"),
+                            rs.getString("shop_name"),
+                            remindAt,
+                            localDateTime(rs.getTimestamp("begin_time")),
+                            effectiveReminderStatus(
+                                    rs.getBoolean("purchased"),
+                                    localDateTime(rs.getTimestamp("end_time")),
+                                    remindAt,
+                                    rs.getString("status"),
+                                    LocalDateTime.now()
+                            )
+                    );
+                },
                 userId
         );
     }
@@ -231,5 +243,19 @@ public class ProfileAssetsService {
 
     private static LocalDateTime localDateTime(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toLocalDateTime();
+    }
+
+    static String effectiveReminderStatus(
+            boolean purchased,
+            LocalDateTime saleEndsAt,
+            LocalDateTime remindAt,
+            String storedStatus,
+            LocalDateTime now
+    ) {
+        if (purchased) return "PURCHASED";
+        if ("CANCELLED".equalsIgnoreCase(storedStatus)) return "CANCELLED";
+        if (saleEndsAt != null && !saleEndsAt.isAfter(now)) return "EXPIRED";
+        if (remindAt != null && !remindAt.isAfter(now)) return "SENT";
+        return storedStatus == null || storedStatus.isBlank() ? "PENDING" : storedStatus;
     }
 }

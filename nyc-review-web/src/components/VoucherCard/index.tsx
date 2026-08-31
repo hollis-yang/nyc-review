@@ -16,6 +16,7 @@ export interface VoucherData {
   stock: number;
   beginTime: string;
   endTime: string;
+  validDays?: number;
   sourceType?: string;
 }
 
@@ -98,6 +99,9 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
       <div className={styles.left}>
         <div className={styles.title}>{v.title}</div>
         <div className={styles.subtitle}>{v.subTitle}</div>
+        <div className={styles.validity}>
+          {t('voucherCard.validityDays', { n: v.validDays ?? 30 })}
+        </div>
         <div className={styles.price}>
           <div>$ {price}</div>
           <span>{discount}{t("voucherCard.off")}</span>

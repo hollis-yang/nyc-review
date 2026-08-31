@@ -189,24 +189,24 @@
 
 .examples {
   margin: 9px 0 12px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
 
-.examples::-webkit-scrollbar { display: none; }
-
 .examples button {
-  max-width: 220px;
-  flex: none;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   border: 1px solid #eee;
   border-radius: 999px;
   padding: 6px 9px;
+  display: block;
   color: #777;
   background: #fff;
   font-size: 10px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

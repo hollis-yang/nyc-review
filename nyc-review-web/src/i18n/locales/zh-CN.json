@@ -120,6 +120,8 @@
     "reminderStatus": {
       "pending": "待提醒",
       "sent": "已提醒",
+      "purchased": "已抢购",
+      "expired": "已过期",
       "cancelled": "已取消"
     }
   },
@@ -398,6 +400,7 @@
     "off": "折",
     "month": "月",
     "day": "日",
+    "validityDays": "购买后 {{n}} 天内有效",
     "timeFormat": "{m}月{d}日 {h}:{min} ~ {eh}:{emin}"
   },
   "aiGuide": {

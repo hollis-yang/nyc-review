@@ -33,4 +33,23 @@ class CouponExpirationContractTest {
             assertTrue(!expiration.isAfter(acquired.plusDays(183)));
         }
     }
+
+    @Test
+    void configuredVoucherValidityIsUsedForNewOrders() {
+        LocalDateTime acquired = LocalDateTime.of(2026, 8, 31, 12, 0);
+        assertTrue(VoucherOrderServiceImpl.expirationFor(42L, 45, acquired)
+                .isEqual(acquired.plusDays(45)));
+    }
+
+    @Test
+    void voucherMigrationPublishesValidityForShopDetail() throws IOException {
+        try (InputStream stream = getClass().getClassLoader()
+                .getResourceAsStream("db/migrations/019_voucher_validity.sql")) {
+            assertNotNull(stream);
+            String sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(sql.contains("valid_days"));
+            assertTrue(sql.contains("7 + MOD"));
+            assertTrue(sql.contains("DEFAULT 30"));
+        }
+    }
 }

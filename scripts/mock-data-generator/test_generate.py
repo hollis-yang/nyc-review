@@ -59,6 +59,14 @@ VOUCHER_OVERLAY = importlib.util.module_from_spec(VOUCHER_OVERLAY_SPEC)
 assert VOUCHER_OVERLAY_SPEC and VOUCHER_OVERLAY_SPEC.loader
 sys.modules[VOUCHER_OVERLAY_SPEC.name] = VOUCHER_OVERLAY
 VOUCHER_OVERLAY_SPEC.loader.exec_module(VOUCHER_OVERLAY)
+DEMO_ASSETS_V2_PATH = MODULE_PATH.with_name("build_demo_assets_v2_overlay.py")
+DEMO_ASSETS_V2_SPEC = importlib.util.spec_from_file_location(
+    "build_demo_assets_v2_overlay_test", DEMO_ASSETS_V2_PATH
+)
+DEMO_ASSETS_V2 = importlib.util.module_from_spec(DEMO_ASSETS_V2_SPEC)
+assert DEMO_ASSETS_V2_SPEC and DEMO_ASSETS_V2_SPEC.loader
+sys.modules[DEMO_ASSETS_V2_SPEC.name] = DEMO_ASSETS_V2
+DEMO_ASSETS_V2_SPEC.loader.exec_module(DEMO_ASSETS_V2)
 USER_SOCIAL_OVERLAY_PATH = MODULE_PATH.with_name("build_user_social_overlay.py")
 USER_SOCIAL_OVERLAY_SPEC = importlib.util.spec_from_file_location(
     "build_user_social_overlay_test", USER_SOCIAL_OVERLAY_PATH
@@ -352,6 +360,7 @@ class GenerateDatasetTest(unittest.TestCase):
         self.assertEqual(60, len(standard_shop_ids))
         self.assertEqual(30, len(seckill_shop_ids))
         self.assertFalse(standard_shop_ids & seckill_shop_ids)
+        self.assertTrue(all(7 <= voucher["validDays"] <= 183 for voucher in vouchers))
 
     def test_voucher_overlay_builds_guarded_non_destructive_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -375,6 +384,21 @@ class GenerateDatasetTest(unittest.TestCase):
             self.assertNotIn("DELETE FROM `tb_voucher`", sql)
             self.assertEqual(3, sum(command[0] == b"DEL" for command in commands))
             self.assertEqual(11, sum(command[0] == b"SETNX" for command in commands))
+
+    def test_demo_assets_v2_restores_visible_likers_and_expired_coupons(self):
+        sql = DEMO_ASSETS_V2.build_sql("fixture-v1", 1)
+        commands = parse_resp_commands(DEMO_ASSETS_V2.build_resp([
+            {"id": 3078, "userId": 851},
+        ]))
+
+        self.assertIn("ranked.rn <= 10", sql)
+        self.assertIn("CURRENT_TIMESTAMP - INTERVAL 28 DAY", sql)
+        self.assertIn("CURRENT_TIMESTAMP - INTERVAL 14 DAY", sql)
+        self.assertIn("CURRENT_TIMESTAMP - INTERVAL 3 DAY", sql)
+        self.assertEqual(1, len(commands))
+        self.assertEqual(b"ZADD", commands[0][0])
+        self.assertEqual(b"blog:liked:3078", commands[0][1])
+        self.assertEqual(8, len(commands[0]))
 
     def test_real_data_version_is_scoped_by_profile_snapshot_and_seed(self):
         snapshot_sha = "a" * 64

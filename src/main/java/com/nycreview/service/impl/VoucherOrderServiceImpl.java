@@ -109,7 +109,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrder.setUserId(userId);
         voucherOrder.setVoucherId(voucherId);
         voucherOrder.setCreateTime(acquiredAt);
-        voucherOrder.setExpiresAt(expirationFor(orderId, acquiredAt));
+        voucherOrder.setExpiresAt(expirationFor(voucherId, voucher.getValidDays(), acquiredAt));
         save(voucherOrder);
         return Result.ok(orderId);
     }
@@ -141,7 +141,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 ? LocalDateTime.now()
                 : voucherOrder.getCreateTime();
         voucherOrder.setCreateTime(acquiredAt);
-        voucherOrder.setExpiresAt(expirationFor(voucherOrder.getId(), acquiredAt));
+        Voucher voucher = voucherService.getById(voucherOrder.getVoucherId());
+        voucherOrder.setExpiresAt(expirationFor(
+                voucherOrder.getVoucherId(),
+                voucher == null ? null : voucher.getValidDays(),
+                acquiredAt
+        ));
         if (!save(voucherOrder)) {
             throw new IllegalStateException("Failed to save the flash-sale order");
         }
@@ -163,8 +168,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(stockKey));
     }
 
-    static LocalDateTime expirationFor(long orderId, LocalDateTime acquiredAt) {
-        int validityDays = 7 + Math.floorMod(Long.hashCode(orderId), 177);
+    static LocalDateTime expirationFor(long voucherId, LocalDateTime acquiredAt) {
+        return expirationFor(voucherId, null, acquiredAt);
+    }
+
+    static LocalDateTime expirationFor(long voucherId, Integer configuredDays, LocalDateTime acquiredAt) {
+        int validityDays = configuredDays != null && configuredDays >= 7 && configuredDays <= 183
+                ? configuredDays
+                : 7 + Math.floorMod(Long.hashCode(voucherId), 177);
         return acquiredAt.plusDays(validityDays);
     }
 }

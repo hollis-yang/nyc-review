@@ -467,12 +467,12 @@ def build_mysql_sql(
     )
     voucher_columns = (
         (
-            "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status",
+            "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status", "valid_days",
             "source_type", "data_version", "create_time", "update_time",
         )
         if real_only
         else (
-            "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status",
+            "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value", "type", "status", "valid_days",
             "create_time", "update_time",
         )
     )
@@ -482,7 +482,7 @@ def build_mysql_sql(
         (
             (
                 item["id"], item["shopId"], item["title"], item["subTitle"], item["rules"],
-                item["payValueCents"], item["actualValueCents"], item["type"], item["status"],
+                item["payValueCents"], item["actualValueCents"], item["type"], item["status"], item["validDays"],
                 *((item["sourceType"], item["dataVersion"]) if real_only else ()),
                 FIXED_TIME, FIXED_TIME,
             )

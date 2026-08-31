@@ -65,5 +65,8 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         // bundle. Public API callers cannot label a voucher as SYNTHETIC.
         voucher.setSourceType(ContentSourceTypes.USER_SUBMITTED);
         voucher.setDataVersion(null);
+        if (voucher.getValidDays() == null || voucher.getValidDays() < 7 || voucher.getValidDays() > 183) {
+            voucher.setValidDays(30);
+        }
     }
 }

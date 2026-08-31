@@ -66,6 +66,11 @@ public class Voucher implements Serializable {
     private Integer status;
 
     /**
+     * Number of days the coupon remains valid after it is acquired.
+     */
+    private Integer validDays;
+
+    /**
      * Voucher provenance, such as SYNTHETIC for seeded demo promotions.
      */
     private String sourceType;

@@ -120,6 +120,8 @@
     "reminderStatus": {
       "pending": "Pending",
       "sent": "Sent",
+      "purchased": "Purchased",
+      "expired": "Expired",
       "cancelled": "Cancelled"
     }
   },
@@ -398,6 +400,7 @@
     "off": "% off",
     "month": "",
     "day": "",
+    "validityDays": "Valid for {{n}} days after purchase",
     "timeFormat": "{m}/{d} {h}:{min} - {eh}:{emin}"
   },
   "aiGuide": {

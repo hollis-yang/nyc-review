@@ -152,7 +152,7 @@ def build_overlay(
     ]
     voucher_columns = (
         "id", "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value",
-        "type", "status", "source_type", "data_version", "create_time", "update_time",
+        "type", "status", "valid_days", "source_type", "data_version", "create_time", "update_time",
     )
     sql_lines.extend(
         _upsert_statements(
@@ -161,14 +161,14 @@ def build_overlay(
             (
                 (
                     item["id"], item["shopId"], item["title"], item["subTitle"], item["rules"],
-                    item["payValueCents"], item["actualValueCents"], item["type"], 1,
+                    item["payValueCents"], item["actualValueCents"], item["type"], 1, item["validDays"],
                     "SYNTHETIC", data_version, FIXED_TIME, FIXED_TIME,
                 )
                 for item in vouchers
             ),
             (
                 "shop_id", "title", "sub_title", "rules", "pay_value", "actual_value",
-                "type", "status", "source_type", "data_version", "update_time",
+                "type", "status", "valid_days", "source_type", "data_version", "update_time",
             ),
         )
     )

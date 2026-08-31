@@ -571,6 +571,7 @@ CREATE TABLE `tb_voucher` (
   `actual_value` bigint NOT NULL COMMENT '抵扣金额',
   `type` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '0,普通券；1,秒杀券',
   `status` tinyint unsigned NOT NULL DEFAULT '1' COMMENT '1,上架; 2,下架; 3,过期',
+  `valid_days` smallint unsigned NOT NULL DEFAULT '30' COMMENT 'Days valid after acquisition',
   `source_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'LEGACY',
   `data_version` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

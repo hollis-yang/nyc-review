@@ -1496,6 +1496,7 @@ def generate_vouchers(
                 "actualValueCents": actual,
                 "type": 0,
                 "status": 1,
+                "validDays": rng.choice([14, 30, 45, 60, 90, 120, 180]),
                 "sourceType": "SYNTHETIC",
                 "dataVersion": shop["dataVersion"],
             }
@@ -1514,6 +1515,7 @@ def generate_vouchers(
                 "actualValueCents": actual,
                 "type": 1,
                 "status": 1,
+                "validDays": rng.choice([14, 30, 45, 60, 90, 120, 180]),
                 "sourceType": "SYNTHETIC",
                 "dataVersion": shop["dataVersion"],
             }
