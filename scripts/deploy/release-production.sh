@@ -17,6 +17,10 @@ Run this command on the Mac after all three GitHub Actions image jobs succeed.
 It packages deployment files and declared database changes, uploads them to
 Lightsail, applies each database change once, and deploys the matching images.
 
+Uncommitted work outside the local release-package inputs is allowed. Committed
+release inputs must still match the commit; manifest-declared ignored database
+payloads remain supported.
+
 Optional overrides:
   LIGHTSAIL_SSH_KEY       SSH private key path
   LIGHTSAIL_SSH_TARGET    SSH target (default: ubuntu@34.194.141.58)
@@ -59,8 +63,36 @@ if [[ "$head_sha" != "$raw_sha" ]]; then
   echo "Requested:    $raw_sha" >&2
   exit 1
 fi
-if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
-  echo "The repository has uncommitted or untracked files. Commit them before releasing." >&2
+
+release_input_paths=(
+  compose.production.yml
+  .env.production.example
+  deploy/production
+  scripts/deploy/release-production.sh
+  scripts/deploy/package-production-bundle.sh
+  scripts/deploy/package-database-release.sh
+  scripts/deploy/check-production-config.sh
+  scripts/deploy/apply-production-release.sh
+  scripts/deploy/update-production.sh
+  src/main/resources/db
+)
+
+# A manifest may declare a tracked SQL/RESP file outside the standard database
+# directory. Include every declared path in the dirty check. Files intentionally
+# ignored by Git under data/generated remain supported and are packaged locally.
+while IFS=$'\t' read -r change_id _kind sql_path redis_path _extra; do
+  [[ -z "$change_id" || "$change_id" == \#* ]] && continue
+  for release_path in "$sql_path" "$redis_path"; do
+    [[ -z "$release_path" || "$release_path" == "-" ]] && continue
+    release_input_paths+=(":(literal)$release_path")
+  done
+done < deploy/production/database-release.tsv
+
+release_input_status="$(git status --porcelain --untracked-files=normal -- "${release_input_paths[@]}")"
+if [[ -n "$release_input_status" ]]; then
+  echo "Local release-package inputs have uncommitted or untracked files." >&2
+  echo "Commit these release inputs before deploying; unrelated working-tree changes are allowed." >&2
+  printf '%s\n' "$release_input_status" >&2
   exit 1
 fi
 origin_sha="$(git rev-parse origin/main)"

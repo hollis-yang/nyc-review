@@ -32,12 +32,17 @@ cd /Users/hollisyang/Desktop/hm-dianping
 
 这条命令必须在 Mac 本地仓库中执行，不是在 AWS 浏览器 SSH 中执行。它会：
 
-1. 确认 SHA 就是当前 `origin/main` commit，且仓库没有未提交文件；
+1. 确认 SHA 同时是当前本地 `HEAD` 和 `origin/main` commit；其他模块可以保留
+   未提交或未跟踪文件，但进入本地发布包的 Compose、部署脚本、数据库清单和
+   数据库迁移文件必须已提交；
 2. 打包生产 Compose、部署脚本和数据库发布清单；
 3. 把被 Git 忽略但列入清单的 SQL/Redis 数据文件一起上传 Lightsail；
 4. 暂停入口并等待秒杀订单队列清空；
 5. 只执行服务器尚未记录过的数据库变更；
 6. 拉取 `sha-<完整SHA>` 的 Spring、Agent、Web 镜像并等待全部健康。
+
+清单明确列出的 `data/generated/...` 文件是上述提交要求的有意例外：它们继续
+从 Mac 本地打包，因此发布前仍需确认生成结果是本次准备上线的版本。
 
 默认连接信息已经写入脚本：
 
