@@ -2,6 +2,8 @@
 
 FastAPI + LangGraph 服务，负责单 Agent/多 Agent 编排、RAG、人工审批和 Eval。Spring Boot 仍是业务事实来源；本服务不得直连业务表执行任意查询或写入。
 
+RAG 的下一阶段实施计划见 [`RAG_OPTIMIZATION_ROADMAP.md`](./RAG_OPTIMIZATION_ROADMAP.md)，覆盖真实多语言 Embedding、全局 Hybrid 候选召回、受约束 Multi-Query、Cross-Encoder 重排、消融评测与生产回滚。
+
 ## 本地运行
 
 ```bash
