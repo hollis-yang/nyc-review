@@ -270,13 +270,13 @@ agent-service/evals/rag_v2/
 
 ### 5.7 M0 完成记录（2026-08-31）
 
-实现与运行说明见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)，冻结结果见 [`evals/rag_v2/baseline.hash64.local.json`](./evals/rag_v2/baseline.hash64.local.json)。当前 Hash/64 local-disk baseline：dev `Recall@10=59.62%`、`nDCG@10=76.28%`、`P95=9.91s`；policy holdout `Recall@10=71.14%`、`nDCG@10=79.79%`、`P95=6.82s`。两个 split 的证据覆盖率均为 100%，security/version/source/owner mismatch、重复 merchant ID 与第 3 个及以后同品牌集中均为 0；同品牌第 2 个结果分别出现 3/4 次，hard-negative final-return rate 为 2.66%/2.78%。完整重复运行 dev 后，原始 quality/integrity summary 与基线逐字段一致，relative gate 通过，重复 `P95=8.02s`。
+实现与运行说明见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)，冻结结果见 [`evals/rag_v2/baseline.hash64.local.json`](./evals/rag_v2/baseline.hash64.local.json)。当前 Hash/64 local-disk baseline：dev `Recall@10=59.10%`、`nDCG@10=75.44%`、`P95=6.33s`；policy holdout `Recall@10=71.11%`、`nDCG@10=79.36%`、`P95=8.71s`。两个 split 的证据覆盖率均为 100%，security/version/source/owner mismatch、重复 merchant ID 与第 3 个及以后同品牌集中均为 0；同品牌第 2 个结果分别出现 3/4 次，hard-negative final-return rate 为 2.50%/2.99%。完整重复 dev 后，全部非延迟 summary 逐字段一致；重复 `P95=9.39s`、为基线的 1.483×，因此 1.25× local-disk 延迟门禁如实失败，正式性能基线留待 Qdrant Server。
 
 硬约束满足率分别为 94.63% 和 95.63%，尚未达到 99% 暂定目标；失败集中在营业时间场景，证明当前 structured candidate service 尚未执行 `visit_time`。M0 保留该失败信号，后续阶段不得通过删除用例或放宽 oracle 隐藏缺口。
 
 当前服务只能可靠拆出 Structured Search、Candidate Ranking、Evidence Retrieval、Embedding wrapper 和 Total 外层耗时；Query Planning、Qdrant、Fusion、Rewrite、learned Reranker 与 provider token/cost 在报告中明确标为 unavailable/disabled。
 
-评测边界已写入 suite contract：dev/test 的 intent 与 query 无重叠，但有 12 个 judged merchant（9 个 binary-relevant）重叠；语言 slice 不是同 intent 的成对翻译对照；`out_of_dictionary_paraphrase` 记录 phrase-bank 来源，并不保证规则完全未识别。冻结 baseline 生成于带并行 session 修改的 dirty worktree，manifest 已记录当时 Git SHA 和该事实。
+评测边界已写入 suite contract：dev/test 的 intent 与 query 无重叠，但有 12 个 judged merchant（9 个 binary-relevant）重叠；语言 slice 不是同 intent 的成对翻译对照；`out_of_dictionary_paraphrase` 记录 phrase-bank 来源，并不保证规则完全未识别。最终报告对应提交 `6f15277`，14 个 agent/eval 源文件均为 clean 并有逐文件 SHA；全仓库 dirty 仅来自并行 session 的前端文件。
 
 ## 6. M1：真实多语言 Embedding 与索引版本化
 

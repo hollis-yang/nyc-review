@@ -146,10 +146,22 @@ def test_rag_v2_baseline_manifest_tracks_the_frozen_splits():
         split="dev",
     )
     assert normalized is not None
-    assert normalized["summary"]["overall"]["hardNegativeReturnRate"] == 0.026563
+    assert normalized["summary"]["overall"]["hardNegativeReturnRate"] == 0.025
     assert normalized["run"]["latencyProfileFingerprint"] == baseline["splits"]["dev"][
         "latencyProfileFingerprint"
     ]
+    suite = _read_suite("dev")
+    gate = json.loads((RAG_V2_DIRECTORY / "quality_gate.json").read_text(encoding="utf-8"))
+    args = build_parser().parse_args(["--split", "dev", "--reuse-index"])
+    self_check = evaluate_gate(
+        normalized["summary"],
+        gate,
+        baseline=normalized,
+        suite=suite,
+        resolved_config=_resolved_config(args, suite),
+        partial=False,
+    )
+    assert self_check["passed"] is True
     for split in ("dev", "test"):
         args = build_parser().parse_args(["--split", split, "--reuse-index"])
         config = _resolved_config(args, _read_suite(split))

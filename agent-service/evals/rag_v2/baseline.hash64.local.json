@@ -3,23 +3,30 @@
   "status": "frozen-m0-baseline",
   "recordedAt": "2026-08-31",
   "sourceGit": {
-    "sha": "74aabf134f15fd9a7a665211aae7ea48839b7fc3",
+    "sha": "6f152772e15be80624396598d83afc453919074c",
     "dirty": true,
-    "note": "Full baseline reports were generated before the scoped M0 commit while concurrent sessions had unrelated worktree changes; a full dev repeat produced an exact non-latency summary match."
+    "scopedSourceDirty": false,
+    "scopedSourceSha256": "4ba10cd0a5b57e782b7642678000e0159b0a0d5bcb7ac462578c7c4374c01583",
+    "scopedSourceFileCount": 14,
+    "note": "Unrelated nyc-review-web files changed concurrently, but all 14 agent/eval source files used by the reports exactly match commit 6f15277 and were clean."
   },
-  "postRunDerivations": {
-    "metricFields": [
-      "duplicateBrandCount",
-      "duplicateBrandRate",
-      "hardNegativeReturnCount",
-      "hardNegativeReturnRate"
-    ],
-    "metricMethod": "Deterministically recomputed from the frozen full reports' orderedCandidates and the unchanged case hardNegatives; the dev repeat produced the same four values.",
-    "fingerprintFields": [
-      "suiteContractSha256",
-      "latencyProfileFingerprint"
-    ],
-    "fingerprintMethod": "Recomputed after the contract and latency-profile coverage fixes from the unchanged suites and resolvedConfig snapshots."
+  "reports": {
+    "indexSmoke": {
+      "localPath": ".local/rag-v2-m0-final-index-smoke.json",
+      "sha256": "6f736599d93fad3f23d4d87f9188b49e8c9cce12d6f270a35eaec71c9c1cbca7"
+    },
+    "dev": {
+      "localPath": ".local/rag-v2-m0-final-dev.json",
+      "sha256": "535f4eae65aa0c853695d791f6754186287e513826c0f95b36fd16736de98e2f"
+    },
+    "test": {
+      "localPath": ".local/rag-v2-m0-final-test.json",
+      "sha256": "73bcd50cae3b400ede05da5c9c8135d673c156579bbfe60c5a8eaaf705985a3f"
+    },
+    "devRepeat": {
+      "localPath": ".local/rag-v2-m0-final-dev-repeat.json",
+      "sha256": "fdf1e26326c91fe8c50474db11d5c41ae812fbe8b0c21c29720520a51ba6ef04"
+    }
   },
   "corpus": {
     "profile": "p13-full",
@@ -49,14 +56,20 @@
     "concurrency": 1
   },
   "index": {
+    "localPath": ".local/qdrant-rag-v2-m0-final",
     "collection": "hmdp_content_v2",
-    "manifestFingerprint": "10c0cdb1018ffb8750f5dc74053a48fb187fedacc19f4432005643e6ace0d93d",
+    "manifestFingerprint": "f28b93d20ca31561c8bd25c3f7569ece478508363fa6bce19a9f49b75690e9f7",
+    "manifestFileSha256": "cf2076e26e73e2d2980dda8ebe3aac7af648f539874482dd0436ee52d6a7a4de",
     "vectorDimensions": 64,
-    "collectionBytes": 691516006,
+    "schema": {
+      "dense": "Cosine",
+      "sparse": "idf"
+    },
+    "collectionBytes": 691098214,
     "initialSyncObservation": {
-      "durationMs": 356796.854291,
-      "upserted": 140000,
-      "unchanged": 5000,
+      "durationMs": 102278.105208,
+      "upserted": 145000,
+      "unchanged": 0,
       "deleted": 0
     }
   },
@@ -69,24 +82,24 @@
       "latencyProfileFingerprint": "6df9816b72b90c5ee92b6b322465280e6690375277b239bfd0a3bd892033ae4e",
       "qualityGatePassed": true,
       "overall": {
-        "recallAt5": 0.350392,
-        "recallAt10": 0.596205,
-        "precisionAt5": 0.7975,
-        "ndcgAt5": 0.695699,
-        "ndcgAt10": 0.762753,
-        "mrrAt10": 0.89625,
+        "recallAt5": 0.354033,
+        "recallAt10": 0.591043,
+        "precisionAt5": 0.8,
+        "ndcgAt5": 0.696608,
+        "ndcgAt10": 0.754361,
+        "mrrAt10": 0.896577,
         "hardConstraintSatisfaction": 0.94625,
         "evidenceCoverage": 1.0,
         "duplicateMerchantRate": 0.0,
         "duplicateBrandRate": 0.00375,
         "excessiveBrandRate": 0.0,
-        "hardNegativeReturnRate": 0.026563,
+        "hardNegativeReturnRate": 0.025,
         "unjudgedReturnedRate": 0.0
       },
       "languageNdcgAt10": {
-        "en": 0.755355,
-        "zh": 0.753068,
-        "mixed": 0.821401
+        "en": 0.734473,
+        "zh": 0.762191,
+        "mixed": 0.810424
       },
       "integrity": {
         "securityLeakageCount": 0,
@@ -95,21 +108,25 @@
         "citationExternalIdMismatchCount": 0,
         "citationSourceMismatchCount": 0,
         "hardConstraintViolationCount": 43,
+        "hardConstraintUnknownCount": 0,
         "duplicateMerchantCount": 0,
         "duplicateBrandCount": 3,
-        "hardNegativeReturnCount": 15,
-        "excessiveBrandCount": 0
+        "hardNegativeReturnCount": 14,
+        "excessiveBrandCount": 0,
+        "emptyResultCount": 0
       },
       "latencyMs": {
-        "totalP50": 5466.6485,
-        "totalP95": 9905.061833,
-        "totalP99": 13242.352042,
-        "embeddingP95": 0.267874
+        "totalP50": 5106.820875,
+        "totalP95": 6330.275583,
+        "totalP99": 8223.99725,
+        "embeddingP95": 0.084708
       },
       "repeatVerification": {
         "qualityAndIntegrityExactMatch": true,
-        "relativeGatePassed": true,
-        "repeatTotalP95Ms": 8016.127125
+        "qualityRegressionChecksPassed": true,
+        "relativeGatePassed": false,
+        "failure": "local-disk total P95 ratio 1.483424 exceeded the frozen 1.25 limit",
+        "repeatTotalP95Ms": 9390.4805
       }
     },
     "test": {
@@ -121,24 +138,24 @@
       "latencyProfileFingerprint": "bc1367e2c8958e9248b7537d5b9d87a1a08ccf1df3d302919af1aa1218955725",
       "qualityGatePassed": true,
       "overall": {
-        "recallAt5": 0.430738,
-        "recallAt10": 0.711366,
-        "precisionAt5": 0.81,
-        "ndcgAt5": 0.712393,
-        "ndcgAt10": 0.797863,
-        "mrrAt10": 0.95,
+        "recallAt5": 0.43352,
+        "recallAt10": 0.711149,
+        "precisionAt5": 0.82,
+        "ndcgAt5": 0.710278,
+        "ndcgAt10": 0.793558,
+        "mrrAt10": 0.925,
         "hardConstraintSatisfaction": 0.95625,
         "evidenceCoverage": 1.0,
         "duplicateMerchantRate": 0.0,
         "duplicateBrandRate": 0.005,
         "excessiveBrandRate": 0.0,
-        "hardNegativeReturnRate": 0.027827,
+        "hardNegativeReturnRate": 0.029911,
         "unjudgedReturnedRate": 0.0
       },
       "languageNdcgAt10": {
-        "en": 0.767247,
-        "zh": 0.818225,
-        "mixed": 0.859245
+        "en": 0.766489,
+        "zh": 0.810173,
+        "mixed": 0.851988
       },
       "integrity": {
         "securityLeakageCount": 0,
@@ -147,16 +164,18 @@
         "citationExternalIdMismatchCount": 0,
         "citationSourceMismatchCount": 0,
         "hardConstraintViolationCount": 35,
+        "hardConstraintUnknownCount": 0,
         "duplicateMerchantCount": 0,
         "duplicateBrandCount": 4,
-        "hardNegativeReturnCount": 15,
-        "excessiveBrandCount": 0
+        "hardNegativeReturnCount": 16,
+        "excessiveBrandCount": 0,
+        "emptyResultCount": 0
       },
       "latencyMs": {
-        "totalP50": 5262.466375,
-        "totalP95": 6821.109833,
-        "totalP99": 7566.803833,
-        "embeddingP95": 0.098458
+        "totalP50": 5172.305833,
+        "totalP95": 8711.036,
+        "totalP99": 9965.030459,
+        "embeddingP95": 0.109125
       }
     }
   },
@@ -168,7 +187,7 @@
     "Each split declares 466 pipeline-level hard negatives; 60 are in the structured candidate pool, so this is not a pure reranker hard-negative benchmark.",
     "The out_of_dictionary_paraphrase challenge label records phrase-bank provenance; some queries are recognized by current canonical tag rules.",
     "Duplicate merchant IDs and third-or-later same-brand concentration are zero; second same-brand branches occur 3 times on dev and 4 times on holdout.",
-    "Local-disk Qdrant latency is environment-specific; compare latency only with the same profile.",
+    "Local-disk Qdrant latency is not stable enough for the 1.25x P95 gate: the clean-source dev repeat was 1.483424x slower even though all non-latency summaries matched exactly.",
     "Business-hours constraints are measured but not enforced by the current structured candidate service."
   ]
 }

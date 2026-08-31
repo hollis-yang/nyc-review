@@ -174,7 +174,7 @@ RAG Eval v2 在保留 P12 回归的同时，增加 160 条冻结的英文、中�
 uv run python -m evals.rag_v2.run_eval \
   --split dev \
   --reuse-index \
-  --qdrant-location ./.local/qdrant-p13-v5-8b645404 \
+  --qdrant-location ./.local/qdrant-rag-v2-m0-final \
   --collection hmdp_content_v2 \
   --output ./.local/rag-v2-dev.json
 ```

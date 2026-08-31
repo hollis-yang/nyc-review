@@ -28,7 +28,7 @@ M0 不实现真实多语言 Embedding、LLM Query Rewrite、全局候选召回�
 - `1`：满足硬约束但没有命中语义偏好，是合法 fallback；
 - `0`：违反至少一个硬约束。
 
-Recall、Precision 和 MRR 以 `relevance >= 2` 作为二值相关阈值；nDCG 使用 `2^relevance - 1` 增益。重复 merchant 只在第一次出现时获得相关性增益，但重复位置仍占排名，避免通过重复结果刷高指标。
+Recall、Precision 和 MRR 以 `relevance >= 2` 作为二值相关阈值；Precision@5 固定以 5 为分母，nDCG 使用 `2^relevance - 1` 增益。重复 merchant 只在第一次出现时获得相关性增益，但重复位置仍占排名，避免通过重复结果刷高指标。
 
 这些标签由冻结的 P13 merchant attributes 确定性生成，`labelSource=deterministic-derived-merchant-attributes`，不是人工标注。正式对外声称“人工评测集”前仍需独立 adjudication。
 
@@ -41,7 +41,7 @@ uv run python -m evals.rag_v2.build_cases
 uv run pytest tests/test_rag_v2_eval.py tests/test_p12_retrieval.py
 ```
 
-Builder 绑定 `data/generated/nyc-real-p13-full` 的 `dataVersion` 与 `datasetSha256`。Runner 会校验 case SHA、覆盖顶层阈值/allowlist/fixture 的 suite contract SHA、adversarial fixture SHA、语言配额、相关性等级、hard negatives 和 corpus identity；任何未重新冻结契约的手工改动都会被拒绝。
+Builder 绑定 `data/generated/nyc-real-p13-full` 的 `dataVersion` 与 `datasetSha256`。Runner 会重算 manifest 声明的每个 corpus 文件 SHA，并校验 case SHA、覆盖顶层阈值/allowlist/fixture 的 suite contract SHA、完整 adversarial fixture contract SHA、语言配额、相关性等级和 hard negatives；任何 corpus 或评测契约漂移都会被拒绝。
 
 ## 运行基线
 
@@ -50,18 +50,18 @@ Builder 绑定 `data/generated/nyc-real-p13-full` 的 `dataVersion` 与 `dataset
 ```bash
 uv run python -m evals.rag_v2.run_eval \
   --split dev \
-  --qdrant-location ./.local/qdrant-p13-v5-8b645404 \
+  --qdrant-location ./.local/qdrant-rag-v2-m0-final \
   --collection hmdp_content_v2 \
   --output ./.local/rag-v2-dev.json
 ```
 
-同步成功后会在 Qdrant 路径旁写入脱敏的 index sidecar manifest。后续运行（包括 Hash provider）必须复用并严格匹配该 manifest；point count 和维度不足以证明 embedding identity：
+同步成功后会在 Qdrant 路径旁写入脱敏的 index sidecar manifest。它绑定 corpus、embedding、document-transform 源码指纹、Dense Cosine/Sparse IDF schema，以及远端模式下的 endpoint fingerprint。后续运行（包括 Hash provider）必须严格匹配；point count 和维度不足以证明索引身份：
 
 ```bash
 uv run python -m evals.rag_v2.run_eval \
   --split dev \
   --reuse-index \
-  --qdrant-location ./.local/qdrant-p13-v5-8b645404 \
+  --qdrant-location ./.local/qdrant-rag-v2-m0-final \
   --collection hmdp_content_v2 \
   --output ./.local/rag-v2-dev.json \
   --summary-output ./.local/rag-v2-dev-summary.json
@@ -73,13 +73,13 @@ uv run python -m evals.rag_v2.run_eval \
 uv run python -m evals.rag_v2.run_eval \
   --split dev \
   --reuse-index \
-  --qdrant-location ./.local/qdrant-p13-v5-8b645404 \
+  --qdrant-location ./.local/qdrant-rag-v2-m0-final \
   --collection hmdp_content_v2 \
   --baseline-report evals/rag_v2/baseline.hash64.local.json \
   --output ./.local/rag-v2-candidate.json
 ```
 
-正式冻结候选方案后才运行一次 `--split test`。`--limit-cases` 只用于 smoke test；部分运行会输出指标，但不会执行质量门禁。
+正式冻结候选方案后才运行一次 `--split test`。`--limit-cases` 只用于 smoke test；部分运行会输出指标，但不会执行质量门禁，也会被 baseline loader 明确拒绝。Baseline 必须是完整、case count 匹配、带 latency profile 且通过自身门禁的 full/summary report，或仓库内 compact manifest。
 
 ## 指标和报告
 
@@ -96,15 +96,15 @@ Query Planning、Qdrant、Fusion 暂时无法从现有服务接口中独立拆�
 
 ## M0 Hash/64 本地基线
 
-冻结配置为 P13 full、145,000 文档、Hash v1/64 维、rules-v1、candidate-filtered retrieval、heuristic multi-signal ranking、Top 10、sequential local-disk Qdrant。精确数值和 SHA 见 `baseline.hash64.local.json`。新增的 brand 与 hard-negative 字段由冻结 full report 的 `orderedCandidates` 和未变化的 cases 确定性回算，provenance 也记录在 manifest 中。
+冻结配置为 P13 full、145,000 文档、Hash v1/64 维、rules-v1、candidate-filtered retrieval、heuristic multi-signal ranking、Top 10、sequential local-disk Qdrant。隔离索引首次构建 145,000 条文档用时 102.28s，精确数值、报告 SHA 和源码指纹见 `baseline.hash64.local.json`；brand 与 hard-negative 字段均由最终 full report 原生输出。
 
 | Split | Recall@10 | Precision@5 | nDCG@10 | MRR@10 | Hard constraints | Evidence | P95 total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Dev | 59.62% | 79.75% | 76.28% | 89.63% | 94.63% | 100% | 9.91 s |
-| Policy holdout | 71.14% | 81.00% | 79.79% | 95.00% | 95.63% | 100% | 6.82 s |
+| Dev | 59.10% | 80.00% | 75.44% | 89.66% | 94.63% | 100% | 6.33 s |
+| Policy holdout | 71.11% | 82.00% | 79.36% | 92.50% | 95.63% | 100% | 8.71 s |
 
-两个 split 的 security leakage、version/source/owner mismatch、未标注结果、重复 merchant ID 与第 3 个及以后同品牌集中均为 0。dev/test 各有 15 个 hard negative 出现在最终结果中，macro return rate 分别为 2.66%/2.78%；同品牌第 2 个分店分别出现 3/4 次。硬约束没有达到路线图的 99% 目标，原因被定位到 `hours_time_boundary`：当前 `GeneratedNycShopToolService` 接受 `visit_time`，但尚未用营业时间过滤候选。M0 将它保留为显式能力缺口，而不是放宽或删除测试。
+两个 split 的 security leakage、version/source/owner mismatch、未标注结果、重复 merchant ID 与第 3 个及以后同品牌集中均为 0。dev/test 分别有 14/16 个 hard negative 出现在最终结果中，macro return rate 为 2.50%/2.99%；同品牌第 2 个分店分别出现 3/4 次。硬约束没有达到路线图的 99% 目标，原因被定位到 `hours_time_boundary`：当前 `GeneratedNycShopToolService` 接受 `visit_time`，但尚未用营业时间过滤候选。M0 将它保留为显式能力缺口，而不是放宽或删除测试。
 
-相同配置完整重复运行 dev 后，除 wall-clock latency 外的全部 quality/integrity summary 字段机器比对零差异；relative gate 通过，重复 P95 为 8.02 s。由此冻结质量可复现性，延迟仍按相同 profile 的 1.25 倍规则评估。
+相同配置完整重复运行 dev 后，`overall/byLanguage/byScenario/integrity/requestCounts` 逐字段零差异，证明质量结果可复现；但 P95 从 6.33s 波动到 9.39s（1.483×），因此 1.25× 相对延迟门禁如实失败。M0 不事后放宽阈值，本地延迟只保留为观测值。
 
-本地 Qdrant 对 145k collection 有明确性能警告，延迟只能和包含 embedding、retrieval、feature 与执行配置的同一 `latencyProfileFingerprint` 比较。生产性能结论应在 Qdrant Server 上重新冻结。冻结全量报告记录的 Git SHA 为 `74aabf134f15fd9a7a665211aae7ea48839b7fc3`，生成时 worktree 因并行 session 为 dirty；该 provenance 已如实写入 manifest，不能把它描述为 clean-commit benchmark。
+本地 Qdrant 对 145k collection 有明确性能警告；即使完整 `latencyProfileFingerprint` 相同，本次重复也证明 local-disk 噪声不足以支撑正式性能门禁，生产 P95 必须在 Qdrant Server 上重新冻结。所有最终报告对应 Git `6f152772e15be80624396598d83afc453919074c`，14 个 agent/eval source 文件均为 clean，scoped digest 为 `4ba10cd0...`；全仓库 dirty 仅来自并行 session 的 `nyc-review-web` 文件，manifest 已明确区分两者。
