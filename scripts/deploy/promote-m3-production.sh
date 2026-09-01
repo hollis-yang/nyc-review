@@ -197,7 +197,10 @@ compose pull qdrant agent-service
 compose up -d --wait --wait-timeout 900
 
 compose exec -T agent-service \
-  python - --url http://qdrant:6333 < "$SCRIPT_DIR/verify-m3-qdrant.py"
+  python - \
+  --url http://qdrant:6333 \
+  --wait-seconds 1800 \
+  --poll-seconds 5 < "$SCRIPT_DIR/verify-m3-qdrant.py"
 compose exec -T agent-service \
   python - --url http://127.0.0.1:8090 < "$SCRIPT_DIR/verify-m3-runtime.py"
 

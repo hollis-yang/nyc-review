@@ -47,6 +47,23 @@ test('Nginx preserves bundled images before resolving uploaded public paths unde
   assert.match(uploadedImages, /try_files \$uri =404;/);
 });
 
+test('Nginx keeps internal Spring tools and the paid Agent preview off the public gateway', () => {
+  const nginx = readSource('../nginx.conf');
+  const internalSpringBlock = nginx.indexOf('location ^~ /api/internal/');
+  const springProxy = nginx.indexOf('location /api/');
+  const previewBlock = nginx.indexOf('location = /agent-api/v1/agent/runs/preview');
+  const agentProxy = nginx.indexOf('location /agent-api/');
+
+  assert.notEqual(internalSpringBlock, -1);
+  assert.notEqual(previewBlock, -1);
+  assert.ok(internalSpringBlock < springProxy);
+  assert.ok(previewBlock < agentProxy);
+  assert.match(
+    nginx.slice(previewBlock, agentProxy),
+    /return 404;/,
+  );
+});
+
 test('Spring stores the same relative blog path that the public /imgs fallback serves', () => {
   const storage = readSource('../../src/main/java/com/nycreview/service/ImageStorageService.java');
 

@@ -30,14 +30,18 @@ public class LoginInterceptor implements HandlerInterceptor {
             Pattern.compile("^/blog/\\d+$"),
             Pattern.compile("^/blog/likes/\\d+$"),
             Pattern.compile("^/user/\\d+$"),
-            Pattern.compile("^/user/info/\\d+$")
+            Pattern.compile("^/user/info/\\d+$"),
+            Pattern.compile("^/internal/agent/tools/shops/\\d+$"),
+            Pattern.compile("^/internal/agent/tools/shops/\\d+/evidence$")
     );
 
     private static final Set<String> PUBLIC_POST_PATHS = Set.of(
             "/user/code",
             "/user/login",
             "/user/register",
-            "/user/password/reset"
+            "/user/password/reset",
+            "/internal/agent/tools/shops/search",
+            "/internal/agent/tools/shops/details"
     );
 
     @Override

@@ -39,10 +39,15 @@ class LoginInterceptorTest {
             "GET, /user/1",
             "GET, /user/info/1",
             "HEAD, /blog/1",
+            "GET, /internal/agent/tools/shops/1",
+            "GET, /internal/agent/tools/shops/1/evidence",
+            "HEAD, /internal/agent/tools/shops/1",
             "POST, /user/code",
             "POST, /user/login",
             "POST, /user/register",
-            "POST, /user/password/reset"
+            "POST, /user/password/reset",
+            "POST, /internal/agent/tools/shops/search",
+            "POST, /internal/agent/tools/shops/details"
     })
     void allowsPublicRequests(String method, String path) throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -71,7 +76,18 @@ class LoginInterceptorTest {
             "PUT, /user/me",
             "POST, /user/logout",
             "GET, /follow/or/not/1",
-            "POST, /translate/blog"
+            "POST, /translate/blog",
+            "GET, /internal/agent/tools/shops",
+            "GET, /internal/agent/tools/shops/search",
+            "POST, /internal/agent/tools/shops/1",
+            "POST, /internal/agent/tools/shops/1/evidence",
+            "PUT, /internal/agent/tools/shops/search",
+            "DELETE, /internal/agent/tools/shops/1",
+            "GET, /internal/agent/tools/shops/not-a-number",
+            "GET, /internal/agent/tools/shops/1/evidence/extra",
+            "POST, /internal/agent/tools/shops/arbitrary",
+            "POST, /internal/agent/actions/reservations",
+            "GET, /internal/agent/actions/reservations/1"
     })
     void rejectsAnonymousProtectedRequests(String method, String path) throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
