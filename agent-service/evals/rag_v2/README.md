@@ -156,6 +156,31 @@ Runner 会再次核对 winner 的 Embedding、Dev retrieval/runtime、Collection
 
 `--limit-cases` 只缩短查询评测，绝不会缩短索引。为防止把它误当成低费用 smoke，付费 `build/resume` 与 `--limit-cases` 的组合会被拒绝。
 
+## M1 实际结果（2026-08-31）
+
+三套真实 Embedding 索引均完整构建为 145,000 点、1024 维 Dense Cosine + Sparse IDF Collection，15 个 payload index 与 embedding identity 校验通过，最终 Qdrant 状态均为 `green / optimizer ok`。所有 Provider 请求为 0 retry、0 failure。机器可读的冻结摘要见 [`m1_results.json`](./m1_results.json)；含逐 case 结果和一次性 receipt 的原始报告保留在忽略提交的 `.local/` 中，并由摘要记录 SHA-256。
+
+双语指标按 30 条中文与 10 条 mixed Dev case 等权到 case 加权；Hash 门槛为 nDCG@10 `>= 0.77924925`、MRR@10 `>= 0.91958350`：
+
+| Profile | Overall nDCG@10 | Overall MRR@10 | 双语 nDCG@10 | 双语 MRR@10 | Embedding P95 | 完整 M1 估算费用 | 结果 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `openai-small-1024` | 77.56% | 92.19% | 77.24% | 90.42% | 320.78 ms | $0.2013 | 两项未过线 |
+| `openai-large-1024` | 77.88% | 91.82% | 77.84% | 91.98% | 299.34 ms | $1.3081 | nDCG 差 0.081pp |
+| `qwen37-1024` | 77.82% | 93.28% | 78.48% | 92.81% | 735.43 ms | $0.9035 | 唯一 Dev winner |
+
+费用包含各 profile 的独立预检与完整索引/Dev；Qwen 还包含唯一一次 Test holdout 查询。三者合计使用 33,032,295 tokens，按 2026-08-31 冻结单价估算 `$2.4129`。这是基于 Provider 实报 token 的工程估算，不是账单；OpenAI 与 DashScope 各 `$5` 的用户报告余额均足够。
+
+Qwen 的唯一一次 policy holdout 已完成并封存，但质量门禁失败，因此不得晋级生产：
+
+| Test 指标 | Hash | Qwen | Delta | Gate |
+| --- | ---: | ---: | ---: | --- |
+| Recall@10 | 71.11% | 69.91% | -1.20pp | 最多下降 0.50pp，失败 |
+| nDCG@10 | 79.36% | 78.97% | -0.39pp | 通过 |
+| MRR@10 | 92.50% | 93.65% | +1.15pp | 通过 |
+| 中文 nDCG@10 | 81.02% | 79.77% | -1.25pp | 最多下降 1.00pp，失败 |
+
+Holdout 同时保持 100% evidence coverage、0 security leakage、0 version mismatch、0 citation mismatch，且直接复用 Dev Collection（`upserted=0`、`unchanged=145000`）。结论是工程实现和模型实验完成，但 active Embedding 保持不变；`qwen37-1024` 只作为 M2 全局召回实验候选。不得根据本次 Test case 调参或重跑，下一次晋级必须使用新的 hidden holdout。
+
 ## 指标和报告
 
 质量指标包括 Recall@5/10、Precision@5、nDCG@5/10、MRR@10、硬约束满足率、证据覆盖率、未标注率、hard-negative final-return rate，以及 citation owner、merchant identity、source、security、data version 和 dataset SHA 完整性。品牌指标分为从同品牌第 2 个结果起计算的 `duplicateBrandRate`，以及只惩罚第 3 个及以后结果的 `excessiveBrandRate`。

@@ -1,6 +1,6 @@
 # RAG v2 Optimization Roadmap
 
-状态：Proposed
+状态：M0 已完成；M1 工程与实验已完成，但 policy holdout 未通过，暂不切换生产 Embedding
 
 范围：`agent-service` 的 Embedding、候选召回、查询扩展、重排、评测与生产发布
 
@@ -302,15 +302,15 @@ class EmbeddingService(Protocol):
 
 ### 6.3 Provider 工程化
 
-- [ ] 复用持久化 `httpx.AsyncClient`，不在每个 batch 内重新创建连接池。
-- [ ] 配置 connect/read timeout；禁止无限等待。
-- [ ] 对 429、可重试 5xx 和连接错误执行有上限的指数退避。
-- [ ] 限制批次数量、字符/token 预算和并发数。
-- [ ] 验证返回数量、顺序、维度、NaN/Inf 和空向量。
-- [ ] Trace 只记录 provider/model/dimensions/latency/count，不记录 API Key。
-- [ ] Query Embedding 增加有界 LRU/TTL Cache，Key 包含 normalized query 与 embedding version。
-- [ ] 文档增量同步继续使用 `content_sha256` 跳过未变化内容，并把 embedding version 纳入复用条件。
-- [ ] 为 Provider 失败增加明确的错误类型，供 Sparse-only fallback 与指标聚合使用。
+- [x] 复用持久化 `httpx.AsyncClient`，不在每个 batch 内重新创建连接池。
+- [x] 配置 connect/read timeout；禁止无限等待。
+- [x] 对 429、可重试 5xx 和连接错误执行有上限的指数退避。
+- [x] 限制批次数量、字符/token 预算和并发数。
+- [x] 验证返回数量、顺序、维度、NaN/Inf 和空向量。
+- [x] Trace 只记录 provider/model/dimensions/latency/count，不记录 API Key。
+- [x] Query Embedding 增加有界 LRU/TTL Cache，Key 包含 normalized query 与 embedding version。
+- [x] 文档增量同步继续使用 `content_sha256` 跳过未变化内容，并把 embedding version 纳入复用条件。
+- [x] 为 Provider 失败增加明确的错误类型，供 Sparse-only fallback 与指标聚合使用。
 
 ### 6.4 配置建议
 
@@ -376,11 +376,27 @@ agent-service/tests/test_qdrant_rag.py
 
 ### 6.8 验收标准
 
-- 正式 Eval 报告明确显示非 Hash Provider。
-- 新 Collection 的 embedding metadata 与运行配置完全一致。
-- Provider 失败时不会删除旧点或切换不完整 Collection。
-- 中文与中英混合查询的 nDCG/MRR 相对 Hash baseline 有稳定提升。
-- 相同内容的增量启动不会重新 Embedding 145,000 个文档。
+- [x] 正式 Eval 报告明确显示非 Hash Provider。
+- [x] 新 Collection 的 embedding metadata 与运行配置完全一致。
+- [x] Provider 失败时不会删除旧点或切换不完整 Collection。
+- [ ] 中文与中英混合查询的 nDCG/MRR 相对 Hash baseline 有稳定提升。Qwen 在 Dev 通过双语选型门槛，但唯一一次 policy holdout 的中文 nDCG@10 回归 1.2477pp，超过 1pp 上限。
+- [x] 相同内容的增量启动不会重新 Embedding 145,000 个文档；holdout 复用索引时 `upserted=0`、`unchanged=145000`。
+
+### 6.9 M1 完成记录（2026-08-31）
+
+实现提交为 `2e19906`，三次正式运行绑定同一 clean scoped source digest `df597695...`。三个候选均在本地 Qdrant Server 中构建独立的 145,000 点、1024 维 Dense Cosine + Sparse IDF Collection，包含 15 个 payload index；最终三套 Collection 均为 `green / optimizer ok`，完成后一次 `docker stats --no-stream` 观测容器占用约 2.13 GiB。完整机器可读结果见 [`evals/rag_v2/m1_results.json`](./evals/rag_v2/m1_results.json)。
+
+| Dev profile | 双语 nDCG@10 | 对 Hash 增益 | 双语 MRR@10 | 对 Hash 增益 | 估算费用 | 选型资格 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| OpenAI small 1024d | 77.24% | -0.19pp | 90.42% | -1.04pp | $0.2013 | 未通过 |
+| OpenAI large 1024d | 77.84% | +0.42pp | 91.98% | +0.52pp | $1.3081 | nDCG 未通过 |
+| Qwen 3.7 1024d | 78.48% | +1.05pp | 92.81% | +1.35pp | $0.9035 | Dev winner |
+
+费用包含独立预检、完整索引、Dev 查询以及 Qwen 的唯一一次 holdout 查询，按冻结单价和 Provider 实报 token 估算总计 `$2.4129`；OpenAI 与 DashScope 各 `$5` 的用户报告余额均足够。所有真实请求均为 0 retry、0 failure，三个 profile 的费用硬上限均未触发。
+
+Qwen 是唯一同时满足 Dev 双语 nDCG/MRR 各提升至少 0.5pp 的候选，但 policy holdout 未通过冻结回归门禁：整体 Recall@10 为 69.91%，相对 Hash 的 71.11% 下降 1.2031pp；中文 nDCG@10 为 79.77%，相对 Hash 的 81.02% 下降 1.2477pp。允许上限分别为 0.5pp 和 1pp。Holdout 的整体 nDCG@10 为 78.97%、MRR@10 为 93.65%，证据覆盖率 100%，security/version/citation mismatch 均为 0。
+
+结论：M1 的接口、Provider、成本保护、索引版本化、三模型实验和一次性 holdout 已完成，但生产晋级被门禁阻止。保留现有 active Embedding；Qwen 仅作为 M2 的实验候选。不得针对已经消费的 holdout 调参或重跑，后续应通过全局召回改善 Recall，并在新的 hidden holdout 上重新验收。
 
 ## 7. M2：全局 Hybrid 候选召回
 

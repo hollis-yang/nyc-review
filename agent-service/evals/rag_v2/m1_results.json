@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-01T02:49:24.566669+00:00",
+  "status": "evaluation-complete-rollout-blocked",
+  "implementation": {
+    "implementationCommit": "2e199066cc5d74ed8d72c2201ad5a8597ae93cd9",
+    "scopedSourceSha256": "df5976959c3a4fae7be2e862fb577282ff7c29ee0c72b4c37c27ae1e9530af91",
+    "scopedSourceDirty": false,
+    "runGitHeads": {
+      "openai-small-dev": {
+        "sha": "2e199066cc5d74ed8d72c2201ad5a8597ae93cd9",
+        "worktreeDirty": true
+      },
+      "openai-large-dev": {
+        "sha": "5e8acfaab03171fa55f259aeb201ad7e2281f1ed",
+        "worktreeDirty": false
+      },
+      "qwen-dev-and-holdout": {
+        "sha": "5e8acfaab03171fa55f259aeb201ad7e2281f1ed",
+        "worktreeDirty": false
+      }
+    },
+    "policyVersion": "m1-embedding-selection-v2",
+    "pricingSnapshotDate": "2026-08-31"
+  },
+  "corpus": {
+    "dataVersion": "nyc-real-v5-8b645404-m20260824",
+    "datasetSha256": "0bb014f6a2e0608a6437c09fc32ac0a6f0791599e988099466e80d272750f238",
+    "documentsPerCollection": 145000,
+    "collections": 3,
+    "dimensions": 1024,
+    "denseDistance": "Cosine",
+    "sparseVector": "lexical-idf",
+    "payloadIndexes": 15,
+    "qdrantFinalStatus": "green",
+    "qdrantRuntimeObservation": {
+      "source": "docker stats --no-stream",
+      "context": "immediately after all three Dev collections completed",
+      "memoryGiB": 2.127
+    }
+  },
+  "estimatedPaidUsage": {
+    "currency": "USD",
+    "note": "Estimated from provider-reported tokens and the frozen price snapshot; this is not a provider invoice.",
+    "profiles": {
+      "openai-small-1024": {
+        "standalonePreflightTokens": 7202,
+        "buildAndDevTokens": 10055313,
+        "totalTokens": 10062515,
+        "estimatedCostUsd": 0.2012503,
+        "hardCapUsd": 0.5,
+        "retries": 0,
+        "failures": 0
+      },
+      "openai-large-1024": {
+        "standalonePreflightTokens": 7202,
+        "buildAndDevTokens": 10055313,
+        "totalTokens": 10062515,
+        "estimatedCostUsd": 1.30812695,
+        "hardCapUsd": 2.25,
+        "retries": 0,
+        "failures": 0
+      },
+      "qwen37-1024": {
+        "standalonePreflightTokens": 9204,
+        "buildAndDevTokens": 12893623,
+        "holdoutIncrementalTokens": 4438,
+        "totalTokens": 12907265,
+        "estimatedCostUsd": 0.90350855,
+        "hardCapUsd": 1.25,
+        "retries": 0,
+        "failures": 0
+      }
+    },
+    "providerTotals": {
+      "openai": {
+        "userReportedBalanceUsd": 5.0,
+        "estimatedM1CostUsd": 1.50937725,
+        "sufficientForM1": true
+      },
+      "dashscope": {
+        "userReportedBalanceUsd": 5.0,
+        "estimatedM1CostUsd": 0.90350855,
+        "sufficientForM1": true
+      }
+    },
+    "totalTokens": 33032295,
+    "totalEstimatedCostUsd": 2.4128858
+  },
+  "devSelection": {
+    "splitCases": 80,
+    "hashBilingualBaseline": {
+      "ndcgAt10": 0.77424925,
+      "mrrAt10": 0.9145835
+    },
+    "minimumAbsoluteGain": 0.005,
+    "candidates": {
+      "openai-small-1024": {
+        "overallRecallAt10": 0.598114,
+        "overallNdcgAt10": 0.775647,
+        "overallMrrAt10": 0.921875,
+        "bilingualNdcgAt10": 0.772381625,
+        "bilingualMrrAt10": 0.904166675,
+        "bilingualNdcgGainVsHash": -0.001867625,
+        "bilingualMrrGainVsHash": -0.010416825,
+        "embeddingP95Ms": 320.783875,
+        "indexDurationMs": 885754.48975,
+        "qualityGatePassed": true,
+        "selectionEligible": false
+      },
+      "openai-large-1024": {
+        "overallRecallAt10": 0.594697,
+        "overallNdcgAt10": 0.77876,
+        "overallMrrAt10": 0.918229,
+        "bilingualNdcgAt10": 0.778433625,
+        "bilingualMrrAt10": 0.91979165,
+        "bilingualNdcgGainVsHash": 0.004184375,
+        "bilingualMrrGainVsHash": 0.00520815,
+        "embeddingP95Ms": 299.335291,
+        "indexDurationMs": 967037.67675,
+        "qualityGatePassed": true,
+        "selectionEligible": false
+      },
+      "qwen37-1024": {
+        "overallRecallAt10": 0.590573,
+        "overallNdcgAt10": 0.778183,
+        "overallMrrAt10": 0.932813,
+        "bilingualNdcgAt10": 0.784757675,
+        "bilingualMrrAt10": 0.928125,
+        "bilingualNdcgGainVsHash": 0.010508425,
+        "bilingualMrrGainVsHash": 0.0135415,
+        "embeddingP95Ms": 735.426208,
+        "indexDurationMs": 3003595.675917,
+        "qualityGatePassed": true,
+        "selectionEligible": true
+      }
+    },
+    "winnerProfileId": "qwen37-1024",
+    "winnerReason": "Only candidate meeting both frozen bilingual nDCG@10 and MRR@10 improvement gates."
+  },
+  "policyHoldout": {
+    "attemptCount": 1,
+    "receiptState": "complete",
+    "profileId": "qwen37-1024",
+    "splitCases": 80,
+    "indexAction": "reuse",
+    "upsertedPoints": 0,
+    "unchangedPoints": 145000,
+    "qualityGatePassed": false,
+    "candidate": {
+      "overallRecallAt10": 0.699118,
+      "overallNdcgAt10": 0.789658,
+      "overallMrrAt10": 0.936458,
+      "zhNdcgAt10": 0.797696,
+      "evidenceCoverage": 1.0,
+      "hardNegativeReturnRate": 0.024702,
+      "securityLeakageCount": 0,
+      "versionMismatchCount": 0,
+      "citationMismatchCount": 0
+    },
+    "hashBaseline": {
+      "overallRecallAt10": 0.711149,
+      "overallNdcgAt10": 0.793558,
+      "overallMrrAt10": 0.925,
+      "zhNdcgAt10": 0.810173,
+      "hardNegativeReturnRate": 0.029911
+    },
+    "deltas": {
+      "overallRecallAt10": -0.012031,
+      "overallNdcgAt10": -0.0039,
+      "overallMrrAt10": 0.011458,
+      "zhNdcgAt10": -0.012477,
+      "hardNegativeReturnRate": -0.005209
+    },
+    "failures": [
+      "overall.recallAt10 dropped 0.012031; maximum allowed drop is 0.005",
+      "byLanguage.zh.ndcgAt10 dropped 0.012477; maximum allowed drop is 0.01"
+    ]
+  },
+  "decision": {
+    "engineeringComplete": true,
+    "devSelectionComplete": true,
+    "holdoutComplete": true,
+    "productionPromotionApproved": false,
+    "action": "Keep the current active embedding unchanged. Carry qwen37-1024 only as the experimental M2 candidate, fix retrieval recall without tuning on this consumed holdout, and validate against a fresh hidden holdout before promotion."
+  },
+  "artifacts": {
+    "openaiSmallPreflightSha256": "38718fa773e367bbeacba08345a6bfbce2146a2b7cc4acdb614baad4f2f65e2a",
+    "openaiLargePreflightSha256": "e1163e3bbc195077957ee08436e586f6dca4ea79222ea49787003d7f671f8ee7",
+    "qwenPreflightSha256": "7f27265df2142a96bb3e1b7d4c8a4b85489f9007a6cfc9425590d05bf1880912",
+    "openaiSmallDevSha256": "5f9362fc519409f74d8c14bdc8de8261c0d9b2fa562d493846f0f6560ee22926",
+    "openaiLargeDevSha256": "4d99e566f2270dd91089d0285401bc769e1936d2c15a7593e3e2d5b5b2856f29",
+    "qwenDevSha256": "58c40dd56599c9b6387cbdafddd79bc71c1b71616ca7d4bd15881c86a29febbf",
+    "winnerManifestSha256": "cea28898e5a9893e7b772c02607169fa6dba042dbbebe07509d2abe2814f057f",
+    "holdoutReportSha256": "8c91bf20cc12f9c524e3b68e21c02ac83bdb42656f1e8b5b2d46b28a08cba85d",
+    "holdoutReceiptSha256": "be6caeea7f4dea13a2d27aae543bed8ba0662fffdc8488e0932b447f7c9d22ad"
+  }
+}
