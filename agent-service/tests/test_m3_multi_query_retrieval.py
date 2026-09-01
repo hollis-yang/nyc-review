@@ -53,7 +53,7 @@ class BatchRecordingEmbedding(RecordingEmbedding):
     async def embed_queries(self, texts: list[str]) -> list[list[float]]:
         self.query_batches.append(list(texts))
         self.queries.extend(texts)
-        return await self._delegate.embed_queries(texts)
+        return [await self._delegate.embed_query(text) for text in texts]
 
 
 class RecordingQdrantClient:

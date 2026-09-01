@@ -12,6 +12,7 @@ from qdrant_client import models
 
 from app.rag.embeddings import EmbeddingError, EmbeddingService
 from app.rag.lexical import sparse_vector
+from app.rag.query_batching import embed_query_batch, supports_query_batch
 
 
 class RetrievalChannel(StrEnum):
@@ -360,13 +361,18 @@ class QdrantGlobalDocumentRetriever:
         batch_embedding_latency_ms = 0.0
         precomputed_vectors: tuple[list[float] | None, ...] | None = None
         batch_embedder = getattr(self._embeddings, "embed_queries", None)
-        if callable(batch_embedder):
+        if callable(batch_embedder) or supports_query_batch(self._embeddings):
             embedding_started = time.perf_counter()
             try:
                 async with asyncio.timeout(float(variant_timeout_seconds)):
-                    embedded = await batch_embedder(
-                        [variant.query for variant in normalized_variants]
+                    queries = [variant.query for variant in normalized_variants]
+                    embedded = (
+                        await batch_embedder(queries)
+                        if callable(batch_embedder)
+                        else await embed_query_batch(self._embeddings, queries)
                     )
+                if embedded is None:
+                    raise ValueError("Embedding provider does not support query batching.")
                 if len(embedded) != len(normalized_variants):
                     raise ValueError("Query embedding batch returned an invalid vector count.")
                 precomputed_vectors = tuple(embedded)

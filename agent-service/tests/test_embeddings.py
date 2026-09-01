@@ -16,6 +16,7 @@ from app.rag.embeddings import (
     OpenAICompatibleEmbeddingService,
     QwenNativeEmbeddingService,
 )
+from app.rag.query_batching import embed_query_batch
 
 DIMENSIONS = 3
 QWEN_DIMENSIONS = 256
@@ -383,7 +384,7 @@ async def test_query_batch_uses_one_provider_request_and_primes_individual_cache
             query_cache_size=8,
             query_cache_ttl_seconds=60,
         )
-        vectors = await service.embed_queries(["quiet dinner", "step-free cafe"])
+        vectors = await embed_query_batch(service, ["quiet dinner", "step-free cafe"])
         cached = await service.embed_query("  QUIET   DINNER  ")
 
     assert vectors == [[1.0, 0.5, 0.25], [2.0, 0.5, 0.25]]

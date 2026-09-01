@@ -39,6 +39,7 @@ from app.rag.global_retrieval import GlobalRetrievalScope, QdrantGlobalDocumentR
 from app.rag.lexical import canonical_tags
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import REQUIRED_PAYLOAD_INDEXES, QdrantRagService
+from app.rag.query_batching import embed_query_batch
 from app.rag.query_rewriter import (
     PROMPT_VERSION,
     DisabledQueryRewriter,
@@ -115,6 +116,7 @@ EVAL_SOURCE_PATHS = (
     "agent-service/app/rag/candidate_fusion.py",
     "agent-service/app/rag/display_text.py",
     "agent-service/app/rag/global_retrieval.py",
+    "agent-service/app/rag/query_batching.py",
     *INDEX_BUILD_SOURCE_PATHS,
     "agent-service/app/rag/merchant_aggregation.py",
     "agent-service/app/rag/query_plan.py",
@@ -176,7 +178,12 @@ class TimedEmbeddingService:
     async def embed_queries(self, texts: list[str]) -> list[list[float]]:
         started = time.perf_counter()
         try:
-            return await self._inner.embed_queries(texts)
+            vectors = await embed_query_batch(self._inner, texts)
+            if vectors is None:
+                return await asyncio.gather(
+                    *(self._inner.embed_query(text) for text in texts)
+                )
+            return vectors
         finally:
             self.query_calls += len(texts)
             self.texts += len(texts)
