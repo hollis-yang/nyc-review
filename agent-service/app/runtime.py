@@ -97,7 +97,7 @@ class AgentRuntime:
                     index_batch_size=settings.rag_index_batch_size,
                     dataset_sha256=dataset_sha256,
                     retrieval_version=settings.retrieval_version,
-                    allow_sparse_fallback=settings.embedding_sparse_fallback,
+                    allow_sparse_fallback=_embedding_sparse_fallback_enabled(settings),
                 )
                 if settings.rag_data_directory is not None:
                     data_directory = settings.rag_data_directory.resolve()
@@ -261,6 +261,12 @@ def _build_shop_service(settings: Settings):
         _validate_data_directory(data_directory)
         return GeneratedNycShopToolService(data_directory, settings.discovery_pool_size)
     return MockShopToolService()
+
+
+def _embedding_sparse_fallback_enabled(settings: Settings) -> bool:
+    """Global retrieval requires dense ranking failures to remain fail-closed."""
+
+    return settings.embedding_sparse_fallback and not settings.global_retrieval_enabled
 
 
 def _build_qdrant_client(location: str, *, api_key: str = "") -> AsyncQdrantClient:

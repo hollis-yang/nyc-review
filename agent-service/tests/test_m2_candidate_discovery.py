@@ -830,7 +830,7 @@ async def test_candidate_ranking_authorization_failure_is_fail_closed(status_cod
     )
 
     class ForbiddenRag(_Rag):
-        async def rank_candidates_strict(self, *args, **kwargs) -> CandidateSet:
+        async def rank_candidates(self, *args, **kwargs) -> CandidateSet:
             raise authorization_error
 
     with pytest.raises(CandidateDiscoveryError, match="ranking authorization failed"):

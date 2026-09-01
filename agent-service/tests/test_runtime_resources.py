@@ -54,6 +54,18 @@ class _FakeEmbeddingService:
             raise self._close_error
 
 
+def test_global_retrieval_disables_embedding_sparse_fallback(tmp_path):
+    legacy = Settings()
+    global_hybrid = Settings(
+        rag_adapter="qdrant",
+        rag_data_directory=tmp_path,
+        global_retrieval_enabled=True,
+    )
+
+    assert runtime_module._embedding_sparse_fallback_enabled(legacy) is True
+    assert runtime_module._embedding_sparse_fallback_enabled(global_hybrid) is False
+
+
 async def test_provider_construction_failure_closes_qdrant_and_preserves_original_error(
     monkeypatch,
 ):

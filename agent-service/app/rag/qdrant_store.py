@@ -350,37 +350,6 @@ class QdrantRagService:
         *,
         limit: int,
     ) -> CandidateSet:
-        return await self._rank_candidates(
-            constraints,
-            candidates,
-            limit=limit,
-            allow_sparse_fallback=self._allow_sparse_fallback,
-        )
-
-    async def rank_candidates_strict(
-        self,
-        constraints: UserConstraints,
-        candidates: CandidateSet,
-        *,
-        limit: int,
-    ) -> CandidateSet:
-        """Rank M2's fused pool without hiding embedding failures behind sparse fallback."""
-
-        return await self._rank_candidates(
-            constraints,
-            candidates,
-            limit=limit,
-            allow_sparse_fallback=False,
-        )
-
-    async def _rank_candidates(
-        self,
-        constraints: UserConstraints,
-        candidates: CandidateSet,
-        *,
-        limit: int,
-        allow_sparse_fallback: bool,
-    ) -> CandidateSet:
         if not candidates.candidates or limit < 1:
             return candidates.model_copy(update={"candidates": []})
         started = time.perf_counter()
@@ -402,7 +371,6 @@ class QdrantRagService:
             plan.expanded_query,
             query_filter,
             limit=max(60, len(candidate_ids) * 8),
-            allow_sparse_fallback=allow_sparse_fallback,
         )
         points = hybrid_result.points
         best_by_shop: dict[int, float] = {}
@@ -482,19 +450,13 @@ class QdrantRagService:
         query_filter: models.Filter,
         *,
         limit: int,
-        allow_sparse_fallback: bool | None = None,
     ) -> HybridQueryResult:
         await self.ensure_collection()
         lexical = sparse_vector(query_text)
         try:
             query_vector = await self._embeddings.embed_query(query_text)
         except EmbeddingError as exc:
-            fallback_enabled = (
-                self._allow_sparse_fallback
-                if allow_sparse_fallback is None
-                else allow_sparse_fallback
-            )
-            if not fallback_enabled:
+            if not self._allow_sparse_fallback:
                 raise
             LOGGER.warning(
                 "Dense embedding unavailable; using sparse-only retrieval: provider=%s error=%s",

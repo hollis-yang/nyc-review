@@ -400,7 +400,6 @@ class GlobalHybridCandidateDiscovery:
                 constraints,
                 fusion_pool,
                 limit=limit,
-                strict=True,
             )
         except asyncio.CancelledError:
             raise
@@ -657,14 +656,9 @@ async def rank_candidates(
     candidate_pool: CandidateSet,
     *,
     limit: int,
-    strict: bool = False,
 ) -> CandidateSet:
     """Keep lightweight/custom RAG adapters compatible with the P12 contract."""
 
-    if strict:
-        strict_ranker = getattr(rag, "rank_candidates_strict", None)
-        if strict_ranker is not None:
-            return await strict_ranker(constraints, candidate_pool, limit=limit)
     ranker = getattr(rag, "rank_candidates", None)
     if ranker is not None:
         return await ranker(constraints, candidate_pool, limit=limit)

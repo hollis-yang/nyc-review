@@ -8,7 +8,6 @@ from app.rag.embeddings import (
     DeterministicHashEmbeddingService,
     EmbeddingError,
     EmbeddingMetadata,
-    EmbeddingProviderError,
     EmbeddingUsage,
 )
 from app.rag.models import RagDocument
@@ -619,68 +618,6 @@ async def test_query_embedding_error_falls_back_to_sparse_retrieval():
     assert result.retrieval_metadata["denseAvailable"] is False
     assert result.retrieval_metadata["embeddingFallback"] == "sparse-only"
     assert result.evidence[0].citations[0].source_id == "shop_review_thread:fallback"
-    await client.close()
-
-
-@pytest.mark.parametrize("status_code", [401, 403])
-async def test_strict_candidate_ranking_propagates_embedding_authorization_failure(
-    status_code: int,
-):
-    class AuthorizationEmbeddingService(RecordingEmbeddingService):
-        fail_status: int | None = None
-
-        async def embed_query(self, text: str) -> list[float]:
-            if self.fail_status is not None:
-                raise EmbeddingProviderError(
-                    "invalid embedding credentials",
-                    provider="test",
-                    retryable=False,
-                    status_code=self.fail_status,
-                )
-            return await super().embed_query(text)
-
-    client = AsyncQdrantClient(location=":memory:")
-    embeddings = AuthorizationEmbeddingService()
-    rag = QdrantRagService(
-        client=client,
-        embeddings=embeddings,
-        collection_name=f"test_strict_ranking_auth_{status_code}",
-    )
-    await rag.index(
-        [
-            RagDocument(
-                document_id=f"review:auth:{status_code}",
-                shop_id=903,
-                content_type="shop_review_thread",
-                source_id=f"shop_review_thread:auth:{status_code}",
-                text="Quiet dinner evidence.",
-                data_version="nyc-real-v1",
-            )
-        ]
-    )
-    candidates = CandidateSet(
-        candidates=[
-            ShopCandidate(
-                shop_id=903,
-                name="Authorization Fixture",
-                category="Food & Dining",
-                neighborhood="Midtown",
-                latitude=40.75,
-                longitude=-73.98,
-                data_version="nyc-real-v1",
-            )
-        ]
-    )
-    constraints = UserConstraints(query="quiet dinner")
-    embeddings.fail_status = status_code
-
-    legacy = await rag.rank_candidates(constraints, candidates, limit=1)
-    assert legacy.retrieval_metadata["embeddingFallback"] == "sparse-only"
-
-    with pytest.raises(EmbeddingProviderError, match="invalid embedding credentials") as caught:
-        await rag.rank_candidates_strict(constraints, candidates, limit=1)
-
-    assert caught.value.status_code == status_code
     await client.close()
 
 
