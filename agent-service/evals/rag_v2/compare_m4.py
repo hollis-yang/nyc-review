@@ -610,7 +610,7 @@ def _validate_pair(
     ):
         if control_run[field] != treatment_run[field]:
             raise ValueError(f"M4 arms use different {label}.")
-    if control["index"] != treatment["index"]:
+    if _stable_index_identity(control["index"]) != _stable_index_identity(treatment["index"]):
         raise ValueError("M4 arms did not reuse the exact same frozen index.")
     control_contracts = [
         extract_pre_rerank_contract(row, case_id=str(row["id"])) for row in control["results"]
@@ -624,6 +624,27 @@ def _validate_pair(
         row.get("m4Replay") for row in treatment["results"]
     ]:
         raise ValueError("M4 arms used different frozen candidate/evidence artifacts.")
+
+
+def _stable_index_identity(index: dict[str, Any]) -> dict[str, Any]:
+    """Exclude per-run observation timing while binding the complete reusable index identity."""
+
+    fields = (
+        "stats",
+        "pointCount",
+        "vectorDimensions",
+        "indexBuildVersion",
+        "indexSchema",
+        "manifestPathKind",
+        "manifestFingerprint",
+        "configVerified",
+        "lifecycleState",
+        "qdrantServer",
+    )
+    identity = {field: index.get(field) for field in fields}
+    if any(field not in index for field in fields):
+        raise ValueError("M4 report is missing a stable frozen-index identity field.")
+    return identity
 
 
 def _summarize_m4_results(results: list[dict[str, Any]]) -> dict[str, Any]:

@@ -179,6 +179,8 @@ def test_m4_compare_passes_quality_with_latency_waiver_and_deterministic_ci(tmp_
         trusted_source_suite=source,
     )
     control, treatment = _comparison_reports(suite, capture)
+    control["index"]["indexDurationMs"] = 10.0
+    treatment["index"]["indexDurationMs"] = 13.0
     control_path, treatment_path = _write_reports(tmp_path, control, treatment)
 
     result = compare(control_path, treatment_path)
@@ -700,8 +702,15 @@ def _capture_report(source: dict) -> dict:
         },
         "run": run,
         "index": {
+            "stats": {"total": 12, "upserted": 0, "unchanged": 12, "deleted": 0},
+            "pointCount": 12,
+            "vectorDimensions": 1024,
+            "indexBuildVersion": "fixture-index-v1",
+            "indexSchema": {"dense": {"dimensions": 1024}},
+            "manifestPathKind": "explicit",
             "lifecycleState": "complete",
             "manifestFingerprint": "6" * 64,
+            "configVerified": True,
             "qdrantServer": {"mode": "server", "version": "1.19"},
         },
         "qualityGate": {"passed": True},
