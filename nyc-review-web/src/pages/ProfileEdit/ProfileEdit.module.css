@@ -196,4 +196,23 @@
   .divider {
     margin-left: 18px;
   }
+
+  .container .editPopupBody,
+  .container :global(.adm-picker-popup) :global(.adm-popup-body) {
+    right: auto;
+    bottom: 24px;
+    left: calc(50% + 40px);
+    width: min(560px, calc(100vw - 176px));
+    border-radius: 20px;
+    box-shadow: 0 24px 72px rgba(47, 38, 34, 0.24);
+    translate: -50% 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container .editPopupBody,
+  .container :global(.adm-picker-popup) :global(.adm-popup-body) {
+    left: calc(50% + 108px);
+    width: min(560px, calc(100vw - 312px));
+  }
 }

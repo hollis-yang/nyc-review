@@ -19,6 +19,7 @@
   border: 0;
   background: transparent;
   display: flex;
+  align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: transform var(--transition-fast);
@@ -30,14 +31,21 @@
 
 .title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   text-align: center;
   color: #fff;
   font-size: 17px;
   font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .share {
   width: 12%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   font-size: 16px;
   color: rgba(255, 255, 255, 0.7);

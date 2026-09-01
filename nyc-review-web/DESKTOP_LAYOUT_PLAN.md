@@ -1,6 +1,6 @@
 # NYC Review desktop layout plan
 
-Status: Phase 6 complete; final browser acceptance deferred to Phase 7
+Status: Phase 7 implementation and final responsive acceptance complete
 Baseline: `b379b86` (`feat: add account security and check-in calendar`)
 Phase 1 commit: `3f26310` (`feat(web): add desktop shell and home layout`)
 Phase 2 commit: `52e39f2` (`feat(web): add desktop discovery layouts`)
@@ -354,6 +354,38 @@ Phase 7.
   interaction states, including AI reconnection and approval recovery.
 - Fix acceptance findings without changing the shared content or mobile
   behavior, rerun the canonical release gate, and record the final handoff.
+
+Completed in Phase 7:
+
+- ran the public-route and signed-out protected-route matrix in the in-app
+  browser in English and Chinese at `390x844`, `430x932`, `1024x768`,
+  `1280x800`, `1440x900`, and `1920x1080`, with focused checks immediately
+  around the `390`, `480`, `640`, `700`, `720`, `1024`, and `1280px` rules;
+- measured document and component geometry rather than relying on scaled
+  screenshots, confirming no page-level horizontal overflow, complete desktop
+  Map filter visibility, a bounded Home loading row, centered detail headers,
+  and stable loading, empty, error, and retry presentations;
+- exercised signed-out favorite and AI-approval return paths, login and
+  recovery validation, anonymous AI completion, and approval recovery while
+  leaving every authenticated write behind its existing confirmation boundary;
+- replaced the hidden desktop Map filter scroller with a seven-column adaptive
+  top grid, let the Blog Edit shop categories wrap in its desktop dialog, and
+  kept the corresponding mobile horizontal strips unchanged;
+- centered Blog Detail's title when an owner's second action is present,
+  bounded long merchant/review titles, vertically centered Shop Detail header
+  actions, and made transient detail/profile states consume only available
+  flex space;
+- made all Profile Edit popups and pickers navigation-aware bounded desktop
+  surfaces and enabled mouse-wheel picker control without changing touch
+  behavior;
+- mounted the persistent upload volume read-only at `/data/imgs` in the local
+  Web container, matching production Nginx's `/imgs/...` fallback contract;
+- added Phase 7 regression contracts for the responsive findings and upload
+  path, bringing the frontend suite to 57 passing tests;
+- did not create, claim, or mutate a local user account solely for acceptance.
+  Credentialed success-state behavior remains covered by the Phase 6
+  authentication, mutation, recovery, and localization contracts; a supplied
+  operator test account can be used for an additional live signed-in pass.
 
 ## Validation matrix
 

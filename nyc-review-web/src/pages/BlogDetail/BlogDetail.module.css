@@ -32,11 +32,21 @@
 }
 
 .title {
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  max-width: calc(100% - 144px);
+  overflow: hidden;
+  transform: translateX(-50%);
   font-size: 17px;
   font-weight: 600;
   color: #fff;
   text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title + .share {
+  margin-left: auto;
 }
 
 .share {
@@ -468,7 +478,8 @@
 
 /* ===== 加载 / 错误 ===== */
 .loadingFull {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;

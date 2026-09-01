@@ -27,10 +27,14 @@
 
 .title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   text-align: center;
   color: #fff;
   font-size: 17px;
   font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .placeholder {

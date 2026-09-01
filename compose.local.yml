@@ -131,6 +131,8 @@ services:
       - agent-service
     ports:
       - "8080:80"
+    volumes:
+      - nyc-review-uploads:/data/imgs:ro
 
 volumes:
   nyc-review-mysql:

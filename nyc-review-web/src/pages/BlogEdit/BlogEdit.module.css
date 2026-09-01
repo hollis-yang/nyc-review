@@ -560,7 +560,9 @@
   }
 
   .categoryList {
+    flex-wrap: wrap;
     padding: 14px 20px 4px;
+    overflow-x: visible;
   }
 
   .categoryList button {

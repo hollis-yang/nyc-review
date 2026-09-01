@@ -79,7 +79,8 @@ test('map keeps filters, viewport states and popups with a desktop top filter ba
   assert.match(styles, /\.filterScroller\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mapCanvas\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterPanel\s*\{[^}]*position:\s*absolute;[^}]*top:\s*16px;[^}]*left:\s*50%;/s);
-  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterScroller\s*\{[^}]*flex-direction:\s*row;[^}]*overflow-x:\s*auto;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterScroller\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(108px,\s*1fr\)\);[^}]*overflow:\s*visible;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.filterChip\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*box-sizing:\s*border-box;[^}]*white-space:\s*normal;/s);
   assert.doesNotMatch(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mapWrap\s*\{[^}]*grid-template-columns:/s);
   assert.match(styles, /@media \(min-width: 1440px\)[\s\S]*?\.filterPanel\s*\{[^}]*width:\s*min\(1040px,/s);
 });

@@ -456,29 +456,30 @@
   .filterScroller {
     height: auto;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
     gap: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: visible;
     padding: 8px;
     border: 1px solid rgba(47, 38, 34, 0.06);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 10px 30px rgba(47, 38, 34, 0.08);
-    scrollbar-width: none;
   }
 
   .filterChip {
-    width: auto;
+    width: 100%;
+    min-width: 0;
     min-height: 40px;
-    flex: 0 0 auto;
+    box-sizing: border-box;
     justify-content: center;
-    padding: 8px 12px;
+    padding: 8px;
     border-radius: 999px;
     box-shadow: none;
     font-size: 13px;
+    line-height: 1.2;
     text-align: center;
+    white-space: normal;
     backdrop-filter: none;
   }
 
@@ -496,11 +497,11 @@
   }
 
   .modeBadge {
-    top: 82px;
+    top: 112px;
   }
 
   .emptyBadge {
-    top: 118px;
+    top: 148px;
   }
 
   .densityNotice {

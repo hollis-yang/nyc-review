@@ -23,6 +23,7 @@ interface ProfileInfo {
 export default function ProfileEdit() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const pageRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<{ id: number; nickName: string; icon: string } | null>(null);
   const [info, setInfo] = useState<ProfileInfo>({});
@@ -160,8 +161,10 @@ export default function ProfileEdit() {
         ? t('profileEdit.female')
         : t('profileEdit.select');
 
+  const getPopupContainer = () => pageRef.current ?? document.body;
+
   return (
-    <div className={styles.container}>
+    <div ref={pageRef} className={styles.container}>
       <div className={styles.header}>
         <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
@@ -259,6 +262,8 @@ export default function ProfileEdit() {
         <Popup
           visible={!!editField}
           onMaskClick={() => setEditField(null)}
+          getContainer={getPopupContainer}
+          bodyClassName={styles.editPopupBody}
           bodyStyle={{ borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: '20px 16px 32px', overflow: 'hidden', boxSizing: 'border-box' }}
         >
           <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 16, textAlign: 'center' }}>
@@ -301,6 +306,8 @@ export default function ProfileEdit() {
           columns={[genderColumns]}
           visible={genderVisible}
           onClose={() => setGenderVisible(false)}
+          getContainer={getPopupContainer}
+          mouseWheel
           value={[info.gender === true || info.gender === 'true' ? 'true' : 'false']}
           onConfirm={handleGenderConfirm}
           title={t('profileEdit.selectGender')}
@@ -310,6 +317,8 @@ export default function ProfileEdit() {
           columns={[languageColumns]}
           visible={languagePickerVisible}
           onClose={() => setLanguagePickerVisible(false)}
+          getContainer={getPopupContainer}
+          mouseWheel
           value={[i18n.resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en']}
           onConfirm={handleLanguageConfirm}
           title={t('profileEdit.selectLanguage')}
@@ -319,6 +328,8 @@ export default function ProfileEdit() {
         <DatePicker
           visible={dateVisible}
           onClose={() => setDateVisible(false)}
+          getContainer={getPopupContainer}
+          mouseWheel
           min={new Date(1950, 0, 1)}
           max={new Date()}
           onConfirm={handleBirthdayConfirm}
@@ -330,6 +341,8 @@ export default function ProfileEdit() {
           options={getCommunityOptions(i18n.resolvedLanguage || i18n.language)}
           visible={communityPickerVisible}
           onClose={() => setCommunityPickerVisible(false)}
+          getContainer={getPopupContainer}
+          mouseWheel
           onConfirm={async (value: PickerValue[]) => {
             setCommunityPickerVisible(false);
             const community = value.filter(Boolean).join(' ');
