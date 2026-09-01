@@ -1,6 +1,6 @@
 # RAG v2 Optimization Roadmap
 
-状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成，生产开关继续关闭并等待新的 hidden holdout
+状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成；M3 工程与 Dev 质量验收完成，但 1.25× 延迟门禁未通过。生产开关继续关闭
 
 范围：`agent-service` 的 Embedding、候选召回、查询扩展、重排、评测与生产发布
 
@@ -617,18 +617,38 @@ class QueryRewriteService(Protocol):
 
 ### 8.7 测试
 
-- [ ] 中文、英文和中英混合查询都能生成合法 Rewrite。
-- [ ] Rewrite 不能改变预算、人数、区域和 required tags。
-- [ ] 原始查询始终参与召回。
-- [ ] Invalid JSON、provider timeout 和 429 会回退且不导致 Run 失败。
-- [ ] 相同 QueryPlan 的缓存结果稳定。
-- [ ] Prompt injection 输入仍在 API 边界被拒绝，不能借 Rewrite 绕过审批或工具策略。
+- [x] 中文、英文和中英混合查询都能生成合法 Rewrite。
+- [x] Rewrite 不能改变预算、人数、区域和 required tags。
+- [x] 原始查询始终参与召回。
+- [x] Invalid JSON、provider timeout 和 429 会回退且不导致 Run 失败。
+- [x] 相同 QueryPlan 的缓存结果稳定。
+- [x] Prompt injection 输入仍在 API 边界被拒绝，不能借 Rewrite 绕过审批或工具策略。
 
 ### 8.8 验收标准
 
-- 词典外 paraphrase 子集的 Recall/nDCG 明显优于 M2。
-- 已在词典覆盖范围内的简单查询不得显著回归。
-- Rewrite 增加的 P95 与 provider cost 在 M0 冻结的预算内。
+- [x] 词典外 paraphrase 子集的 Recall/nDCG 明显优于 M2。
+- [x] 已在词典覆盖范围内的简单查询不得显著回归。
+- [ ] Rewrite 增加的 P95 与 provider cost 在 M0 冻结的预算内。费用通过；Total P95 为 control 的 4.919768×，超过 1.25× 上限。
+
+### 8.9 完成记录（2026-09-01）
+
+M3 工程与可复现 Dev 实验已完成。系统实现了 strict-schema constrained rewrite、hard-constraint echo、否定条件保持、最多 3 条 LLM rewrite、原始/规则查询保留、5 路独立 Dense + Sparse 检索、query provenance、merchant-level RRF、缓存、并发/timeout/费用上限和在线 rules-only fallback。正式 Eval 对任何 rewrite/retrieval fallback、variant failure、未标注返回或预算越界 fail-fast。
+
+Query Embedding batch 被隔离到查询侧模块，不改变文档 transform 源码指纹；因此原 145,000-point Qwen index 被严格复用，`upserted=0`、`unchanged=145000`。5 个 variant 在一次 Qwen 请求中生成向量，失败时只做一次 Sparse-only 降级，不会扩散付费请求。该优化把 treatment 的 Qwen 网络请求从首轮 468 降至 147，相对 control 只增加 67，低于冻结的 +320 上限。
+
+最终 schema-v4 pooled Dev suite 有 80 条 query、1,569 个有界 judgment pair，并包含 4 个 binary-relevant treatment-only pair。独立 paired comparator 的质量结果为：
+
+| 指标 | M2 control | M3 Multi-Query | 变化 |
+| --- | ---: | ---: | ---: |
+| Recall@10 | 64.82% | 69.03% | +4.21pp |
+| Precision@5 | 87.00% | 93.50% | +6.50pp |
+| nDCG@10 | 83.01% | 91.65% | +8.64pp |
+| 中文 nDCG@10 | 81.38% | 90.36% | +8.98pp |
+| 词典外 Recall@10 | 42.31% | 48.53% | +6.22pp |
+| 词典外 nDCG@10 | 72.06% | 90.45% | +18.39pp |
+| Total P95 | 1.008s | 4.959s | 4.920× |
+
+Hard constraints、evidence、security、version/citation/identity、hard negatives、Provider retry/failure 与未标注率均通过；规则已覆盖子集 nDCG 变化仅 `-0.0133pp`。最终 capture + formal 协议估算总费用为 `$0.05784`，远低于用户报告的余额与冻结 cap。唯一失败是 Total P95 ratio；门禁没有事后放宽，因此 M3 不晋级生产。冻结 suite 位于 `evals/rag_v2/m3/`，精确哈希、费用、报告 SHA 与决策见 `evals/rag_v2/m3_results.json`。下一步先验证更低延迟的 rewrite provider 或本地小模型，再使用同一 Dev gate；生产晋级仍需新的 hidden holdout。
 
 ## 9. M4：多语言 Cross-Encoder 重排
 
@@ -905,15 +925,15 @@ RAG v2 只有在满足以下条件后才算完成：
 
 ## 18. 简历表述门禁
 
-在 M0–M5 完成前，继续使用当前可验证表述，不提前写入 Cross-Encoder、LLM Multi-Query 或真实语义 Embedding。
+M3 之后可以声明已经实现并在 80 条中英 Dev query 上评测真实多语言 Embedding、全局 Hybrid Retrieval、受约束 LLM Multi-Query 与 merchant-level RRF，但必须明确这是 pooled Dev 结果，且不能声称已晋级生产、通过 hidden test 或满足延迟目标。Cross-Encoder 仍未实现，不得写入当前简历版本。
 
-最终可以在真实报告生成后使用以下模板：
+当前可验证的模板为：
 
 ```text
-Developed global Qdrant hybrid retrieval with multilingual embeddings,
-constrained LLM multi-query rewriting, RRF fusion, and Cross-Encoder reranking;
-improved nDCG@10 by X points while maintaining Y% Recall@10 and Z ms P95
-latency across N frozen bilingual evaluation queries.
+Implemented global Qdrant hybrid retrieval with multilingual embeddings,
+strict-schema constrained LLM multi-query rewriting, and merchant-level RRF;
+improved pooled-Dev nDCG@10 by 8.64 points and Recall@10 by 4.21 points
+across 80 bilingual queries while preserving 100% hard-constraint satisfaction.
 ```
 
-`X`、`Y`、`Z`、`N` 必须从 RAG v2 hidden-test 报告自动读取，不能人工估算。
+若需要写入生产效果、P95 达标或最终 RAG v2 指标，仍必须等待 M4/M5、同一冻结性能门禁和新的 hidden-test 报告；不能把当前 `4.920×` 的失败延迟省略后表述成“低延迟”。

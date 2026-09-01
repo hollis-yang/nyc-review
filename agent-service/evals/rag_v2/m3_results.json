@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M3-constrained-llm-multi-query",
+  "status": "engineering-and-dev-evaluation-complete-latency-gate-failed",
+  "evaluatedAt": "2026-09-01",
+  "decision": {
+    "pairedDevGatePassed": false,
+    "qualityAndSafetySubgatesPassed": true,
+    "requestAndCostBudgetsPassed": true,
+    "latencyGatePassed": false,
+    "productionPromotionApproved": false,
+    "productionQueryRewriteEnabled": false,
+    "productionGlobalRetrievalEnabled": false,
+    "reason": "All frozen quality, safety, integrity, request, token, and cost checks passed, but treatment Total P95 was 4.919768x control versus the precommitted 1.25x limit. The pooled Dev suite is also not a hidden promotion holdout."
+  },
+  "source": {
+    "gitSha": "c53ab2657762bd2c377bbc936b990b2d9286ef31",
+    "dirty": false,
+    "scopedSourceSha256": "ac6b92fd3b6a73bceaf2fe8f1ca7078c0241a712c214d78ccc15faa4573c974e"
+  },
+  "suite": {
+    "name": "rag-v2-m3-query-rewrite-dev-v1",
+    "split": "dev",
+    "cases": 80,
+    "caseSha256": "d1cdb9091348f880bbf1f68990d5d3095cec7a8f64bb67563ceca087766c8a86",
+    "suiteContractSha256": "3020696fb9801110e3645314d25288304833661620f725edcd846d177b68cfdd",
+    "judgmentContractSha256": "4e2062e2902ff45c2dbdd618ea374789debc31d9200ba94163f0119c627886e1",
+    "structuredJudgmentPairs": 1541,
+    "m2ControlObservedPairs": 730,
+    "m3TreatmentObservedPairs": 730,
+    "boundedJudgmentPairs": 1569,
+    "m3TreatmentOnlyJudgmentPairs": 4,
+    "binaryRelevantM3TreatmentOnlyPairs": 4,
+    "fullCartesianPairsAvoided": 398431,
+    "labelSource": "deterministic-derived-merchant-attributes",
+    "selectionLeakageWarning": "M2 control Top-K and M3 treatment Top-K participate in the bounded judgment union; this pooled Dev suite cannot be used as a hidden production-promotion holdout."
+  },
+  "configuration": {
+    "embeddingProfile": "qwen37-1024",
+    "embeddingModel": "qwen3.7-text-embedding",
+    "embeddingDimensions": 1024,
+    "collection": "nyc_review_content_v3_dashscope_qwen37_1024_v1",
+    "indexedDocuments": 145000,
+    "indexAction": "reuse",
+    "indexManifestFingerprint": "fccfba7220b3f84ca2b9fbf1dc21083b2ee0a636e00cf84bbf342f8bdf56eb36",
+    "qdrantServerVersion": "1.19.0",
+    "structuredPool": 30,
+    "globalDocumentLimit": 200,
+    "globalMerchantHydrationLimit": 60,
+    "fusionPool": 30,
+    "finalCandidateLimit": 10,
+    "rrfK": 60,
+    "brandCap": 2,
+    "controlQueryRewriteProvider": "disabled",
+    "treatmentQueryRewriteProvider": "openai",
+    "treatmentQueryRewriteModel": "gpt-4o-mini-2024-07-18",
+    "treatmentPromptVersion": "m3-query-rewrite-v1",
+    "maxLlmRewrites": 3,
+    "maxTotalQueryVariants": 5,
+    "learnedRerankerProvider": "disabled"
+  },
+  "control": {
+    "recallAt10": 0.648208,
+    "precisionAt5": 0.87,
+    "ndcgAt10": 0.830082,
+    "mrrAt10": 0.966667,
+    "zhNdcgAt10": 0.813791,
+    "outOfDictionaryRecallAt10": 0.423055,
+    "outOfDictionaryNdcgAt10": 0.720597,
+    "ruleCoveredNdcgAt10": 0.883585,
+    "negationNdcgAt10": 0.712981,
+    "hardConstraintSatisfaction": 1.0,
+    "evidenceCoverage": 1.0,
+    "providerNetworkRequests": 80,
+    "providerTokens": 4380,
+    "totalP95Ms": 1007.973708
+  },
+  "treatment": {
+    "recallAt10": 0.690281,
+    "precisionAt5": 0.935,
+    "ndcgAt10": 0.916461,
+    "mrrAt10": 0.9875,
+    "zhNdcgAt10": 0.903572,
+    "outOfDictionaryRecallAt10": 0.485298,
+    "outOfDictionaryNdcgAt10": 0.904477,
+    "ruleCoveredNdcgAt10": 0.883452,
+    "negationNdcgAt10": 0.901044,
+    "hardConstraintSatisfaction": 1.0,
+    "evidenceCoverage": 1.0,
+    "queryRewriteP95Ms": 3367.269,
+    "globalEmbeddingP95Ms": 1218.808,
+    "providerNetworkRequests": 147,
+    "providerTokens": 21960,
+    "rewriteProviderNetworkRequests": 80,
+    "rewriteProviderTokens": 128839,
+    "rewriteEstimatedCostUsd": 0.027042,
+    "totalP95Ms": 4958.99675
+  },
+  "comparison": {
+    "passed": false,
+    "failures": [
+      "latencyMs.total.p95 ratio=4.919768 exceeds 1.25"
+    ],
+    "recallAt10Delta": 0.042073,
+    "precisionAt5Delta": 0.065,
+    "ndcgAt10Delta": 0.086379,
+    "mrrAt10Delta": 0.020833,
+    "zhNdcgAt10Delta": 0.089781,
+    "outOfDictionaryRecallAt10Delta": 0.062243,
+    "outOfDictionaryNdcgAt10Delta": 0.18388,
+    "ruleCoveredNdcgAt10Delta": -0.000133,
+    "negationNdcgAt10Delta": 0.188063,
+    "totalP95Ratio": 4.919768,
+    "providerNetworkRequestDelta": 67,
+    "providerTokenDelta": 17580,
+    "rewriteProviderNetworkRequestDelta": 80,
+    "rewriteProviderTokenDelta": 128839
+  },
+  "integrity": {
+    "evidenceCoverage": 1.0,
+    "unjudgedReturnedRate": 0.0,
+    "securityLeakageCount": 0,
+    "versionMismatchCount": 0,
+    "citationOwnershipMismatchCount": 0,
+    "citationExternalIdMismatchCount": 0,
+    "citationSourceMismatchCount": 0,
+    "hardConstraintViolationCount": 0,
+    "hardConstraintUnknownCount": 0,
+    "duplicateMerchantCount": 0,
+    "excessiveBrandCount": 0,
+    "embeddingProviderRetries": 0,
+    "embeddingProviderFailures": 0,
+    "rewriteProviderRetries": 0,
+    "rewriteProviderFailures": 0,
+    "retrievalFallbackCount": 0
+  },
+  "queryBatchOptimization": {
+    "rankingFormulaChanged": false,
+    "variantsPerTreatmentCase": 5,
+    "preOptimizationTreatmentProviderNetworkRequests": 468,
+    "finalTreatmentProviderNetworkRequests": 147,
+    "networkRequestReduction": 321,
+    "networkRequestReductionRate": 0.685897,
+    "finalProviderNetworkRequestDeltaVsControl": 67,
+    "requestBudgetMaximumDelta": 320,
+    "requestBudgetPassed": true
+  },
+  "providerCost": {
+    "rewriteInputPriceUsdPerMillionTokens": 0.15,
+    "rewriteOutputPriceUsdPerMillionTokens": 0.6,
+    "embeddingPriceUsdPerMillionTokens": 0.07,
+    "captureTreatmentRewriteEstimatedCostUsd": 0.027047,
+    "formalTreatmentRewriteEstimatedCostUsd": 0.027042,
+    "finalProtocolRewriteEstimatedCostUsd": 0.054089,
+    "finalProtocolEmbeddingNetworkRequests": 462,
+    "finalProtocolEmbeddingTokens": 53554,
+    "finalProtocolEmbeddingEstimatedCostUsd": 0.00374878,
+    "finalProtocolEstimatedCostUsd": 0.05783778,
+    "indexEmbeddingTokensThisMilestone": 0,
+    "indexEstimatedCostUsdThisMilestone": 0.0,
+    "developmentSessionEstimatedUpperBoundUsd": 0.15
+  },
+  "artifacts": {
+    "committedSuite": {
+      "cases": {
+        "path": "m3/cases.m3.dev.json",
+        "sha256": "3c551a23bb4aef5365854dc0912aec992a6dbf8cfc47064731e1125546b24d80"
+      },
+      "candidateUniverse": {
+        "path": "m3/candidate_universe.m3.dev.json",
+        "sha256": "d2a6a2a97e8b0d500c272bcc9c46213ee377c18b41f5d9474dded2b9f6ceffc4"
+      },
+      "adversarialDocuments": {
+        "path": "m3/adversarial_documents.json",
+        "sha256": "a391edf2bcbec5cdb0e7c61fa4ad0863b08b87eaaf784b0fd30e3646f141a718"
+      }
+    },
+    "localReports": {
+      "captureControlSha256": "cf20412ae52043a65d8f8c8a94bc2d97133369c80b405d137527050b9c7fbb5e",
+      "captureTreatmentSha256": "d4b552731db8707eaa536dafb091b2aa058a89d7e4b041518fd1b2325d3fccad",
+      "controlSha256": "22075c4fe8df21a294c0223e15ee620bbeb6ba8a8ceb4a06f0389db24b808553",
+      "treatmentSha256": "7790a97b8bd87cb1a152bfb1f3350827f156992028e1b4ace52f8afca2bb19b9",
+      "comparisonSha256": "0bc5672a4dd83e0691756476b3da19dd383db2ad130b192cecea9e6e8f7baafb"
+    }
+  }
+}

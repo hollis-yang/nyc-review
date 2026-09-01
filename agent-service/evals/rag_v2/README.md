@@ -1,4 +1,4 @@
-# RAG Eval v2（M0 基线 + M1 Embedding + M2 全局召回）
+# RAG Eval v2（M0 基线 + M1 Embedding + M2 全局召回 + M3 Multi-Query）
 
 该目录是在不修改 P12 冻结套件的前提下，为 RAG 优化建立的可复现基线。它评测当前真实链路：
 
@@ -9,7 +9,7 @@ structured candidate search
 → evidence retrieval
 ```
 
-M0 冻结了 Hash/64 基线；M1 在不改变 Query Rewrite、候选范围和 reranking 的前提下，只比较真实 Embedding；M2 用显式 feature flag 隔离 candidate-filtered control 与 global-hybrid treatment。LLM Query Rewrite 和 Cross-Encoder 仍未实现，CLI 会继续对这两项配置 fail-fast。
+M0 冻结了 Hash/64 基线；M1 在不改变 Query Rewrite、候选范围和 reranking 的前提下，只比较真实 Embedding；M2 用显式 feature flag 隔离 candidate-filtered control 与 global-hybrid treatment；M3 再隔离受约束的 LLM Multi-Query。Cross-Encoder 仍未实现，CLI 会继续拒绝非 disabled 的 learned reranker 配置。
 
 ## 冻结数据契约
 
@@ -284,6 +284,55 @@ Treatment 恢复了 10/10 个 eligible case、20/20 个 binary-relevant structur
 
 `cases.test.json` 的 M1 policy holdout 已经消费且在 M2 CLI/Builder 中永久封存；不得用于 capture、调参或晋级。M2 完成 Dev 决策后必须另建新的 hidden holdout。生产 Compose 的全局召回 flag 在完整 M2 晋级前保持关闭。
 
+## M3：受约束的 LLM Multi-Query
+
+M3 在 M2 global-hybrid 两臂都开启的前提下，仅切换 Query Rewrite。原始查询、确定性中英规则扩展和最多 3 条通过严格 JSON Schema 的 LLM rewrite 各自执行 Dense + Sparse 检索，再在 merchant level 做 query-variant RRF。模型必须逐字段回显已解析的 hard constraints，并保留 required/excluded tags；不一致、无效 JSON、429、超时或 Provider 错误在在线路径降级为 rules-only，而正式 Eval 在第一条 fallback 或不完整 variant 时立即终止。
+
+5 条 query variant 使用一次 Qwen query batch，并把结果写入既有 LRU cache；它只改变在线查询调度，不改变文档 transform，因此 145,000-point M1 index 的源码指纹仍保持 `40b101d1...`，本阶段没有重建文档向量。批处理失败只执行一次 Sparse-only 降级，不会扩散成 5 次付费重试。
+
+正式协议使用两次完整 capture 构建有界 schema-v4 Dev suite，再运行 paired control/treatment：
+
+```bash
+# 1. 对冻结 M2 Dev suite 分别运行 --m3-capture-arm control/treatment。
+#    两臂都显式开启 global-hybrid；treatment 额外设置：
+--query-rewrite-provider openai \
+--query-rewrite-model gpt-4o-mini-2024-07-18 \
+--query-rewrite-max-queries 3 \
+--query-rewrite-input-price-usd-per-million-tokens 0.15 \
+--query-rewrite-output-price-usd-per-million-tokens 0.60
+
+# 2. 构建只覆盖实际 Structured + 两臂 Top-K 并集的 Dev suite。
+uv run python -m evals.rag_v2.build_m3_cases \
+  --source-suite evals/rag_v2/m2/cases.m2.dev.json \
+  --control-report .local/m3-capture-control.json \
+  --treatment-report .local/m3-capture-treatment.json \
+  --output-directory .local/m3-suite
+
+# 3. 在 cases.m3.dev.json 上运行相同的 control/treatment 配置并比较。
+uv run python -m evals.rag_v2.compare_m3 \
+  .local/m3-control.json .local/m3-treatment.json \
+  --output .local/m3-comparison.json
+```
+
+### M3 Dev 结果（2026-09-01）
+
+冻结 suite 位于 `evals/rag_v2/m3/`，机器可读摘要见 `m3_results.json`。80 条 query、1,569 个有界 judgment pair 中有 4 个 treatment-only pair，且全部为 binary relevant；该 pooled Dev suite 同样存在 selection leakage，不能替代 hidden holdout。
+
+| 指标 | M2 control | M3 Multi-Query | 变化 |
+| --- | ---: | ---: | ---: |
+| Recall@10 | 64.82% | 69.03% | +4.21pp |
+| Precision@5 | 87.00% | 93.50% | +6.50pp |
+| nDCG@10 | 83.01% | 91.65% | +8.64pp |
+| MRR@10 | 96.67% | 98.75% | +2.08pp |
+| 中文 nDCG@10 | 81.38% | 90.36% | +8.98pp |
+| 词典外 Recall@10 | 42.31% | 48.53% | +6.22pp |
+| 词典外 nDCG@10 | 72.06% | 90.45% | +18.39pp |
+| Total P95 | 1.008s | 4.959s | 4.920× |
+
+质量、安全、完整性、请求、token 与费用子门禁全部通过：hard-constraint satisfaction 和 evidence coverage 均为 100%，security/version/citation mismatch、hard-negative、重复 merchant、第 3 个同品牌结果、rewrite fallback、Provider retry/failure 均为 0。规则已覆盖子集 nDCG 只变化 `-0.0133pp`，否定表达 nDCG 提升 `18.81pp`。
+
+批处理将 treatment 的 Qwen 网络请求从首轮的 468 降至 147，较 control 只增加 67，低于 +320 上限；最终 capture + formal 协议的 OpenAI rewrite 与 Qwen query 估算费用合计 `$0.05784`，没有产生 document embedding 成本。但 Total P95 的冻结上限是 1.25×，最终实测为 4.920×；独立 comparator 因此只保留一项失败并拒绝晋级。生产 Compose 继续固定关闭 Global Retrieval 与 Query Rewrite，后续必须换用显著更低延迟的 rewrite provider/本地模型并通过同一 gate，再建立新的 hidden holdout。
+
 ## 指标和报告
 
 质量指标包括 Recall@5/10、Precision@5、nDCG@5/10、MRR@10、硬约束满足率、证据覆盖率、未标注率、hard-negative final-return rate，以及 citation owner、merchant identity、source、security、data version 和 dataset SHA 完整性。品牌指标分为从同品牌第 2 个结果起计算的 `duplicateBrandRate`，以及只惩罚第 3 个及以后结果的 `excessiveBrandRate`。
@@ -295,7 +344,7 @@ Treatment 恢复了 10/10 个 eligible case、20/20 个 binary-relevant structur
 - Structured Search、Candidate Ranking、Evidence Retrieval 和 Total：Eval 外层 wall clock；
 - Embedding：记录 logical query/document calls、Provider HTTP requests、cache hit、token、retry、failure、总时长和按冻结单价估算的费用；索引与查询 usage 分开保存。
 
-M0/M1 历史报告仍无法从旧接口拆分 Query Planning、Qdrant 与 Fusion；M2 的统一 Candidate Discovery 接口会直接暴露 global dense/sparse、Embedding、merchant aggregation、hydration 与 fusion timing，不使用总时长差值伪造阶段耗时。Rewrite 和 learned reranker 仍为 disabled。正式 M1/M2 Eval 对 Provider、分支 fallback 与未标注商户 fail-closed；在线 Runtime 才允许带 metadata 的受控降级。
+M0/M1 历史报告仍无法从旧接口拆分 Query Planning、Qdrant 与 Fusion；M2/M3 的统一 Candidate Discovery 接口会直接暴露 global dense/sparse、Embedding、merchant aggregation、hydration、fusion 与 rewrite timing，不使用总时长差值伪造阶段耗时。Learned reranker 仍为 disabled。正式 M1–M3 Eval 对 Provider、rewrite/retrieval fallback、variant failure 与未标注商户 fail-closed；在线 Runtime 才允许带 metadata 的受控降级。
 
 ## M0 Hash/64 本地基线
 
