@@ -9,23 +9,8 @@ import PhoneNumberField from '../../components/PhoneNumberField';
 import { initialPhoneRegion } from '../../constants/phoneRegions';
 import { localizedAuthError } from '../../utils/authError';
 import { buildAuthEntryUrl, safeAuthRedirect } from '../../utils/authRedirect';
+import BrandIcon from '../../components/BrandIcon';
 import styles from './Login.module.css';
-
-function BrandIcon({ size = 36 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="url(#login-brand-bg)" />
-      <path d="M14 45c2-15 11-26 25-26 8 0 15 4 20 11" stroke="#fff" strokeWidth="3" fill="none" />
-      <circle cx="26" cy="35" r="5" stroke="#fff" strokeWidth="3" />
-      <defs>
-        <linearGradient id="login-brand-bg" x1="0" y1="0" x2="64" y2="64">
-          <stop stopColor="#ff6633" />
-          <stop offset="1" stopColor="#ff8a5c" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 export default function Login() {
   const navigate = useNavigate();

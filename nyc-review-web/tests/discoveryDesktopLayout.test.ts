@@ -76,6 +76,12 @@ test('map keeps filters, viewport states and popups with a desktop top filter ba
   assert.match(mapPage, /shop\.name/);
   assert.match(mapPage, /shop\.avgPrice/);
   assert.match(mapPage, /shop\.neighborhood \|\| shop\.area/);
+  for (const homeTypeColor of ['#FF6B3D', '#E5842D', '#7654C7', '#398AC7', '#318B5D', '#D95F86']) {
+    assert.match(mapPage, new RegExp(homeTypeColor));
+  }
+  assert.doesNotMatch(mapPage, /safeMarkerInitial/);
+  assert.doesNotMatch(mapPage, /map-shop-pin[^`]*<span>/);
+  assert.doesNotMatch(styles, /map-shop-pin span/);
   assert.match(mapPage, /function MapResizeObserver/);
   assert.match(mapPage, /map\.invalidateSize\(\{ pan: false, animate: false \}\)/);
   assert.match(styles, /\.filterScroller\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;/s);

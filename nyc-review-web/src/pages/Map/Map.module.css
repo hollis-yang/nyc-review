@@ -306,21 +306,11 @@
 :global(.map-shop-pin) {
   width: 28px;
   height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transform: rotate(-45deg);
   border: 2px solid #fff;
   border-radius: 50% 50% 50% 0;
   background: var(--map-pin-color, #777);
-  color: #fff;
   box-shadow: 0 2px 7px rgba(15, 23, 42, 0.34);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-:global(.map-shop-pin span) {
-  transform: rotate(45deg);
 }
 
 :global(.map-cluster-icon) {

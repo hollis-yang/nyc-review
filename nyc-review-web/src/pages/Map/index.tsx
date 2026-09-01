@@ -51,12 +51,13 @@ interface InitialMapState {
 }
 
 const TYPE_COLORS: Record<number, string> = {
-  1: '#FF6B35',
-  2: '#9B59B6',
-  3: '#E74C3C',
-  4: '#2ECC71',
-  5: '#3498DB',
-  6: '#F39C12',
+  // Keep map markers aligned with the primary strokes in public/imgs/types/nyc-*.svg.
+  1: '#FF6B3D',
+  2: '#E5842D',
+  3: '#7654C7',
+  4: '#398AC7',
+  5: '#318B5D',
+  6: '#D95F86',
 };
 
 const FALLBACK_TYPES: ShopType[] = [
@@ -131,15 +132,10 @@ function resolveTypeColor(type: ShopType | undefined): string {
   return TYPE_COLORS[type?.id ?? 0] ?? '#777777';
 }
 
-function safeMarkerInitial(name: string): string {
-  const firstCharacter = Array.from(name.trim())[0] ?? '?';
-  return /[\p{L}\p{N}]/u.test(firstCharacter) ? firstCharacter : '?';
-}
-
-function createTypeIcon(typeName: string, color: string) {
+function createTypeIcon(color: string) {
   return L.divIcon({
     className: 'map-shop-marker',
-    html: `<div class="map-shop-pin" style="--map-pin-color:${color}" aria-hidden="true"><span>${safeMarkerInitial(typeName)}</span></div>`,
+    html: `<div class="map-shop-pin" style="--map-pin-color:${color}" aria-hidden="true"></div>`,
     iconSize: [30, 30],
     iconAnchor: [15, 30],
     popupAnchor: [0, -30],
@@ -306,7 +302,7 @@ function MapLayers({
   const typeIcons = useMemo(
     () => new Map(types.map((type) => [
       type.id,
-      createTypeIcon(type.name, resolveTypeColor(type)),
+      createTypeIcon(resolveTypeColor(type)),
     ])),
     [types],
   );
@@ -355,7 +351,7 @@ function MapLayers({
         const shop = item as MapShopItem;
         const shopType = typeMap.get(shop.typeId);
         const icon = typeIcons.get(shop.typeId)
-          ?? createTypeIcon(shopType?.name ?? '?', resolveTypeColor(shopType));
+          ?? createTypeIcon(resolveTypeColor(shopType));
         const distance = userPos
           ? haversine(userPos[0], userPos[1], position[0], position[1])
           : null;

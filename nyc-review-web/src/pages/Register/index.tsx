@@ -10,23 +10,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { localizedAuthError } from '../../utils/authError';
 import { buildAuthEntryUrl, safeAuthRedirect } from '../../utils/authRedirect';
 import { isStrongRegistrationPassword } from '../../utils/passwordPolicy';
+import BrandIcon from '../../components/BrandIcon';
 import styles from '../Login/Login.module.css';
-
-function BrandIcon() {
-  return (
-    <svg viewBox="0 0 64 64" width="48" height="48" fill="none" aria-hidden="true">
-      <rect width="64" height="64" rx="16" fill="url(#register-brand-bg)" />
-      <circle cx="25" cy="27" r="8" stroke="#fff" strokeWidth="3" />
-      <path d="M12 50c2-10 7-15 13-15s11 5 13 15M47 24v18M38 33h18" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-      <defs>
-        <linearGradient id="register-brand-bg" x1="0" y1="0" x2="64" y2="64">
-          <stop stopColor="#ff6633" />
-          <stop offset="1" stopColor="#ff8a5c" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 export default function Register() {
   const navigate = useNavigate();
@@ -98,7 +83,7 @@ export default function Register() {
       <div className={styles.scroll}>
         <div className={styles.authPanel}>
         <div className={styles.brand}>
-          <BrandIcon />
+          <BrandIcon size={48} />
           <div className={styles.brandName}>{t('register.heading')}</div>
           <div className={styles.brandSlogan}>{t('register.subtitle')}</div>
         </div>
