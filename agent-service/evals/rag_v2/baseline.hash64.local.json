@@ -101,6 +101,11 @@
         "zh": 0.762191,
         "mixed": 0.810424
       },
+      "languageMrrAt10": {
+        "en": 0.878571,
+        "zh": 0.902778,
+        "mixed": 0.95
+      },
       "integrity": {
         "securityLeakageCount": 0,
         "versionMismatchCount": 0,
@@ -156,6 +161,11 @@
         "en": 0.766489,
         "zh": 0.810173,
         "mixed": 0.851988
+      },
+      "languageMrrAt10": {
+        "en": 0.904167,
+        "zh": 0.927778,
+        "mixed": 1.0
       },
       "integrity": {
         "securityLeakageCount": 0,

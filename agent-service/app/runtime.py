@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,9 @@ from app.graph.workflow import WorkflowServices, build_multi_agent_graph, build_
 from app.model_gateway import HeuristicModelGateway, OpenAICompatibleModelGateway
 from app.rag.embeddings import (
     DeterministicHashEmbeddingService,
+    EmbeddingService,
     OpenAICompatibleEmbeddingService,
+    QwenNativeEmbeddingService,
 )
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import QdrantRagService
@@ -53,99 +56,153 @@ class AgentRuntime:
     shop_service: Any = None
     rag_service: Any = None
     itinerary_service: Any = None
+    embedding_service: EmbeddingService | None = None
+    _closed: bool = field(default=False, init=False, repr=False)
 
     @classmethod
     async def create(cls, settings: Settings) -> AgentRuntime:
         shops = _build_shop_service(settings)
         qdrant_client: AsyncQdrantClient | None = None
+        run_store: SQLiteRunStore | None = None
+        run_manager: AgentRunManager | None = None
         indexed_documents = 0
         data_version: str | None = None
         dataset_sha256: str | None = None
         source_counts: dict[str, int] = {}
         rag_index_stats: dict[str, int] = {}
+        embedding_service: EmbeddingService | None = None
         if settings.rag_data_directory is not None:
             data_version, dataset_sha256, source_counts = _validate_data_directory(
                 settings.rag_data_directory.resolve()
             )
 
-        if settings.rag_adapter == "qdrant":
-            qdrant_client = _build_qdrant_client(settings.qdrant_location)
-            rag = QdrantRagService(
-                client=qdrant_client,
-                embeddings=_build_embedding_service(settings),
-                collection_name=settings.qdrant_collection,
-                index_batch_size=settings.rag_index_batch_size,
-                dataset_sha256=dataset_sha256,
-                retrieval_version=settings.retrieval_version,
-            )
-            if settings.rag_data_directory is not None:
-                data_directory = settings.rag_data_directory.resolve()
-                index_stats = await rag.sync(
-                    iter_generated_documents(data_directory),
-                    data_version=data_version,
+        try:
+            if settings.rag_adapter == "qdrant":
+                qdrant_client = _build_qdrant_client(
+                    settings.qdrant_location,
+                    api_key=settings.qdrant_api_key.get_secret_value(),
                 )
-                indexed_documents = index_stats.total_documents
-                rag_index_stats = index_stats.as_metadata()
-        else:
-            rag = InMemoryRagService(
+                embedding_service = _build_embedding_service(settings)
+                rag = QdrantRagService(
+                    client=qdrant_client,
+                    embeddings=embedding_service,
+                    collection_name=settings.qdrant_collection,
+                    index_batch_size=settings.rag_index_batch_size,
+                    dataset_sha256=dataset_sha256,
+                    retrieval_version=settings.retrieval_version,
+                    allow_sparse_fallback=settings.embedding_sparse_fallback,
+                )
+                if settings.rag_data_directory is not None:
+                    data_directory = settings.rag_data_directory.resolve()
+                    index_stats = await rag.sync(
+                        iter_generated_documents(data_directory),
+                        data_version=data_version,
+                    )
+                    indexed_documents = index_stats.total_documents
+                    rag_index_stats = index_stats.as_metadata()
+            else:
+                rag = InMemoryRagService(
+                    data_version=data_version,
+                    dataset_sha256=dataset_sha256,
+                )
+
+            itinerary = HaversineItineraryService()
+            services = WorkflowServices(
+                shops=shops,
+                rag=rag,
+                itinerary=itinerary,
+                final_candidate_limit=settings.max_candidates,
+            )
+            workflows = {
+                AgentMode.SINGLE: build_single_agent_graph(services),
+                AgentMode.MULTI: build_multi_agent_graph(services),
+            }
+            runtime = cls(
+                workflow=workflows[AgentMode.MULTI],
+                workflows=workflows,
+                adapter_name=settings.adapter,
+                rag_name=settings.rag_adapter,
+                indexed_documents=indexed_documents,
                 data_version=data_version,
                 dataset_sha256=dataset_sha256,
+                source_counts=source_counts,
+                rag_index_stats=rag_index_stats,
+                retrieval_version=settings.retrieval_version,
+                qdrant_client=qdrant_client,
+                model_provider=settings.model_provider,
+                action_service=AgentActionService(
+                    HttpActionGateway(
+                        settings.backend_base_url,
+                        fallback_authorization=settings.backend_auth_token,
+                    )
+                    if settings.adapter == "http"
+                    else InMemoryActionGateway()
+                ),
+                rate_limiter=SlidingWindowRateLimiter(settings.runs_per_minute),
+                metrics_token=settings.metrics_token,
+                settings=settings,
+                shop_service=shops,
+                rag_service=rag,
+                itinerary_service=itinerary,
+                embedding_service=embedding_service,
             )
-
-        itinerary = HaversineItineraryService()
-        services = WorkflowServices(
-            shops=shops,
-            rag=rag,
-            itinerary=itinerary,
-            final_candidate_limit=settings.max_candidates,
-        )
-        workflows = {
-            AgentMode.SINGLE: build_single_agent_graph(services),
-            AgentMode.MULTI: build_multi_agent_graph(services),
-        }
-        runtime = cls(
-            workflow=workflows[AgentMode.MULTI],
-            workflows=workflows,
-            adapter_name=settings.adapter,
-            rag_name=settings.rag_adapter,
-            indexed_documents=indexed_documents,
-            data_version=data_version,
-            dataset_sha256=dataset_sha256,
-            source_counts=source_counts,
-            rag_index_stats=rag_index_stats,
-            retrieval_version=settings.retrieval_version,
-            qdrant_client=qdrant_client,
-            model_provider=settings.model_provider,
-            action_service=AgentActionService(
-                HttpActionGateway(
-                    settings.backend_base_url,
-                    fallback_authorization=settings.backend_auth_token,
-                )
-                if settings.adapter == "http"
-                else InMemoryActionGateway()
-            ),
-            rate_limiter=SlidingWindowRateLimiter(settings.runs_per_minute),
-            metrics_token=settings.metrics_token,
-            settings=settings,
-            shop_service=shops,
-            rag_service=rag,
-            itinerary_service=itinerary,
-        )
-        model_gateway = _build_model_gateway(settings)
-        runtime.run_manager = AgentRunManager(
-            runtime,
-            SQLiteRunStore(settings.run_store_path),
-            model_gateway,
-            max_recovery_attempts=settings.max_recovery_attempts,
-        )
-        await runtime.run_manager.recover()
-        return runtime
+            model_gateway = _build_model_gateway(settings)
+            run_store = SQLiteRunStore(settings.run_store_path)
+            run_manager = AgentRunManager(
+                runtime,
+                run_store,
+                model_gateway,
+                max_recovery_attempts=settings.max_recovery_attempts,
+            )
+            runtime.run_manager = run_manager
+            await run_manager.recover()
+            return runtime
+        except BaseException:
+            callbacks: list[Callable[[], Awaitable[None]]] = []
+            if run_manager is not None:
+                callbacks.append(run_manager.close)
+            elif run_store is not None:
+                callbacks.append(run_store.close)
+            if embedding_service is not None:
+                callbacks.append(embedding_service.aclose)
+            if qdrant_client is not None:
+                callbacks.append(qdrant_client.close)
+            await _close_async_callbacks(callbacks, suppress_errors=True)
+            raise
 
     async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        callbacks: list[Callable[[], Awaitable[None]]] = []
         if self.run_manager is not None:
-            await self.run_manager.close()
+            callbacks.append(self.run_manager.close)
+        if self.embedding_service is not None:
+            callbacks.append(self.embedding_service.aclose)
         if self.qdrant_client is not None:
-            await self.qdrant_client.close()
+            callbacks.append(self.qdrant_client.close)
+        # Mark closed before awaiting so a repeated call cannot close the same
+        # clients twice. References remain available for post-shutdown metrics
+        # and task-state assertions.
+        await _close_async_callbacks(callbacks)
+
+
+async def _close_async_callbacks(
+    callbacks: list[Callable[[], Awaitable[None]]],
+    *,
+    suppress_errors: bool = False,
+) -> None:
+    errors: list[BaseException] = []
+    for callback in callbacks:
+        try:
+            await callback()
+        except BaseException as exc:
+            errors.append(exc)
+    if suppress_errors or not errors:
+        return
+    if len(errors) == 1:
+        raise errors[0]
+    raise BaseExceptionGroup("Multiple runtime resources failed to close.", errors)
 
 
 def _build_shop_service(settings: Settings):
@@ -162,9 +219,9 @@ def _build_shop_service(settings: Settings):
     return MockShopToolService()
 
 
-def _build_qdrant_client(location: str) -> AsyncQdrantClient:
+def _build_qdrant_client(location: str, *, api_key: str = "") -> AsyncQdrantClient:
     if location.startswith(("http://", "https://")):
-        return AsyncQdrantClient(url=location)
+        return AsyncQdrantClient(url=location, api_key=api_key or None)
     if location == ":memory:":
         return AsyncQdrantClient(location=location)
     return AsyncQdrantClient(path=location)
@@ -174,11 +231,50 @@ def _build_embedding_service(settings: Settings):
     if settings.embedding_provider == "openai":
         return OpenAICompatibleEmbeddingService(
             base_url=settings.embedding_base_url,
-            api_key=settings.embedding_api_key,
+            api_key=(
+                settings.openai_embedding_api_key.get_secret_value()
+                or settings.embedding_api_key.get_secret_value()
+            ),
             model=settings.embedding_model,
             dimensions=settings.embedding_dimensions,
+            version=settings.embedding_version or settings.embedding_model,
+            batch_size=settings.embedding_batch_size,
+            max_concurrency=settings.embedding_max_concurrency,
+            timeout_seconds=settings.embedding_timeout_seconds,
+            max_retries=settings.embedding_max_retries,
+            max_batch_characters=settings.embedding_max_batch_characters,
+            query_cache_size=settings.embedding_query_cache_size,
+            query_cache_ttl_seconds=settings.embedding_query_cache_ttl_seconds,
+            query_prefix=settings.embedding_query_prefix,
+            document_prefix=settings.embedding_document_prefix,
+            max_total_tokens=settings.embedding_max_total_tokens,
         )
-    return DeterministicHashEmbeddingService(dimensions=settings.embedding_dimensions)
+    if settings.embedding_provider == "qwen":
+        return QwenNativeEmbeddingService(
+            base_url=settings.qwen_embedding_base_url or settings.embedding_base_url,
+            api_key=(
+                settings.qwen_embedding_api_key.get_secret_value()
+                or settings.embedding_api_key.get_secret_value()
+            ),
+            model=settings.embedding_model,
+            dimensions=settings.embedding_dimensions,
+            version=settings.embedding_version or settings.embedding_model,
+            batch_size=settings.embedding_batch_size,
+            max_concurrency=settings.embedding_max_concurrency,
+            timeout_seconds=settings.embedding_timeout_seconds,
+            max_retries=settings.embedding_max_retries,
+            max_batch_characters=settings.embedding_max_batch_characters,
+            query_cache_size=settings.embedding_query_cache_size,
+            query_cache_ttl_seconds=settings.embedding_query_cache_ttl_seconds,
+            query_prefix=settings.embedding_query_prefix,
+            document_prefix=settings.embedding_document_prefix,
+            query_instruct=settings.embedding_query_instruct,
+            max_total_tokens=settings.embedding_max_total_tokens,
+        )
+    return DeterministicHashEmbeddingService(
+        dimensions=settings.embedding_dimensions,
+        version=settings.embedding_version or "hash-v1",
+    )
 
 
 def _build_model_gateway(settings: Settings):

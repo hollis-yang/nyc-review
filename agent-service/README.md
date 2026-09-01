@@ -61,7 +61,7 @@ curl /v1/agent/metrics
 
 - 每个 Run 持久化 model、tool、agent node、action 和 total span；`GET /v1/agent/runs/{id}/trace` 返回完整 Trace。
 - `/v1/agent/metrics` 聚合操作次数、失败数、P50/P95 延迟和模型 Token；配置 `NYC_REVIEW_AGENT_METRICS_TOKEN` 后需传 `x-metrics-token`。
-- Agent 启动时会恢复未完成且尚未产生写操作的 Run；模型、Embedding、后端工具和 Run 不设置客户端执行超时，运行中的任务只能由用户取消、服务关闭或外部服务返回错误来终止。
+- Agent 启动时会恢复未完成且尚未产生写操作的 Run；Embedding Provider 使用有限 connect/read/pool timeout 与有界重试，Run 仍可由用户主动取消。
 - 所有持久 Run API 都要求浏览器生成的 `x-agent-session`；匿名 Run 按该 session 隔离，登录后原子绑定到 token 的 SHA-256 owner key，且不保存原始 token。
 - 服务重启不会自动重放已批准的写操作；中断的 Action 会回到可人工重试的 `failed` 状态，并继续使用同一个幂等 `actionId` 对账。
 - Prompt Guard 拒绝显式系统提示词窃取与绕过审批指令，创建 Run 还受按 owner/IP 的滑动窗口限流。
@@ -120,7 +120,7 @@ uv run uvicorn app.main:app --port 8090
 
 RAG 将每个根评论及其一、二级回复组合成一份 `shop_review_thread` 文档，并继续索引商户介绍、博客与博客评论。Payload 分开保留商户身份来源和记录自身的内容来源；这些字段用于审计和数据隔离，不会拼进用户可见的 citation excerpt。Loader 会拒绝来源类型或 `dataVersion` 不符合 real-only 契约的数据。营业时间优先采用 OSM `opening_hours`，缺失时使用类别默认值；价格与稀疏发现标签采用稳定估算；评分来自根评论聚合。Verifier 会尊重 Discovery 明确记录的约束放宽，避免把同一缺失标签再按候选逐条报告为失败。
 
-本地磁盘模式 `NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant` 只适合单进程小型验证，同一路径不能被多个 Qdrant Client 同时打开。默认 Hash Embedding 仅用于离线开发；部署时使用 `.env.example` 中的 OpenAI-compatible Embedding 配置。
+本地磁盘模式 `NYC_REVIEW_AGENT_QDRANT_LOCATION=./.local/qdrant` 只适合单进程小型验证，同一路径不能被多个 Qdrant Client 同时打开。默认 Hash Embedding 仅用于离线开发；production/staging 会拒绝 Hash，除非显式设置测试 override。真实 Provider 复用持久 HTTP Client，带 timeout、有界 retry、返回校验、Query TTL/LRU cache 和 token budget；OpenAI 使用标准 Embeddings API，Qwen 使用 DashScope Native API 区分 query/document。每个 Embedding identity 使用独立索引 scope，版本变化不会错误复用旧向量。
 
 使用根目录 `compose.local.yml` 时，也必须在启动前把当前登录 token 传给 Agent 的 HTTP Adapter，并用 `NYC_REVIEW_DATA_DIR` 指向有效数据包，否则 Compose 或 Spring Tool API 会拒绝请求：
 
@@ -185,4 +185,4 @@ uv run python -m evals.rag_v2.run_eval \
   --output ./.local/rag-v2-dev.json
 ```
 
-完整的数据契约、指标公式、索引 manifest、质量门禁、冻结 Hash/64 基线和已知营业时间约束缺口见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)。该 holdout 对 intent/query 隔离但不是 merchant-disjoint；语言分组也是 observational slice，简历或报告中不应扩写成 hidden、人工标注或受控双语对照集。
+完整的数据契约、指标公式、`building → complete` 可恢复索引 manifest、费用门禁、M1 三模型命令、冻结 Hash/64 基线和已知营业时间约束缺口见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)。该 holdout 对 intent/query 隔离但不是 merchant-disjoint；语言分组也是 observational slice，简历或报告中不应扩写成 hidden、人工标注或受控双语对照集。

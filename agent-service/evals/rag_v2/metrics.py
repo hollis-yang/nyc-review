@@ -309,7 +309,33 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         },
         "requestCounts": {
             "embeddingRequests": sum(item["requests"]["embeddingRequests"] for item in results),
+            "queryEmbeddingCalls": sum(
+                item["requests"].get("queryEmbeddingCalls", 0) for item in results
+            ),
+            "documentEmbeddingCalls": sum(
+                item["requests"].get("documentEmbeddingCalls", 0) for item in results
+            ),
             "embeddedTexts": sum(item["requests"]["embeddedTexts"] for item in results),
+            "providerNetworkRequests": sum(
+                (item["requests"].get("providerUsage") or {}).get("network_requests", 0)
+                for item in results
+            ),
+            "providerTokens": sum(
+                (item["requests"].get("providerUsage") or {}).get("total_tokens", 0)
+                for item in results
+            ),
+            "providerRetries": sum(
+                (item["requests"].get("providerUsage") or {}).get("retry_count", 0)
+                for item in results
+            ),
+            "providerFailures": sum(
+                (item["requests"].get("providerUsage") or {}).get("failure_count", 0)
+                for item in results
+            ),
+            "queryCacheHits": sum(
+                (item["requests"].get("providerUsage") or {}).get("query_cache_hits", 0)
+                for item in results
+            ),
             "rewriteRequests": sum(item["requests"]["rewriteRequests"] for item in results),
             "rerankerRequests": sum(item["requests"]["rerankerRequests"] for item in results),
         },

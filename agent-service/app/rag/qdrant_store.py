@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 
 from qdrant_client import AsyncQdrantClient, models
@@ -19,12 +19,30 @@ from app.domain.models import (
     UserConstraints,
 )
 from app.rag.display_text import clean_display_text
-from app.rag.embeddings import EmbeddingService
+from app.rag.embeddings import EmbeddingError, EmbeddingService
 from app.rag.lexical import normalized_merchant_name, sparse_vector
 from app.rag.models import RagDocument
 from app.rag.query_plan import build_retrieval_plan
 
 LOGGER = logging.getLogger(__name__)
+
+REQUIRED_PAYLOAD_INDEXES = {
+    "shop_id": models.PayloadSchemaType.INTEGER,
+    "data_version": models.PayloadSchemaType.KEYWORD,
+    "dataset_sha256": models.PayloadSchemaType.KEYWORD,
+    "content_type": models.PayloadSchemaType.KEYWORD,
+    "document_kind": models.PayloadSchemaType.KEYWORD,
+    "category": models.PayloadSchemaType.KEYWORD,
+    "borough": models.PayloadSchemaType.KEYWORD,
+    "neighborhood": models.PayloadSchemaType.KEYWORD,
+    "security_test": models.PayloadSchemaType.BOOL,
+    "retrieval_version": models.PayloadSchemaType.KEYWORD,
+    "shop_external_id": models.PayloadSchemaType.KEYWORD,
+    "root_id": models.PayloadSchemaType.INTEGER,
+    "index_scope": models.PayloadSchemaType.KEYWORD,
+    "embedding_identity": models.PayloadSchemaType.KEYWORD,
+    "embedding_version": models.PayloadSchemaType.KEYWORD,
+}
 
 
 @dataclass(frozen=True)
@@ -43,6 +61,13 @@ class RagIndexStats:
         }
 
 
+@dataclass(frozen=True)
+class HybridQueryResult:
+    points: list
+    dense_available: bool
+    embedding_fallback: str | None = None
+
+
 class QdrantRagService:
     def __init__(
         self,
@@ -53,6 +78,7 @@ class QdrantRagService:
         index_batch_size: int = 128,
         dataset_sha256: str | None = None,
         retrieval_version: str = "p12-rag-v1",
+        allow_sparse_fallback: bool = True,
     ):
         if index_batch_size < 1:
             raise ValueError("index_batch_size must be positive")
@@ -63,8 +89,10 @@ class QdrantRagService:
         self._index_batch_size = index_batch_size
         self._dataset_sha256 = dataset_sha256
         self._retrieval_version = retrieval_version
+        self._allow_sparse_fallback = allow_sparse_fallback
+        self._embedding_identity = embeddings.metadata.identity
         self._collection_ready = False
-        self._ranking_cache: OrderedDict[tuple[str, tuple[int, ...]], list] = OrderedDict()
+        self._ranking_cache: OrderedDict[tuple[str, tuple[int, ...]], HybridQueryResult] = OrderedDict()
 
     async def ensure_collection(self) -> None:
         if self._collection_ready:
@@ -82,32 +110,80 @@ class QdrantRagService:
                     "lexical": models.SparseVectorParams(modifier=models.Modifier.IDF),
                 },
             )
+        info = await self._client.get_collection(self._collection_name)
+        self._validate_vector_schema(info)
         await self._ensure_payload_indexes()
+        if self._requires_payload_schema_validation():
+            info = await self._client.get_collection(self._collection_name)
+            self._validate_payload_schema(info)
         self._collection_ready = True
 
     async def _ensure_payload_indexes(self) -> None:
-        indexes = {
-            "shop_id": models.PayloadSchemaType.INTEGER,
-            "data_version": models.PayloadSchemaType.KEYWORD,
-            "dataset_sha256": models.PayloadSchemaType.KEYWORD,
-            "content_type": models.PayloadSchemaType.KEYWORD,
-            "document_kind": models.PayloadSchemaType.KEYWORD,
-            "category": models.PayloadSchemaType.KEYWORD,
-            "borough": models.PayloadSchemaType.KEYWORD,
-            "neighborhood": models.PayloadSchemaType.KEYWORD,
-            "security_test": models.PayloadSchemaType.BOOL,
-            "retrieval_version": models.PayloadSchemaType.KEYWORD,
-            "shop_external_id": models.PayloadSchemaType.KEYWORD,
-            "root_id": models.PayloadSchemaType.INTEGER,
-            "index_scope": models.PayloadSchemaType.KEYWORD,
-        }
-        for field_name, field_schema in indexes.items():
+        for field_name, field_schema in REQUIRED_PAYLOAD_INDEXES.items():
             await self._client.create_payload_index(
                 collection_name=self._collection_name,
                 field_name=field_name,
                 field_schema=field_schema,
                 wait=True,
             )
+
+    def _validate_vector_schema(self, info) -> None:
+        params = info.config.params
+        vectors = params.vectors
+        if not isinstance(vectors, Mapping) or "dense" not in vectors:
+            raise ValueError(
+                f"Qdrant collection {self._collection_name!r} must expose a named 'dense' vector."
+            )
+        dense = vectors["dense"]
+        actual_dimensions = int(getattr(dense, "size", 0) or 0)
+        if actual_dimensions != self._embeddings.dimensions:
+            raise ValueError(
+                f"Qdrant collection {self._collection_name!r} uses "
+                f"{actual_dimensions} dimensions; embedding config requires "
+                f"{self._embeddings.dimensions}."
+            )
+        if _enum_value(getattr(dense, "distance", None)) != _enum_value(models.Distance.COSINE):
+            raise ValueError(
+                f"Qdrant collection {self._collection_name!r} must use Cosine distance "
+                "for its named 'dense' vector."
+            )
+
+        sparse_vectors = getattr(params, "sparse_vectors", None)
+        if not isinstance(sparse_vectors, Mapping) or "lexical" not in sparse_vectors:
+            raise ValueError(
+                f"Qdrant collection {self._collection_name!r} must expose a named 'lexical' sparse vector."
+            )
+        lexical = sparse_vectors["lexical"]
+        if _enum_value(getattr(lexical, "modifier", None)) != _enum_value(models.Modifier.IDF):
+            raise ValueError(
+                f"Qdrant collection {self._collection_name!r} must use the IDF modifier "
+                "for its named 'lexical' sparse vector."
+            )
+
+    def _validate_payload_schema(self, info) -> None:
+        payload_schema = getattr(info, "payload_schema", None)
+        if not isinstance(payload_schema, Mapping):
+            raise ValueError(f"Qdrant collection {self._collection_name!r} does not expose a payload schema.")
+        for field_name, expected_type in REQUIRED_PAYLOAD_INDEXES.items():
+            index_info = payload_schema.get(field_name)
+            actual_type = getattr(index_info, "data_type", index_info)
+            if _enum_value(actual_type) != _enum_value(expected_type):
+                raise ValueError(
+                    f"Qdrant collection {self._collection_name!r} payload index "
+                    f"{field_name!r} uses {_enum_value(actual_type)!r}; expected "
+                    f"{_enum_value(expected_type)!r}."
+                )
+
+    def _requires_payload_schema_validation(self) -> bool:
+        """The embedded client intentionally does not implement payload indexes."""
+
+        options = getattr(self._client, "init_options", None)
+        if not isinstance(options, Mapping):
+            return True
+        location = str(options.get("location") or "")
+        if options.get("url") or options.get("host") or location.startswith(("http://", "https://")):
+            return True
+        return not bool(location or options.get("path"))
 
     async def index(self, documents: Iterable[RagDocument], *, replace: bool = False) -> int:
         """Batch index documents while preserving the legacy integer return contract."""
@@ -118,9 +194,7 @@ class QdrantRagService:
         await self.ensure_collection()
         indexed = 0
         for batch in _batched(documents, self._index_batch_size):
-            normalized = [
-                _with_content_hash(self._bind_dataset_identity(document)) for document in batch
-            ]
+            normalized = [_with_content_hash(self._bind_dataset_identity(document)) for document in batch]
             await self._upsert(normalized)
             indexed += len(normalized)
         return indexed
@@ -139,7 +213,12 @@ class QdrantRagService:
         """
 
         await self.ensure_collection()
-        scope = _index_scope(data_version, self._dataset_sha256)
+        scope = _index_scope(
+            data_version,
+            self._dataset_sha256,
+            self._embedding_identity,
+            self._retrieval_version,
+        )
         existing = await self._existing_points(scope)
         desired_ids: set[str] = set()
         upserted = 0
@@ -153,7 +232,11 @@ class QdrantRagService:
                         f"RAG document {document.document_id} does not match data version {data_version}."
                     )
                 item = _with_content_hash(self._bind_dataset_identity(document))
-                point_id = _point_id(item)
+                point_id = _point_id(
+                    item,
+                    self._embedding_identity,
+                    self._retrieval_version,
+                )
                 if point_id in desired_ids:
                     raise ValueError(f"Duplicate RAG document ID: {item.document_id}")
                 desired_ids.add(point_id)
@@ -227,17 +310,26 @@ class QdrantRagService:
     async def _upsert(self, documents: list[RagDocument], scope: str | None = None) -> None:
         if not documents:
             return
-        vectors = await self._embeddings.embed([document.text for document in documents])
+        vectors = await self._embeddings.embed_documents([document.text for document in documents])
         points = []
         for document, vector in zip(documents, vectors, strict=True):
             payload = document.model_dump(mode="json")
             payload["retrieval_version"] = self._retrieval_version
+            payload["embedding_identity"] = self._embedding_identity
+            payload["embedding_version"] = self._embeddings.metadata.version
             payload["index_scope"] = scope or _index_scope(
-                document.data_version, document.dataset_sha256
+                document.data_version,
+                document.dataset_sha256,
+                self._embedding_identity,
+                self._retrieval_version,
             )
             points.append(
                 models.PointStruct(
-                    id=_point_id(document),
+                    id=_point_id(
+                        document,
+                        self._embedding_identity,
+                        self._retrieval_version,
+                    ),
                     vector={
                         "dense": vector,
                         "lexical": sparse_vector(document.text),
@@ -275,11 +367,12 @@ class QdrantRagService:
             data_version=data_version,
             exclude_security=True,
         )
-        points = await self._hybrid_query(
+        hybrid_result = await self._hybrid_query(
             plan.expanded_query,
             query_filter,
             limit=max(60, len(candidate_ids) * 8),
         )
+        points = hybrid_result.points
         best_by_shop: dict[int, float] = {}
         hit_documents: dict[int, int] = {}
         for point in points:
@@ -307,10 +400,7 @@ class QdrantRagService:
             )
             rating_score = (candidate.score or 0.0) / 5.0
             combined = (
-                normalized_hybrid * 0.45
-                + tag_ratio * 0.35
-                + distance_score * 0.10
-                + rating_score * 0.10
+                normalized_hybrid * 0.45 + tag_ratio * 0.35 + distance_score * 0.10 + rating_score * 0.10
             )
             exact_match = 1 if not exact_candidate_ids or candidate.shop_id in exact_candidate_ids else 0
             return exact_match, combined, normalized_hybrid, rating_score, -candidate.shop_id
@@ -330,13 +420,9 @@ class QdrantRagService:
                 break
         if len(selected) < min(limit, len(ordered)):
             selected_ids = {candidate.shop_id for candidate in selected}
-            selected.extend(
-                candidate
-                for candidate in ordered
-                if candidate.shop_id not in selected_ids
-            )
+            selected.extend(candidate for candidate in ordered if candidate.shop_id not in selected_ids)
             selected = selected[:limit]
-        self._remember_ranking_points(plan.expanded_query, selected, points)
+        self._remember_ranking_points(plan.expanded_query, selected, hybrid_result)
         elapsed_ms = round((time.perf_counter() - started) * 1_000, 3)
         return candidates.model_copy(
             update={
@@ -352,6 +438,8 @@ class QdrantRagService:
                     "latencyMs": elapsed_ms,
                     "queryPlan": plan.model_dump(mode="json"),
                     "documentHitsByShop": dict(sorted(hit_documents.items())),
+                    "denseAvailable": hybrid_result.dense_available,
+                    "embeddingFallback": hybrid_result.embedding_fallback,
                 },
             }
         )
@@ -362,10 +450,38 @@ class QdrantRagService:
         query_filter: models.Filter,
         *,
         limit: int,
-    ):
+    ) -> HybridQueryResult:
         await self.ensure_collection()
-        query_vector = (await self._embeddings.embed([query_text]))[0]
         lexical = sparse_vector(query_text)
+        try:
+            query_vector = await self._embeddings.embed_query(query_text)
+        except EmbeddingError as exc:
+            if not self._allow_sparse_fallback:
+                raise
+            LOGGER.warning(
+                "Dense embedding unavailable; using sparse-only retrieval: provider=%s error=%s",
+                self._embeddings.metadata.provider,
+                type(exc).__name__,
+            )
+            if not lexical.indices:
+                return HybridQueryResult(
+                    points=[],
+                    dense_available=False,
+                    embedding_fallback="sparse-unavailable",
+                )
+            response = await self._client.query_points(
+                collection_name=self._collection_name,
+                query=lexical,
+                using="lexical",
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+            return HybridQueryResult(
+                points=response.points,
+                dense_available=False,
+                embedding_fallback="sparse-only",
+            )
         if not lexical.indices:
             response = await self._client.query_points(
                 collection_name=self._collection_name,
@@ -375,7 +491,7 @@ class QdrantRagService:
                 limit=limit,
                 with_payload=True,
             )
-            return response.points
+            return HybridQueryResult(points=response.points, dense_available=True)
         response = await self._client.query_points(
             collection_name=self._collection_name,
             prefetch=[
@@ -396,7 +512,7 @@ class QdrantRagService:
             limit=limit,
             with_payload=True,
         )
-        return response.points
+        return HybridQueryResult(points=response.points, dense_available=True)
 
     def _query_filter(
         self,
@@ -413,6 +529,10 @@ class QdrantRagService:
             models.FieldCondition(
                 key="retrieval_version",
                 match=models.MatchValue(value=self._retrieval_version),
+            ),
+            models.FieldCondition(
+                key="embedding_identity",
+                match=models.MatchValue(value=self._embedding_identity),
             ),
         ]
         if data_version:
@@ -455,47 +575,32 @@ class QdrantRagService:
             data_version=data_version,
             dataset_sha256=self._dataset_sha256,
         )
-        query_vector = (await self._embeddings.embed([plan.expanded_query]))[0]
-        query_sparse = sparse_vector(plan.expanded_query)
         started = time.perf_counter()
-        search_points = self._take_ranking_points(
+        hybrid_result = self._take_ranking_points(
             plan.expanded_query,
             candidates.candidates,
         )
-        ranking_cache_hit = search_points is not None
-        if search_points is None:
+        ranking_cache_hit = hybrid_result is not None
+        if hybrid_result is None:
             query_filter = self._query_filter(
                 shop_ids=[candidate.shop_id for candidate in candidates.candidates],
                 data_version=data_version,
                 exclude_security=True,
             )
             search_limit = max(120, len(candidates.candidates) * 48)
-            response = await self._client.query_points(
-                collection_name=self._collection_name,
-                prefetch=[
-                    models.Prefetch(
-                        query=query_vector,
-                        using="dense",
-                        filter=query_filter,
-                        limit=search_limit,
-                    ),
-                    models.Prefetch(
-                        query=query_sparse,
-                        using="lexical",
-                        filter=query_filter,
-                        limit=search_limit,
-                    ),
-                ],
-                query=models.FusionQuery(fusion=models.Fusion.RRF),
+            hybrid_result = await self._hybrid_query(
+                plan.expanded_query,
+                query_filter,
                 limit=search_limit,
-                with_payload=True,
             )
-            search_points = response.points
+        search_points = hybrid_result.points
         fact_ids = [
             _document_point_id(
                 f"shop_{kind}_fact:{candidate.shop_id}",
                 candidate.data_version,
                 self._dataset_sha256,
+                self._embedding_identity,
+                self._retrieval_version,
             )
             for candidate in candidates.candidates
             for kind in ("identity", "attribute")
@@ -506,9 +611,7 @@ class QdrantRagService:
             with_payload=True,
             with_vectors=False,
         )
-        points_by_shop: dict[int, list] = {
-            candidate.shop_id: [] for candidate in candidates.candidates
-        }
+        points_by_shop: dict[int, list] = {candidate.shop_id: [] for candidate in candidates.candidates}
         seen_point_ids: set[str] = set()
         for point in [*fact_points, *search_points]:
             point_key = str(point.id)
@@ -532,19 +635,30 @@ class QdrantRagService:
                 "shops": len(results),
                 "citations": sum(len(item.citations) for item in results),
                 "rankingCacheHit": ranking_cache_hit,
+                "denseAvailable": hybrid_result.dense_available,
+                "embeddingFallback": hybrid_result.embedding_fallback,
                 "latencyMs": round((time.perf_counter() - started) * 1_000, 3),
             },
         )
 
-    def _remember_ranking_points(self, query: str, candidates, points: list) -> None:
+    def _remember_ranking_points(
+        self,
+        query: str,
+        candidates,
+        result: HybridQueryResult,
+    ) -> None:
         key = self._ranking_cache_key(query, candidates)
         shop_ids = {candidate.shop_id for candidate in candidates}
-        self._ranking_cache[key] = [
-            point
-            for point in points
-            if int((point.payload or {}).get("shop_id") or 0) in shop_ids
-            and not bool((point.payload or {}).get("security_test", False))
-        ]
+        self._ranking_cache[key] = HybridQueryResult(
+            points=[
+                point
+                for point in result.points
+                if int((point.payload or {}).get("shop_id") or 0) in shop_ids
+                and not bool((point.payload or {}).get("security_test", False))
+            ],
+            dense_available=result.dense_available,
+            embedding_fallback=result.embedding_fallback,
+        )
         self._ranking_cache.move_to_end(key)
         while len(self._ranking_cache) > 32:
             self._ranking_cache.popitem(last=False)
@@ -589,8 +703,7 @@ class QdrantRagService:
 
         facts = [item for item in prepared if item[2].get("document_kind") == "fact"]
         reviews = [
-            item for item in prepared
-            if item[2].get("content_type") in {"shop_review_thread", "shop_review"}
+            item for item in prepared if item[2].get("content_type") in {"shop_review_thread", "shop_review"}
         ]
         selected = []
         if facts:
@@ -644,8 +757,7 @@ class QdrantRagService:
             )
         elif any(citation.synthetic for citation in citations):
             cautions.append(
-                "Some retrieved evidence is synthetic demonstration content, "
-                "not real customer testimony."
+                "Some retrieved evidence is synthetic demonstration content, not real customer testimony."
             )
         return ShopEvidence(
             shop_id=shop_id,
@@ -676,11 +788,17 @@ def _evidence_type_priority(content_type: object) -> int:
     }.get(str(content_type or ""), 4)
 
 
-def _point_id(document: RagDocument) -> str:
+def _point_id(
+    document: RagDocument,
+    embedding_identity: str | None = None,
+    retrieval_version: str | None = None,
+) -> str:
     return _document_point_id(
         document.document_id,
         document.data_version,
         document.dataset_sha256,
+        embedding_identity,
+        retrieval_version,
     )
 
 
@@ -688,13 +806,37 @@ def _document_point_id(
     document_id: str,
     data_version: str | None,
     dataset_sha256: str | None,
+    embedding_identity: str | None = None,
+    retrieval_version: str | None = None,
 ) -> str:
-    scope = _index_scope(data_version, dataset_sha256)
+    scope = _index_scope(
+        data_version,
+        dataset_sha256,
+        embedding_identity,
+        retrieval_version,
+    )
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{scope}:{document_id}"))
 
 
-def _index_scope(data_version: str | None, dataset_sha256: str | None) -> str:
-    return f"{data_version or '__UNVERSIONED__'}:{dataset_sha256 or '__NO_DATASET_SHA__'}"
+def _index_scope(
+    data_version: str | None,
+    dataset_sha256: str | None,
+    embedding_identity: str | None = None,
+    retrieval_version: str | None = None,
+) -> str:
+    return ":".join(
+        (
+            data_version or "__UNVERSIONED__",
+            dataset_sha256 or "__NO_DATASET_SHA__",
+            embedding_identity or "__NO_EMBEDDING_IDENTITY__",
+            retrieval_version or "__NO_RETRIEVAL_VERSION__",
+        )
+    )
+
+
+def _enum_value(value: object) -> str:
+    raw = getattr(value, "value", value)
+    return str(raw or "").casefold()
 
 
 def _batched(values: Iterable, size: int) -> Iterator[list]:

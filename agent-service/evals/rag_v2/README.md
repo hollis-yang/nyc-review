@@ -1,4 +1,4 @@
-# RAG Eval v2（M0）
+# RAG Eval v2（M0 基线 + M1 Embedding 实验）
 
 该目录是在不修改 P12 冻结套件的前提下，为 RAG 优化建立的可复现基线。它评测当前真实链路：
 
@@ -9,7 +9,7 @@ structured candidate search
 → evidence retrieval
 ```
 
-M0 不实现真实多语言 Embedding、LLM Query Rewrite、全局候选召回或 Cross-Encoder；CLI 会记录这些配置，并对尚未实现的启用值 fail-fast，避免报告与实际运行不一致。
+M0 冻结了 Hash/64 基线；M1 在不改变 Query Rewrite、候选范围和 reranking 的前提下，只比较真实 Embedding。全局候选召回、LLM Query Rewrite 和 Cross-Encoder 仍未实现，CLI 会对这些未实现配置 fail-fast。
 
 ## 冻结数据契约
 
@@ -43,7 +43,7 @@ uv run pytest tests/test_rag_v2_eval.py tests/test_p12_retrieval.py
 
 Builder 绑定 `data/generated/nyc-real-p13-full` 的 `dataVersion` 与 `datasetSha256`。Runner 会重算 manifest 声明的每个 corpus 文件 SHA，并校验 case SHA、覆盖顶层阈值/allowlist/fixture 的 suite contract SHA、完整 adversarial fixture contract SHA、语言配额、相关性等级和 hard negatives；任何 corpus 或评测契约漂移都会被拒绝。
 
-## 运行基线
+## M0 冻结基线
 
 首次创建或同步隔离索引时不要传 `--reuse-index`：
 
@@ -79,7 +79,82 @@ uv run python -m evals.rag_v2.run_eval \
   --output ./.local/rag-v2-candidate.json
 ```
 
-正式冻结候选方案后才运行一次 `--split test`。`--limit-cases` 只用于 smoke test；部分运行会输出指标，但不会执行质量门禁，也会被 baseline loader 明确拒绝。Baseline 必须是完整、case count 匹配、带 latency profile 且通过自身门禁的 full/summary report，或仓库内 compact manifest。
+M0 报告和索引身份保留为历史证据。M1 修改了 document transform 与 payload identity，因此不能把旧 Hash collection 冒充新源码构建的索引复用。
+
+## M1：三模型、低费用安全运行
+
+M1 冻结了三个 1024 维 profile；低层参数与 profile 冲突时直接拒绝：
+
+| Profile | 模型 | API | 单次构建硬上限 |
+| --- | --- | --- | ---: |
+| `openai-small-1024` | `text-embedding-3-small` | OpenAI | $0.50 |
+| `openai-large-1024` | `text-embedding-3-large` | OpenAI | $2.25 |
+| `qwen37-1024` | `qwen3.7-text-embedding` | DashScope Native | $1.25 |
+
+Qwen 使用 `text_type=document/query` 且只请求 `dense`，继续共用现有 lexical sparse，避免同时改变两条检索分支。Adapter 会把文档自动拆成最多 20 条/请求。三个上限合计只授权 OpenAI $2.75、Qwen $1.25；Provider 实报 token 达到上限时停止后续请求。
+
+真实模型必须使用 Qdrant Server。先在仓库根目录启动对齐 Python Client 的 Server；持久卷不可用 `down -v` 删除：
+
+```bash
+docker compose -f compose.local.yml up -d qdrant
+```
+
+每个模型先做只读取语料、调用少量文档与查询、但不创建 Collection 的预检：
+
+```bash
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
+  --embedding-profile openai-small-1024 \
+  --qdrant-location http://127.0.0.1:6333 \
+  --preflight-only \
+  --output .local/m1-openai-small-preflight.json
+```
+
+把 profile 依次替换为 `openai-large-1024`、`qwen37-1024`。报告使用 Provider 返回的 token/100-document minhash sample 与 15% 安全余量估算全库；预估超过 profile 上限时，在任何索引写入前退出。
+
+预检通过后串行构建，禁止三个模型并行：
+
+```bash
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
+  --split dev \
+  --embedding-profile openai-small-1024 \
+  --qdrant-location http://127.0.0.1:6333 \
+  --index-action build \
+  --allow-paid-index-build \
+  --baseline-report evals/rag_v2/baseline.hash64.local.json \
+  --output .local/m1-openai-small-dev.json
+```
+
+Runner 会先原子写入 `state=building` sidecar，再开始付费调用；中断后使用完全相同的命令并把 `build` 改为 `resume`。Resume 只接受完全一致的 corpus、Embedding identity、源码指纹、Collection 和 endpoint，并从累计 token 预算中扣除先前尝试；已经成功 upsert 的内容通过 `content_sha256` 跳过。只有精确 145,000 点、Dense Cosine/Sparse IDF、15 个 payload indexes、identity filter、可见性探针和 Qdrant optimizer readiness 全部通过后，manifest 才切为 `state=complete`；`indexed_vectors_count` 仅作为近似观测值，不参与完成判定。
+
+三个完整 Dev 报告产生后，应用预先冻结的 winner policy：
+
+```bash
+uv run python -m evals.rag_v2.compare_m1 \
+  .local/m1-openai-small-dev.json \
+  .local/m1-openai-large-dev.json \
+  .local/m1-qwen37-dev.json \
+  --output .local/m1-winner.json
+```
+
+Policy 会从 80 条 result rows 重算指标，并要求三个报告完整、绑定 committed baseline/gate SHA、通过相对门禁、无 fallback、同一 suite/control/source、索引 ready，且中英双语 nDCG@10 与 MRR@10 均比 Hash baseline 至少提升 0.5pp。主指标是 30 条中文与 10 条 mixed case 按用例数加权的 nDCG@10；候选间差距不超过 0.5pp 时，依次比较 overall nDCG、双语 MRR、费用、Embedding P95 和 profile ID，并输出固定种子的 paired bootstrap 区间。
+
+Policy holdout 只能由 winner 运行一次，且拒绝覆盖已有输出：
+
+```bash
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
+  --split test \
+  --embedding-profile <winner-profile> \
+  --qdrant-location http://127.0.0.1:6333 \
+  --index-action reuse \
+  --winner-manifest .local/m1-winner.json \
+  --allow-policy-holdout \
+  --baseline-report evals/rag_v2/baseline.hash64.local.json \
+  --output .local/m1-winner-test.json
+```
+
+Runner 会再次核对 winner 的 Embedding、Dev retrieval/runtime、Collection、Qdrant endpoint 和 policy artifact SHA，并在第一条 holdout query 前原子创建不可重复的 attempt receipt；成功或失败都会封存该次尝试。
+
+`--limit-cases` 只缩短查询评测，绝不会缩短索引。为防止把它误当成低费用 smoke，付费 `build/resume` 与 `--limit-cases` 的组合会被拒绝。
 
 ## 指标和报告
 
@@ -90,9 +165,9 @@ uv run python -m evals.rag_v2.run_eval \
 当前能够可靠测量的阶段为：
 
 - Structured Search、Candidate Ranking、Evidence Retrieval 和 Total：Eval 外层 wall clock；
-- Embedding：Eval-only wrapper 记录请求数、文本数和总时长。
+- Embedding：记录 logical query/document calls、Provider HTTP requests、cache hit、token、retry、failure、总时长和按冻结单价估算的费用；索引与查询 usage 分开保存。
 
-Query Planning、Qdrant、Fusion 暂时无法从现有服务接口中独立拆分；Rewrite、Global Retrieval 和 learned Reranker 尚未实现。这些字段在报告的 `stageAvailability` 中明确为 unavailable/disabled，不会用差值伪造耗时。Provider token/cost metadata 当前也不可获得，写为 `null`。
+Query Planning、Qdrant、Fusion 暂时无法从现有服务接口中独立拆分；Rewrite、Global Retrieval 和 learned Reranker 尚未实现。这些字段在报告的 `stageAvailability` 中明确为 unavailable/disabled，不会用差值伪造耗时。正式 M1 Eval 对 Provider 错误 fail-closed；在线 Runtime 才允许带 metadata 的 sparse-only fallback。
 
 ## M0 Hash/64 本地基线
 

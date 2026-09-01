@@ -3,28 +3,46 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import heapq
 import json
+import logging
+import math
 import subprocess
 import time
+import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 from qdrant_client import AsyncQdrantClient, models
 
 from app.config import Settings
 from app.domain.models import UserConstraints
 from app.rag.embeddings import (
     DeterministicHashEmbeddingService,
+    EmbeddingMetadata,
     EmbeddingService,
+    EmbeddingUsage,
     OpenAICompatibleEmbeddingService,
+    QwenNativeEmbeddingService,
 )
 from app.rag.nyc_loader import iter_generated_documents
-from app.rag.qdrant_store import QdrantRagService
+from app.rag.qdrant_store import REQUIRED_PAYLOAD_INDEXES, QdrantRagService
 from app.runtime import _validate_data_directory
 from app.tools.services import GeneratedNycShopToolService
+from evals.rag_v2.compare_m1 import (
+    EXPECTED_PROFILES,
+    POLICY_VERSION,
+    normalized_dev_control,
+)
+from evals.rag_v2.compare_m1 import (
+    compare as compare_m1_reports,
+)
 from evals.rag_v2.contract import fixture_contract_sha256, suite_contract_sha256
+from evals.rag_v2.embedding_profiles import PROFILES, EmbeddingProfile, profile
 from evals.rag_v2.metrics import (
     hard_constraint_violations,
     integrity_metrics,
@@ -34,13 +52,17 @@ from evals.rag_v2.metrics import (
 )
 
 EVAL_DIRECTORY = Path(__file__).resolve().parent
-INDEX_BUILD_VERSION = "rag-document-transform-v2"
+LOGGER = logging.getLogger(__name__)
+INDEX_BUILD_VERSION = "rag-document-transform-v3-m1"
+FROZEN_QUALITY_GATE_PATH = EVAL_DIRECTORY / "quality_gate.json"
+FROZEN_HASH_BASELINE_PATH = EVAL_DIRECTORY / "baseline.hash64.local.json"
 INDEX_BUILD_SOURCE_PATHS = (
     "agent-service/app/rag/embeddings.py",
     "agent-service/app/rag/lexical.py",
     "agent-service/app/rag/models.py",
     "agent-service/app/rag/nyc_loader.py",
     "agent-service/app/rag/qdrant_store.py",
+    "agent-service/evals/rag_v2/embedding_profiles.py",
 )
 EVAL_SOURCE_PATHS = (
     "agent-service/app/domain/models.py",
@@ -49,6 +71,8 @@ EVAL_SOURCE_PATHS = (
     "agent-service/app/rag/query_plan.py",
     "agent-service/app/tools/services.py",
     "agent-service/evals/rag_v2/build_cases.py",
+    "agent-service/evals/rag_v2/baseline.hash64.local.json",
+    "agent-service/evals/rag_v2/compare_m1.py",
     "agent-service/evals/rag_v2/contract.py",
     "agent-service/evals/rag_v2/metrics.py",
     "agent-service/evals/rag_v2/quality_gate.json",
@@ -65,26 +89,53 @@ class TimedEmbeddingService:
     def dimensions(self) -> int:
         return self._inner.dimensions
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    @property
+    def metadata(self) -> EmbeddingMetadata:
+        return self._inner.metadata
+
+    async def embed_query(self, text: str) -> list[float]:
         started = time.perf_counter()
         try:
-            return await self._inner.embed(texts)
+            return await self._inner.embed_query(text)
         finally:
-            self.requests += 1
+            self.query_calls += 1
+            self.texts += 1
+            self.latency_ms += (time.perf_counter() - started) * 1_000
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        started = time.perf_counter()
+        try:
+            return await self._inner.embed_documents(texts)
+        finally:
+            self.document_calls += 1
             self.texts += len(texts)
             self.latency_ms += (time.perf_counter() - started) * 1_000
 
     def reset(self) -> None:
-        self.requests = 0
+        self.query_calls = 0
+        self.document_calls = 0
         self.texts = 0
         self.latency_ms = 0.0
+        self._usage_baseline = self._inner.usage_snapshot()
 
-    def snapshot(self) -> dict[str, float | int]:
+    def clear_query_cache(self) -> None:
+        self._inner.clear_query_cache()
+
+    def usage_snapshot(self) -> EmbeddingUsage:
+        return self._inner.usage_snapshot()
+
+    def snapshot(self) -> dict[str, Any]:
         return {
-            "embeddingRequests": self.requests,
+            "embeddingRequests": self.query_calls + self.document_calls,
+            "queryEmbeddingCalls": self.query_calls,
+            "documentEmbeddingCalls": self.document_calls,
             "embeddedTexts": self.texts,
             "embeddingLatencyMs": self.latency_ms,
+            "providerUsage": self._inner.usage_snapshot().delta(self._usage_baseline).as_dict(),
         }
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
 
 
 def load_suite(path: Path, data_directory: Path, *, expected_split: str | None = None) -> tuple[dict, dict]:
@@ -209,10 +260,12 @@ async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limi
         },
         "requests": {
             "embeddingRequests": embedding["embeddingRequests"],
+            "queryEmbeddingCalls": embedding["queryEmbeddingCalls"],
+            "documentEmbeddingCalls": embedding["documentEmbeddingCalls"],
             "embeddedTexts": embedding["embeddedTexts"],
             "rewriteRequests": 0,
             "rerankerRequests": 0,
-            "providerUsage": None,
+            "providerUsage": embedding["providerUsage"],
         },
         "orderedCandidates": ordered,
         "retrievalMetadata": {
@@ -224,15 +277,83 @@ async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limi
 
 
 async def run(args: argparse.Namespace) -> tuple[dict, bool]:
+    _apply_embedding_profile(args)
     _validate_feature_configuration(args)
+    _validate_m1_policy_artifacts(args)
     repository = Path(__file__).resolve().parents[3]
     data_directory = args.data_directory.resolve()
     cases_path = args.cases or EVAL_DIRECTORY / f"cases.{args.split}.json"
     suite, manifest = load_suite(cases_path.resolve(), data_directory, expected_split=args.split)
     gate = json.loads(args.quality_gate.read_text(encoding="utf-8"))
     resolved_config = _resolved_config(args, suite)
-    runtime = await _build_runtime(args, suite, data_directory, resolved_config)
+    _validate_holdout_authorization(args, resolved_config, suite=suite)
+    corpus_preflight = None
+    if args.embedding_provider != "hash":
+        corpus_preflight = _sample_corpus(
+            data_directory,
+            int(getattr(args, "preflight_sample_size", 100)),
+        )
+        _require_expected_corpus_size(corpus_preflight, suite)
+    if (
+        args.embedding_provider != "hash"
+        and _index_action(args) in {"build", "resume"}
+        and not (args.preflight_only or args.provider_smoke)
+    ):
+        await _precheck_index_intent(
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+        )
+    inner_embedding = _embedding_service(args, resolved_config)
+    if args.preflight_only or args.provider_smoke:
+        try:
+            preflight = await _embedding_preflight(
+                inner_embedding,
+                data_directory,
+                args=args,
+                suite=suite,
+                corpus=corpus_preflight,
+            )
+            report = {
+                "schemaVersion": 1,
+                "generatedAt": datetime.now(UTC).isoformat(),
+                "mode": "provider-smoke" if args.provider_smoke else "preflight",
+                "embedding": resolved_config["embedding"],
+                "preflight": preflight,
+            }
+            if args.output:
+                _write_json(args.output, report)
+            print(json.dumps(rounded(report), indent=2, ensure_ascii=False))
+            return report, True
+        finally:
+            await inner_embedding.aclose()
+    preflight = None
+    if args.embedding_provider != "hash" and _index_action(args) in {"build", "resume"}:
+        try:
+            preflight = await _embedding_preflight(
+                inner_embedding,
+                data_directory,
+                args=args,
+                suite=suite,
+                corpus=corpus_preflight,
+            )
+        except BaseException:
+            try:
+                await inner_embedding.aclose()
+            except BaseException:
+                LOGGER.exception("Failed to close embedding provider after preflight failure.")
+            raise
+    runtime = await _build_runtime(
+        args,
+        suite,
+        data_directory,
+        resolved_config,
+        inner_embedding=inner_embedding,
+        preflight=preflight,
+    )
+    holdout_receipt: Path | None = None
     try:
+        holdout_receipt = _reserve_holdout_receipt(args, resolved_config, suite)
         cases = list(suite["cases"])
         if args.limit_cases is not None:
             cases = cases[: args.limit_cases]
@@ -243,6 +364,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 suite,
                 candidate_limit=args.candidate_limit,
             )
+        runtime.embedding_service.clear_query_cache()
 
         results = []
         for index, case in enumerate(cases, start=1):
@@ -270,6 +392,20 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             resolved_config=resolved_config,
             partial=len(cases) != int(suite["caseCount"]),
         )
+        fallback_count = sum(
+            bool(
+                ((result.get("retrievalMetadata") or {}).get(stage) or {}).get(
+                    "embeddingFallback"
+                )
+            )
+            for result in results
+            for stage in ("ranking", "evidence")
+        )
+        if args.embedding_provider != "hash" and fallback_count:
+            quality_gate["failures"].append(
+                f"Formal embedding evaluation observed {fallback_count} sparse fallbacks."
+            )
+            quality_gate["passed"] = False
         report = {
             "schemaVersion": 2,
             "generatedAt": datetime.now(UTC).isoformat(),
@@ -296,9 +432,11 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 "configFingerprint": _fingerprint(resolved_config),
                 "latencyProfileFingerprint": _latency_profile_fingerprint(resolved_config),
                 "resolvedConfig": resolved_config,
-                "stageAvailability": _stage_availability(),
+                "stageAvailability": _stage_availability(resolved_config),
+                "policyArtifacts": _policy_artifact_snapshot(args),
                 "evaluatedCases": len(cases),
                 "partial": len(cases) != int(suite["caseCount"]),
+                "embeddingFallbackCount": fallback_count,
             },
             "corpus": {
                 "profile": manifest.get("profile"),
@@ -306,6 +444,13 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 "datasetSha256": manifest["datasetSha256"],
             },
             "index": runtime.index_report,
+            "providerUsage": _provider_usage_report(
+                _merge_usage(
+                    getattr(runtime, "prior_provider_usage", EmbeddingUsage()),
+                    runtime.embedding_service.usage_snapshot(),
+                ),
+                args,
+            ),
             "qualityGate": quality_gate,
             "summary": summary,
             "results": results,
@@ -328,7 +473,28 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             _write_json(args.output, report)
         if args.summary_output:
             _write_json(args.summary_output, concise)
+        if holdout_receipt is not None:
+            _finalize_holdout_receipt(
+                holdout_receipt,
+                state="complete",
+                report_sha256=_file_sha256(args.output),
+            )
         return report, bool(quality_gate["passed"])
+    except BaseException as exc:
+        if holdout_receipt is not None:
+            try:
+                _finalize_holdout_receipt(
+                    holdout_receipt,
+                    state="failed",
+                    error_type=type(exc).__name__,
+                )
+            except Exception:
+                LOGGER.exception("Failed to finalize the M1 holdout receipt.")
+        try:
+            await runtime.close()
+        except BaseException:
+            LOGGER.exception("Failed to close Eval resources after evaluation failure.")
+        raise
     finally:
         await runtime.close()
 
@@ -417,8 +583,12 @@ async def _build_runtime(
     suite: dict,
     data_directory: Path,
     resolved_config: dict,
+    *,
+    inner_embedding: EmbeddingService,
+    preflight: dict | None,
 ) -> Any:
-    embedding = TimedEmbeddingService(_embedding_service(args, resolved_config))
+    prior_provider_usage = _prior_index_provider_usage(args)
+    embedding = TimedEmbeddingService(inner_embedding)
     client = _qdrant_client(args.qdrant_location)
     rag = QdrantRagService(
         client=client,
@@ -427,6 +597,7 @@ async def _build_runtime(
         index_batch_size=args.index_batch_size,
         dataset_sha256=suite["datasetSha256"],
         retrieval_version=suite["retrievalVersion"],
+        allow_sparse_fallback=False,
     )
     index_started = time.perf_counter()
     manifest_path = args.index_manifest or _default_index_manifest(
@@ -434,7 +605,8 @@ async def _build_runtime(
         args.collection,
     )
     try:
-        if args.reuse_index:
+        action = _index_action(args)
+        if action == "reuse":
             index_stats = await _validate_reused_index(
                 client,
                 args=args,
@@ -443,29 +615,56 @@ async def _build_runtime(
                 manifest_path=manifest_path,
             )
         else:
-            await _require_compatible_collection(
+            await _prepare_index_build(
                 client,
                 args=args,
                 suite=suite,
                 resolved_config=resolved_config,
                 manifest_path=manifest_path,
+                action=action,
+                preflight=preflight,
             )
+            usage_before_index = embedding.usage_snapshot()
             stats = await rag.sync(
                 iter_generated_documents(data_directory),
                 data_version=suite["dataVersion"],
             )
+            expected_points = int(suite.get("indexedDocuments") or 0)
+            if stats.total_documents != expected_points:
+                raise ValueError(
+                    f"Index sync produced {stats.total_documents} documents; the frozen suite "
+                    f"requires exactly {expected_points}."
+                )
             index_stats = stats.as_metadata()
-            await _write_index_manifest(
+            index_usage = embedding.usage_snapshot().delta(usage_before_index)
+            readiness = await _wait_for_collection_ready(
+                client,
+                args.collection,
+                expected_points=expected_points,
+                timeout_seconds=args.qdrant_ready_timeout_seconds,
+                require_server_ready=_location_kind(args.qdrant_location) == "remote",
+                visibility_filter=_index_identity_filter(suite, resolved_config),
+            )
+            await _write_complete_index_manifest(
                 client,
                 args=args,
                 suite=suite,
                 resolved_config=resolved_config,
                 manifest_path=manifest_path,
-                point_count=stats.total_documents,
+                point_count=expected_points,
+                index_usage=index_usage,
+                attempt_usage=embedding.usage_snapshot(),
+                readiness=readiness,
+                preflight=preflight,
             )
         index_elapsed_ms = (time.perf_counter() - index_started) * 1_000
         info = await client.get_collection(args.collection)
         count = int((await client.count(args.collection, exact=True)).count)
+        expected_points = int(suite.get("indexedDocuments") or 0)
+        if count != expected_points:
+            raise ValueError(
+                f"Evaluation collection contains {count} points; expected {expected_points}."
+            )
         index_report = {
             "stats": index_stats,
             "pointCount": count,
@@ -481,14 +680,28 @@ async def _build_runtime(
                 args=args,
                 suite=suite,
                 resolved_config=resolved_config,
+                required_state="complete",
             ),
+            "lifecycleState": "complete",
+            "preflight": preflight,
         }
-    except Exception:
-        await client.close()
+    except BaseException:
+        if _index_action(args) in {"build", "resume"}:
+            try:
+                _record_failed_build_attempt(manifest_path, embedding.usage_snapshot(), args)
+            except BaseException:
+                LOGGER.exception("Failed to persist interrupted embedding build usage.")
+        await _close_eval_resources(embedding, client, suppress_errors=True)
         raise
 
+    closed = False
+
     async def close() -> None:
-        await client.close()
+        nonlocal closed
+        if closed:
+            return
+        closed = True
+        await _close_eval_resources(embedding, client)
 
     return SimpleNamespace(
         shop_service=GeneratedNycShopToolService(
@@ -498,8 +711,28 @@ async def _build_runtime(
         rag_service=rag,
         embedding_service=embedding,
         index_report=index_report,
+        prior_provider_usage=prior_provider_usage,
         close=close,
     )
+
+
+async def _close_eval_resources(
+    embedding: TimedEmbeddingService,
+    client: AsyncQdrantClient,
+    *,
+    suppress_errors: bool = False,
+) -> None:
+    errors: list[BaseException] = []
+    for close in (embedding.aclose, client.close):
+        try:
+            await close()
+        except BaseException as exc:
+            errors.append(exc)
+    if suppress_errors or not errors:
+        return
+    if len(errors) == 1:
+        raise errors[0]
+    raise BaseExceptionGroup("Multiple Eval resources failed to close.", errors)
 
 
 async def _validate_reused_index(
@@ -510,6 +743,7 @@ async def _validate_reused_index(
     resolved_config: dict,
     manifest_path: Path,
 ) -> dict[str, int]:
+    await _require_qdrant_server_contract(args.qdrant_location)
     if not await client.collection_exists(args.collection):
         raise ValueError("--reuse-index requires an existing collection.")
     info = await client.get_collection(args.collection)
@@ -519,27 +753,16 @@ async def _validate_reused_index(
         raise ValueError(
             f"Existing collection uses {dimensions} dimensions; config requests {expected_dimensions}."
         )
-    _require_expected_index_schema(info, expected_dimensions)
+    _require_expected_index_schema(
+        info,
+        expected_dimensions,
+        require_payload_indexes=_location_kind(args.qdrant_location) == "remote",
+    )
     total = int((await client.count(args.collection, exact=True)).count)
     expected = int(suite.get("indexedDocuments") or 0)
     if expected and total != expected:
         raise ValueError(f"Existing collection contains {total} points; suite expects {expected}.")
-    matching_filter = models.Filter(
-        must=[
-            models.FieldCondition(
-                key="data_version",
-                match=models.MatchValue(value=suite["dataVersion"]),
-            ),
-            models.FieldCondition(
-                key="dataset_sha256",
-                match=models.MatchValue(value=suite["datasetSha256"]),
-            ),
-            models.FieldCondition(
-                key="retrieval_version",
-                match=models.MatchValue(value=suite["retrievalVersion"]),
-            ),
-        ]
-    )
+    matching_filter = _index_identity_filter(suite, resolved_config)
     matching = int(
         (
             await client.count(
@@ -559,11 +782,20 @@ async def _validate_reused_index(
         args=args,
         suite=suite,
         resolved_config=resolved_config,
+        required_state="complete",
     ):
         raise ValueError(
             "Reusing an index requires a matching --index-manifest; point count and vector "
             "dimensions alone cannot identify the embedding implementation."
         )
+    await _wait_for_collection_ready(
+        client,
+        args.collection,
+        expected_points=expected or total,
+        timeout_seconds=float(getattr(args, "qdrant_ready_timeout_seconds", 1_800.0)),
+        require_server_ready=_location_kind(args.qdrant_location) == "remote",
+        visibility_filter=matching_filter,
+    )
     return {"total": total, "upserted": 0, "unchanged": total, "deleted": 0}
 
 
@@ -575,11 +807,126 @@ async def _require_compatible_collection(
     resolved_config: dict,
     manifest_path: Path,
 ) -> None:
+    """Backward-compatible build guard used by M0 tests and older callers."""
+
+    await _prepare_index_build(
+        client,
+        args=args,
+        suite=suite,
+        resolved_config=resolved_config,
+        manifest_path=manifest_path,
+        action="build",
+        preflight=None,
+    )
+
+
+async def _prepare_index_build(
+    client: AsyncQdrantClient,
+    *,
+    args: argparse.Namespace,
+    suite: dict,
+    resolved_config: dict,
+    manifest_path: Path,
+    action: str,
+    preflight: dict | None,
+) -> None:
+    if action not in {"build", "resume"}:
+        raise ValueError(f"Unsupported index build action: {action}")
+    exists = await client.collection_exists(args.collection)
+    if action == "resume":
+        if not manifest_path.is_file() or not _index_manifest_matches(
+            manifest_path,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            required_state="building",
+        ):
+            raise ValueError(
+                "--index-action resume requires an exact state=building index manifest."
+            )
+        if exists:
+            await _validate_partial_collection(
+                client,
+                args=args,
+                suite=suite,
+                resolved_config=resolved_config,
+            )
+        return
+
+    if exists:
+        raise ValueError(
+            "An index build never adopts an existing collection, even when it is empty. "
+            "Use a new collection or --index-action resume with its exact building manifest."
+        )
+    if manifest_path.exists():
+        raise ValueError(
+            "Index manifest already exists. Use a new collection or explicitly resume its build."
+        )
+    _write_json_atomic(
+        manifest_path,
+        _building_manifest(
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            preflight=preflight,
+        ),
+    )
+
+
+async def _precheck_index_intent(
+    *,
+    args: argparse.Namespace,
+    suite: dict,
+    resolved_config: dict,
+) -> None:
+    manifest_path = args.index_manifest or _default_index_manifest(
+        args.qdrant_location,
+        args.collection,
+    )
+    action = _index_action(args)
+    await _require_qdrant_server_contract(args.qdrant_location)
+    if action == "build" and manifest_path.exists():
+        raise ValueError(
+            "Index manifest already exists; refusing paid preflight before an invalid build."
+        )
+    if action == "resume" and not _index_manifest_matches(
+        manifest_path,
+        args=args,
+        suite=suite,
+        resolved_config=resolved_config,
+        required_state="building",
+    ):
+        raise ValueError(
+            "Resume requires an exact state=building manifest before any paid preflight."
+        )
+    client = _qdrant_client(args.qdrant_location)
+    try:
+        exists = await client.collection_exists(args.collection)
+        if action == "build" and exists:
+            raise ValueError(
+                "Collection already exists; refusing paid preflight for a new build."
+            )
+        if action == "resume" and exists:
+            await _validate_partial_collection(
+                client,
+                args=args,
+                suite=suite,
+                resolved_config=resolved_config,
+            )
+    finally:
+        await client.close()
+
+
+async def _validate_partial_collection(
+    client: AsyncQdrantClient,
+    *,
+    args: argparse.Namespace,
+    suite: dict,
+    resolved_config: dict,
+) -> None:
     if not await client.collection_exists(args.collection):
         return
     total = int((await client.count(args.collection, exact=True)).count)
-    if not total:
-        return
     info = await client.get_collection(args.collection)
     actual_dimensions = _vector_dimensions(info)
     expected_dimensions = int(resolved_config["embedding"]["dimensions"])
@@ -588,8 +935,32 @@ async def _require_compatible_collection(
             f"Evaluation collection uses {actual_dimensions} dimensions; "
             f"config requests {expected_dimensions}. Use a new collection."
         )
-    _require_expected_index_schema(info, expected_dimensions)
-    matching_filter = models.Filter(
+    _require_expected_index_schema(
+        info,
+        expected_dimensions,
+        require_payload_indexes=_location_kind(args.qdrant_location) == "remote",
+    )
+    if not total:
+        return
+    matching_filter = _index_identity_filter(suite, resolved_config)
+    matching = int(
+        (
+            await client.count(
+                args.collection,
+                count_filter=matching_filter,
+                exact=True,
+            )
+        ).count
+    )
+    if matching != total:
+        raise ValueError(
+            "Partial collection contains points from another corpus, retrieval version, or "
+            "embedding identity."
+        )
+
+
+def _index_identity_filter(suite: dict, resolved_config: dict) -> models.Filter:
+    return models.Filter(
         must=[
             models.FieldCondition(
                 key="data_version",
@@ -603,54 +974,30 @@ async def _require_compatible_collection(
                 key="retrieval_version",
                 match=models.MatchValue(value=suite["retrievalVersion"]),
             ),
+            models.FieldCondition(
+                key="embedding_identity",
+                match=models.MatchValue(value=resolved_config["embedding"]["identity"]),
+            ),
         ]
     )
-    matching = int(
-        (
-            await client.count(
-                args.collection,
-                count_filter=matching_filter,
-                exact=True,
-            )
-        ).count
-    )
-    if matching != total:
-        raise ValueError(
-            "Evaluation collection contains points from another corpus or retrieval version. "
-            "Use a new --qdrant-location or --collection; indexes are never repurposed in place."
-        )
-    if manifest_path.is_file() and not _index_manifest_matches(
-        manifest_path,
-        args=args,
-        suite=suite,
-        resolved_config=resolved_config,
-    ):
-        raise ValueError(
-            "Existing index manifest does not match the requested embedding/retrieval config. "
-            "Use a new --qdrant-location or --collection."
-        )
-    if not manifest_path.is_file():
-        raise ValueError(
-            "An existing collection without a matching sidecar manifest cannot be adopted. "
-            "Use a new collection or provide its exact --index-manifest."
-        )
 
 
-async def _write_index_manifest(
-    client: AsyncQdrantClient,
+def _building_manifest(
     *,
     args: argparse.Namespace,
     suite: dict,
     resolved_config: dict,
-    manifest_path: Path,
-    point_count: int,
-) -> None:
-    info = await client.get_collection(args.collection)
-    value = {
-        "schemaVersion": 1,
+    preflight: dict | None,
+) -> dict:
+    return {
+        "schemaVersion": 2,
+        "state": "building",
+        "buildId": str(uuid.uuid4()),
+        "createdAt": datetime.now(UTC).isoformat(),
         "collection": args.collection,
         "dataVersion": suite["dataVersion"],
         "datasetSha256": suite["datasetSha256"],
+        "expectedPointCount": int(suite.get("indexedDocuments") or 0),
         "retrievalVersion": suite["retrievalVersion"],
         "embedding": resolved_config["embedding"],
         "qdrantEndpointFingerprint": resolved_config["qdrant"].get("endpointFingerprint"),
@@ -658,12 +1005,110 @@ async def _write_index_manifest(
         "indexBuildSourceFingerprint": resolved_config["retrieval"][
             "indexBuildSourceFingerprint"
         ],
-        "indexSchema": _index_schema_snapshot(info),
-        "pointCount": point_count,
-        "vectorDimensions": _vector_dimensions(info),
+        "indexSchema": _expected_index_schema(
+            int(resolved_config["embedding"]["dimensions"]),
+            include_payload_indexes=resolved_config["qdrant"]["locationKind"] == "remote",
+        ),
+        "vectorDimensions": int(resolved_config["embedding"]["dimensions"]),
+        "preflight": preflight,
+        "cumulativeProviderUsage": EmbeddingUsage().as_dict(),
+        "attempts": [],
     }
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+async def _write_complete_index_manifest(
+    client: AsyncQdrantClient,
+    *,
+    args: argparse.Namespace,
+    suite: dict,
+    resolved_config: dict,
+    manifest_path: Path,
+    point_count: int,
+    index_usage: EmbeddingUsage,
+    readiness: dict,
+    preflight: dict | None,
+    attempt_usage: EmbeddingUsage | None = None,
+) -> None:
+    info = await client.get_collection(args.collection)
+    expected_points = int(suite.get("indexedDocuments") or 0)
+    exact_points = int((await client.count(args.collection, exact=True)).count)
+    if point_count != expected_points or exact_points != expected_points:
+        raise ValueError(
+            "A complete index manifest requires both sync and exact Qdrant counts to equal "
+            f"the frozen {expected_points} documents; got sync={point_count}, "
+            f"qdrant={exact_points}."
+        )
+    _require_expected_index_schema(
+        info,
+        int(resolved_config["embedding"]["dimensions"]),
+        require_payload_indexes=_location_kind(args.qdrant_location) == "remote",
+    )
+    if manifest_path.is_file():
+        value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    else:
+        value = _building_manifest(
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            preflight=preflight,
+        )
+    attempt_usage = attempt_usage or index_usage
+    prior_usage = _usage_from_dict(value.get("cumulativeProviderUsage") or {})
+    cumulative_usage = _merge_usage(prior_usage, attempt_usage)
+    attempts = list(value.get("attempts") or [])
+    attempts.append(
+        {
+            "completedAt": datetime.now(UTC).isoformat(),
+            "outcome": "complete",
+            "usage": attempt_usage.as_dict(),
+        }
+    )
+    value.update(
+        {
+            "state": "complete",
+            "completedAt": datetime.now(UTC).isoformat(),
+            "indexSchema": _index_schema_snapshot(info),
+            "pointCount": exact_points,
+            "vectorDimensions": _vector_dimensions(info),
+            "indexProviderUsage": _provider_usage_report(index_usage, args),
+            "cumulativeProviderUsage": cumulative_usage.as_dict(),
+            "cumulativeProviderCost": _provider_usage_report(cumulative_usage, args),
+            "attempts": attempts,
+            "readiness": readiness,
+            "qdrantServer": await _qdrant_server_metadata(args.qdrant_location),
+        }
+    )
+    _write_json_atomic(manifest_path, value)
+
+
+def _record_failed_build_attempt(
+    manifest_path: Path,
+    attempt_usage: EmbeddingUsage,
+    args: argparse.Namespace,
+) -> None:
+    if not manifest_path.is_file():
+        return
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if value.get("state") != "building":
+        return
+    prior_usage = _usage_from_dict(value.get("cumulativeProviderUsage") or {})
+    cumulative_usage = _merge_usage(prior_usage, attempt_usage)
+    attempts = list(value.get("attempts") or [])
+    attempts.append(
+        {
+            "completedAt": datetime.now(UTC).isoformat(),
+            "outcome": "failed",
+            "usage": attempt_usage.as_dict(),
+        }
+    )
+    value.update(
+        {
+            "cumulativeProviderUsage": cumulative_usage.as_dict(),
+            "cumulativeProviderCost": _provider_usage_report(cumulative_usage, args),
+            "attempts": attempts,
+        }
+    )
+    _write_json_atomic(manifest_path, value)
 
 
 def _index_manifest_matches(
@@ -672,13 +1117,20 @@ def _index_manifest_matches(
     args: argparse.Namespace,
     suite: dict,
     resolved_config: dict,
+    required_state: str = "complete",
 ) -> bool:
     if not path.is_file():
         return False
     value = json.loads(path.read_text(encoding="utf-8"))
+    expected_points = int(suite.get("indexedDocuments") or 0)
+    complete_count_matches = (
+        required_state != "complete"
+        or int(value.get("pointCount") or 0) == expected_points
+    )
     return all(
         (
             value.get("collection") == args.collection,
+            value.get("state") == required_state,
             value.get("dataVersion") == suite["dataVersion"],
             value.get("datasetSha256") == suite["datasetSha256"],
             value.get("retrievalVersion") == suite["retrievalVersion"],
@@ -688,39 +1140,152 @@ def _index_manifest_matches(
             value.get("indexBuildVersion") == INDEX_BUILD_VERSION,
             value.get("indexBuildSourceFingerprint")
             == resolved_config["retrieval"].get("indexBuildSourceFingerprint"),
+            int(value.get("expectedPointCount") or 0) == expected_points,
+            complete_count_matches,
             value.get("indexSchema")
-            == _expected_index_schema(int(resolved_config["embedding"]["dimensions"])),
+            == _expected_index_schema(
+                int(resolved_config["embedding"]["dimensions"]),
+                include_payload_indexes=(
+                    resolved_config["qdrant"]["locationKind"] == "remote"
+                ),
+            ),
             int(value.get("vectorDimensions") or 0)
             == int(resolved_config["embedding"]["dimensions"]),
         )
     )
 
 
+def _apply_embedding_profile(args: argparse.Namespace) -> None:
+    profile_id = getattr(args, "embedding_profile", None)
+    if not profile_id:
+        return
+    selected = profile(profile_id)
+    conflicts = []
+    if args.embedding_provider not in {"hash", selected.provider}:
+        conflicts.append("--embedding-provider")
+    if args.embedding_model not in {None, selected.model}:
+        conflicts.append("--embedding-model")
+    if args.embedding_version not in {None, selected.version}:
+        conflicts.append("--embedding-version")
+    if args.embedding_dimensions not in {64, selected.dimensions}:
+        conflicts.append("--embedding-dimensions")
+    if args.collection not in {"hmdp_content_v2", selected.collection}:
+        conflicts.append("--collection")
+    configured_cap = getattr(args, "max_provider_cost_usd", None)
+    if configured_cap is not None and configured_cap > selected.max_cost_usd:
+        conflicts.append("--max-provider-cost-usd")
+    if conflicts:
+        raise ValueError(
+            f"Embedding profile {profile_id!r} conflicts with: {', '.join(conflicts)}."
+        )
+    args.embedding_provider = selected.provider
+    args.embedding_model = selected.model
+    args.embedding_version = selected.version
+    args.embedding_dimensions = selected.dimensions
+    args.collection = selected.collection
+    if configured_cap is None:
+        args.max_provider_cost_usd = selected.max_cost_usd
+
+
+def _selected_profile(args: argparse.Namespace) -> EmbeddingProfile | None:
+    profile_id = getattr(args, "embedding_profile", None)
+    return profile(profile_id) if profile_id else None
+
+
 def _embedding_service(args: argparse.Namespace, config: dict) -> EmbeddingService:
+    settings = _eval_settings()
+    configured_token_budget = config["embedding"].get("maxTotalTokens")
+    prior_usage = _prior_index_provider_usage(args)
+    remaining_token_budget = (
+        max(int(configured_token_budget) - prior_usage.total_tokens, 0)
+        if configured_token_budget is not None
+        else None
+    )
+    if configured_token_budget is not None and remaining_token_budget == 0:
+        raise ValueError("Embedding token budget is already exhausted by prior build attempts.")
+    common = {
+        "version": str(config["embedding"]["version"]),
+        "batch_size": getattr(args, "embedding_batch_size", 64),
+        "max_concurrency": getattr(args, "embedding_max_concurrency", 2),
+        "timeout_seconds": getattr(args, "embedding_timeout_seconds", 30.0),
+        "max_retries": getattr(args, "embedding_max_retries", 4),
+        "max_batch_characters": getattr(args, "embedding_max_batch_characters", 250_000),
+        "query_cache_size": getattr(args, "embedding_query_cache_size", 512),
+        "query_cache_ttl_seconds": getattr(
+            args,
+            "embedding_query_cache_ttl_seconds",
+            900.0,
+        ),
+        "max_total_tokens": remaining_token_budget,
+    }
     if args.embedding_provider == "openai":
-        settings = Settings()
         return OpenAICompatibleEmbeddingService(
             base_url=args.embedding_base_url or settings.embedding_base_url,
-            api_key=settings.embedding_api_key,
+            api_key=(
+                settings.openai_embedding_api_key.get_secret_value()
+                or settings.embedding_api_key.get_secret_value()
+            ),
             model=str(config["embedding"]["model"]),
             dimensions=int(config["embedding"]["dimensions"]),
+            **common,
+        )
+    if args.embedding_provider == "qwen":
+        return QwenNativeEmbeddingService(
+            base_url=(
+                args.embedding_base_url
+                or settings.qwen_embedding_base_url
+                or settings.embedding_base_url
+            ),
+            api_key=(
+                settings.qwen_embedding_api_key.get_secret_value()
+                or settings.embedding_api_key.get_secret_value()
+            ),
+            model=str(config["embedding"]["model"]),
+            dimensions=int(config["embedding"]["dimensions"]),
+            query_instruct=getattr(args, "embedding_query_instruct", ""),
+            **common,
         )
     return DeterministicHashEmbeddingService(
-        dimensions=int(config["embedding"]["dimensions"])
+        dimensions=int(config["embedding"]["dimensions"]),
+        version=str(config["embedding"]["version"]),
     )
 
 
+def _prior_index_provider_usage(args: argparse.Namespace) -> EmbeddingUsage:
+    if getattr(args, "embedding_provider", "hash") == "hash":
+        return EmbeddingUsage()
+    manifest_path = getattr(args, "index_manifest", None) or _default_index_manifest(
+        args.qdrant_location,
+        args.collection,
+    )
+    if not manifest_path.is_file():
+        return EmbeddingUsage()
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if value.get("state") not in {"building", "complete"}:
+        return EmbeddingUsage()
+    return _usage_from_dict(value.get("cumulativeProviderUsage") or {})
+
+
 def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
+    _apply_embedding_profile(args)
     repository = Path(__file__).resolve().parents[3]
+    selected = _selected_profile(args)
     if args.embedding_provider == "hash":
         model = args.embedding_model or "deterministic-token-sha256"
         version = args.embedding_version or "hash-v1"
         endpoint_fingerprint = None
     else:
-        settings = Settings()
+        settings = _eval_settings()
         model = args.embedding_model or settings.embedding_model
         version = args.embedding_version or "provider-revision-unavailable"
-        base_url = (args.embedding_base_url or settings.embedding_base_url).rstrip("/")
+        if args.embedding_provider == "qwen":
+            base_url = (
+                args.embedding_base_url
+                or settings.qwen_embedding_base_url
+                or settings.embedding_base_url
+            ).rstrip("/")
+        else:
+            base_url = (args.embedding_base_url or settings.embedding_base_url).rstrip("/")
         endpoint_fingerprint = hashlib.sha256(base_url.encode()).hexdigest()
     embedding_config: dict[str, Any] = {
         "provider": args.embedding_provider,
@@ -731,14 +1296,63 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
     }
     if endpoint_fingerprint is not None:
         embedding_config["endpointFingerprint"] = endpoint_fingerprint
+    if selected is not None and selected.provider != "hash":
+        metadata = EmbeddingMetadata(
+            provider=selected.provider,
+            model=selected.model,
+            dimensions=selected.dimensions,
+            version=selected.version,
+            query_mode=selected.query_mode,
+            document_mode=selected.document_mode,
+        )
+        embedding_config.update(
+            {
+                "profileId": selected.profile_id,
+                "apiFlavor": selected.api_flavor,
+                "queryMode": selected.query_mode,
+                "documentMode": selected.document_mode,
+                "identity": metadata.identity,
+                "priceUsdPerMillionTokens": selected.price_usd_per_million_tokens,
+                "maxProviderCostUsd": args.max_provider_cost_usd,
+                "maxTotalTokens": int(
+                    args.max_provider_cost_usd
+                    / selected.price_usd_per_million_tokens
+                    * 1_000_000
+                ),
+                "pricingSnapshotDate": "2026-08-31",
+                "runtime": {
+                    "configuredBatchSize": args.embedding_batch_size,
+                    "providerBatchLimit": selected.provider_batch_limit,
+                    "effectiveBatchSize": min(
+                        args.embedding_batch_size,
+                        selected.provider_batch_limit,
+                    ),
+                    "maxConcurrency": args.embedding_max_concurrency,
+                    "timeoutSeconds": args.embedding_timeout_seconds,
+                    "maxRetries": args.embedding_max_retries,
+                    "maxBatchCharacters": args.embedding_max_batch_characters,
+                    "queryCacheSize": args.embedding_query_cache_size,
+                    "queryCacheTtlSeconds": args.embedding_query_cache_ttl_seconds,
+                },
+            }
+        )
+    elif args.embedding_provider == "hash":
+        embedding_config["identity"] = EmbeddingMetadata(
+            provider="hash",
+            model=str(model),
+            dimensions=args.embedding_dimensions,
+            version=str(version),
+            query_mode="symmetric",
+            document_mode="symmetric",
+        ).identity
     qdrant_config: dict[str, Any] = {
         "collection": args.collection,
         "locationKind": _location_kind(args.qdrant_location),
-        "reuseIndex": args.reuse_index,
+        "reuseIndex": _index_action(args) == "reuse",
     }
     if qdrant_config["locationKind"] == "remote":
         qdrant_config["endpointFingerprint"] = _endpoint_fingerprint(args.qdrant_location)
-    return {
+    resolved = {
         "retrieval": {
             "version": suite["retrievalVersion"],
             "candidateLimit": args.candidate_limit,
@@ -765,9 +1379,35 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
             "latencyMode": "outer-wall-clock-sequential",
         },
     }
+    if selected is not None and selected.provider != "hash":
+        control = {
+            "retrieval": resolved["retrieval"],
+            "qdrant": {
+                key: value
+                for key, value in resolved["qdrant"].items()
+                if key not in {"collection", "endpointFingerprint"}
+            },
+            "features": resolved["features"],
+            "eval": resolved["eval"],
+            "embeddingDimensions": args.embedding_dimensions,
+            "embeddingRuntime": {
+                key: value
+                for key, value in embedding_config["runtime"].items()
+                if key not in {"providerBatchLimit", "effectiveBatchSize"}
+            },
+        }
+        resolved["experimentControlFingerprint"] = _fingerprint(control)
+    return resolved
 
 
-def _stage_availability() -> dict[str, Any]:
+def _eval_settings() -> Settings:
+    """Read credentials/endpoints without letting runtime provider env override an Eval profile."""
+
+    return Settings(environment="development", embedding_provider="hash")
+
+
+def _stage_availability(resolved_config: dict) -> dict[str, Any]:
+    real_embedding = resolved_config["embedding"]["provider"] != "hash"
     return {
         "structuredSearch": {"available": True, "source": "eval-outer-timer"},
         "candidateRanking": {"available": True, "source": "eval-outer-timer"},
@@ -788,10 +1428,267 @@ def _stage_availability() -> dict[str, Any]:
         "rewrite": {"available": False, "reason": "disabled in M0 baseline"},
         "reranker": {"available": False, "reason": "no learned reranker in M0 baseline"},
         "providerUsage": {
-            "available": False,
-            "reason": "current embedding interface discards provider token/cost metadata",
+            "available": real_embedding,
+            "source": "provider-response-usage" if real_embedding else "not-applicable-hash",
         },
     }
+
+
+def _index_action(args: argparse.Namespace) -> str:
+    explicit = getattr(args, "index_action", None)
+    legacy_reuse = bool(getattr(args, "reuse_index", False))
+    if explicit and legacy_reuse and explicit != "reuse":
+        raise ValueError("--reuse-index conflicts with --index-action build/resume.")
+    return explicit or ("reuse" if legacy_reuse else "build")
+
+
+async def _embedding_preflight(
+    embedding: EmbeddingService,
+    data_directory: Path,
+    *,
+    args: argparse.Namespace,
+    suite: dict,
+    corpus: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if embedding.metadata.provider == "hash":
+        return {
+            "status": "not-required",
+            "reason": "local deterministic provider",
+            "documentCount": int(suite.get("indexedDocuments") or 0),
+            "projectedCostUsd": 0.0,
+        }
+    sample_size = int(getattr(args, "preflight_sample_size", 100))
+    corpus = corpus or _sample_corpus(data_directory, sample_size)
+    _require_expected_corpus_size(corpus, suite)
+    before_documents = embedding.usage_snapshot()
+    await embedding.embed_documents(corpus["sampleTexts"])
+    document_usage = embedding.usage_snapshot().delta(before_documents)
+    if document_usage.total_tokens <= 0 or corpus["sampleCharacters"] <= 0:
+        raise ValueError("Embedding provider did not report token usage during preflight.")
+
+    query_examples = [
+        "quiet vegan dinner near Midtown",
+        "适合带轮椅长辈去的安静餐厅",
+        "Queens family brunch with 无障碍入口",
+    ]
+    before_queries = embedding.usage_snapshot()
+    for query in query_examples:
+        await embedding.embed_query(query)
+    query_usage = embedding.usage_snapshot().delta(before_queries)
+    embedding.clear_query_cache()
+
+    projected_document_tokens = math.ceil(
+        corpus["totalCharacters"]
+        * document_usage.total_tokens
+        / corpus["sampleCharacters"]
+        * 1.15
+    )
+    projected_query_tokens = math.ceil(
+        query_usage.total_tokens
+        / len(query_examples)
+        * int(suite["caseCount"])
+        * 1.15
+    )
+    projected_tokens = projected_document_tokens + projected_query_tokens
+    price = float(_price_per_million_tokens(args))
+    projected_cost = projected_tokens / 1_000_000 * price
+    cost_cap = float(getattr(args, "max_provider_cost_usd", 0.0) or 0.0)
+    if projected_cost > cost_cap:
+        raise ValueError(
+            f"Projected embedding cost ${projected_cost:.4f} exceeds the configured "
+            f"${cost_cap:.2f} hard cap; no index was modified."
+        )
+    return {
+        "status": "passed",
+        "sampleMethod": "sha256-minhash-v1",
+        "sampleDocuments": len(corpus["sampleTexts"]),
+        "sampleCharacters": corpus["sampleCharacters"],
+        "sampleTokens": document_usage.total_tokens,
+        "documentCount": corpus["documentCount"],
+        "totalCharacters": corpus["totalCharacters"],
+        "contentTypeCounts": corpus["contentTypeCounts"],
+        "projectedDocumentTokensWith15PctMargin": projected_document_tokens,
+        "projectedQueryTokensWith15PctMargin": projected_query_tokens,
+        "projectedTotalTokens": projected_tokens,
+        "priceUsdPerMillionTokens": price,
+        "projectedCostUsd": projected_cost,
+        "hardCostCapUsd": cost_cap,
+        "providerUsage": embedding.usage_snapshot().as_dict(),
+    }
+
+
+def _sample_corpus(data_directory: Path, sample_size: int) -> dict[str, Any]:
+    if sample_size < 1:
+        raise ValueError("--preflight-sample-size must be positive.")
+    sample: list[tuple[int, str, str]] = []
+    document_count = 0
+    total_characters = 0
+    content_type_counts: dict[str, int] = {}
+    for document in iter_generated_documents(data_directory):
+        document_count += 1
+        total_characters += len(document.text)
+        content_type_counts[document.content_type] = (
+            content_type_counts.get(document.content_type, 0) + 1
+        )
+        score = int.from_bytes(
+            hashlib.sha256(document.document_id.encode("utf-8")).digest()[:8],
+            "big",
+        )
+        item = (-score, document.document_id, document.text)
+        if len(sample) < sample_size:
+            heapq.heappush(sample, item)
+        elif score < -sample[0][0]:
+            heapq.heapreplace(sample, item)
+    texts = [item[2] for item in sorted(sample, key=lambda item: (-item[0], item[1]))]
+    return {
+        "sampleTexts": texts,
+        "sampleCharacters": sum(map(len, texts)),
+        "documentCount": document_count,
+        "totalCharacters": total_characters,
+        "contentTypeCounts": dict(sorted(content_type_counts.items())),
+    }
+
+
+def _require_expected_corpus_size(corpus: dict[str, Any], suite: dict) -> None:
+    expected = int(suite.get("indexedDocuments") or 0)
+    actual = int(corpus.get("documentCount") or 0)
+    if expected < 1:
+        raise ValueError("A paid M1 suite must declare a positive indexedDocuments count.")
+    if actual != expected:
+        raise ValueError(
+            f"Corpus generated {actual} documents, but the frozen suite requires {expected}; "
+            "refusing any provider request."
+        )
+
+
+def _price_per_million_tokens(args: argparse.Namespace) -> float:
+    selected = _selected_profile(args)
+    if selected is None:
+        return 0.0
+    return selected.price_usd_per_million_tokens
+
+
+def _provider_usage_report(usage: EmbeddingUsage, args: argparse.Namespace) -> dict[str, Any]:
+    price = _price_per_million_tokens(args)
+    return {
+        **usage.as_dict(),
+        "priceUsdPerMillionTokens": price,
+        "estimatedCostUsd": usage.total_tokens / 1_000_000 * price,
+        "hardCostCapUsd": float(getattr(args, "max_provider_cost_usd", 0.0) or 0.0),
+    }
+
+
+def _usage_from_dict(value: dict[str, Any]) -> EmbeddingUsage:
+    defaults = EmbeddingUsage().as_dict()
+    parsed: dict[str, int | float] = {}
+    for key, default in defaults.items():
+        raw = value.get(key, default)
+        parsed[key] = float(raw) if isinstance(default, float) else int(raw)
+        if parsed[key] < 0:
+            raise ValueError("Embedding usage counters cannot be negative.")
+    return EmbeddingUsage(**parsed)
+
+
+def _merge_usage(*values: EmbeddingUsage) -> EmbeddingUsage:
+    fields = EmbeddingUsage().as_dict()
+    return EmbeddingUsage(
+        **{
+            key: sum(getattr(value, key) for value in values)
+            for key in fields
+        }
+    )
+
+
+async def _wait_for_collection_ready(
+    client: AsyncQdrantClient,
+    collection: str,
+    *,
+    expected_points: int,
+    timeout_seconds: float,
+    require_server_ready: bool,
+    visibility_filter: models.Filter | None = None,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        info = await client.get_collection(collection)
+        count = int((await client.count(collection, exact=True)).count)
+        status = _enum_value(getattr(info, "status", None))
+        optimizer_status = _enum_value(getattr(info, "optimizer_status", None))
+        indexed_vectors = int(getattr(info, "indexed_vectors_count", 0) or 0)
+        sentinel_visible = expected_points == 0
+        if count == expected_points and expected_points:
+            visible, _ = await client.scroll(
+                collection_name=collection,
+                scroll_filter=visibility_filter,
+                limit=1,
+                with_payload=False,
+                with_vectors=False,
+            )
+            sentinel_visible = bool(visible)
+        snapshot = {
+            "status": status,
+            "optimizerStatus": optimizer_status,
+            "pointCount": count,
+            "indexedVectorsCount": indexed_vectors,
+            "indexedVectorsCountSemantics": "approximate-observation-only",
+            "sentinelVisible": sentinel_visible,
+            "expectedPointCount": expected_points,
+        }
+        count_ready = count == expected_points
+        server_ready = (
+            status.casefold() in {"green", "ok"}
+            and optimizer_status.casefold() in {"ok", "green"}
+        )
+        if count_ready and sentinel_visible and (not require_server_ready or server_ready):
+            return snapshot
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Qdrant collection did not become ready: {snapshot}")
+        await asyncio.sleep(2.0)
+
+
+async def _qdrant_server_metadata(location: str | Path) -> dict[str, Any]:
+    value = str(location).rstrip("/")
+    if not value.startswith(("http://", "https://")):
+        return {"mode": _location_kind(location), "version": None}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{value}/")
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        return {"mode": "server", "version": None, "metadataAvailable": False}
+    return {
+        "mode": "server",
+        "version": payload.get("version"),
+        "commit": payload.get("commit"),
+        "metadataAvailable": True,
+    }
+
+
+async def _require_qdrant_server_contract(location: str | Path) -> None:
+    if _location_kind(location) != "remote":
+        return
+    metadata = await _qdrant_server_metadata(location)
+    version = str(metadata.get("version") or "")
+    try:
+        major, minor = (int(part) for part in version.split(".")[:2])
+    except (TypeError, ValueError):
+        raise ValueError(
+            "Qdrant Server metadata/version is unavailable; refusing paid preflight."
+        ) from None
+    if major != 1 or minor < 19:
+        raise ValueError(
+            f"M1 requires Qdrant Server 1.19+ in the 1.x series; observed {version!r}."
+        )
+
+
+def _enum_value(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    if isinstance(raw, dict):
+        return "error" if raw.get("error") else "ok"
+    if getattr(raw, "error", None):
+        return "error"
+    return str(raw or "unknown")
 
 
 def _validate_feature_configuration(args: argparse.Namespace) -> None:
@@ -805,6 +1702,9 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         raise ValueError("--warmup-cases cannot be negative.")
     if args.limit_cases is not None and args.limit_cases < 1:
         raise ValueError("--limit-cases must be positive.")
+    action = _index_action(args)
+    if args.preflight_only and args.provider_smoke:
+        raise ValueError("Choose either --preflight-only or --provider-smoke, not both.")
     if args.embedding_provider == "hash":
         if args.embedding_model not in (None, "deterministic-token-sha256"):
             raise ValueError(
@@ -815,6 +1715,38 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
             raise ValueError(
                 "The Hash provider implementation is fixed to --embedding-version hash-v1."
             )
+    else:
+        if _selected_profile(args) is None:
+            raise ValueError(
+                "Paid M1 evaluation requires --embedding-profile so model, dimensions, "
+                "price, and cost cap cannot drift."
+            )
+        if args.embedding_dimensions != 1_024:
+            raise ValueError("M1 paid embedding profiles are fixed to 1024 dimensions.")
+        if _location_kind(args.qdrant_location) != "remote" and not (
+            args.preflight_only or args.provider_smoke
+        ):
+            raise ValueError("M1 paid evaluation requires Qdrant Server via an HTTP(S) URL.")
+        if action in {"build", "resume"} and not (
+            args.allow_paid_index_build or args.preflight_only or args.provider_smoke
+        ):
+            raise ValueError(
+                "Paid index construction requires the explicit --allow-paid-index-build flag."
+            )
+        if args.limit_cases is not None and action in {"build", "resume"}:
+            raise ValueError(
+                "--limit-cases does not limit indexing and is forbidden during a paid build; "
+                "use --provider-smoke before the full build."
+            )
+        if args.max_provider_cost_usd is None or args.max_provider_cost_usd <= 0:
+            raise ValueError("Paid profiles require a positive provider cost cap.")
+        if args.embedding_query_instruct:
+            raise ValueError(
+                "The frozen M1 comparison does not enable a Qwen query instruction."
+            )
+        if args.split == "test" and not (args.preflight_only or args.provider_smoke):
+            if action != "reuse":
+                raise ValueError("The M1 policy holdout must reuse the selected Dev index.")
     supported = {
         "query_rewrite_provider": (args.query_rewrite_provider, "disabled"),
         "global_retrieval_mode": (args.global_retrieval_mode, "candidate-filtered"),
@@ -826,6 +1758,212 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
                 f"M0 accepts {name} in the config snapshot but only supports {expected!r}; "
                 f"received {actual!r}. Implement the stage before benchmarking it."
             )
+
+
+def _validate_m1_policy_artifacts(args: argparse.Namespace) -> None:
+    if args.embedding_provider == "hash" or args.preflight_only or args.provider_smoke:
+        return
+    if args.baseline_report is None:
+        raise ValueError(
+            "Formal M1 evaluation requires the frozen Hash baseline via --baseline-report."
+        )
+    expected = {
+        "quality gate": FROZEN_QUALITY_GATE_PATH,
+        "Hash baseline": FROZEN_HASH_BASELINE_PATH,
+    }
+    actual = {
+        "quality gate": args.quality_gate,
+        "Hash baseline": args.baseline_report,
+    }
+    for label, expected_path in expected.items():
+        actual_path = actual[label]
+        if not actual_path.is_file():
+            raise ValueError(f"Formal M1 {label} file does not exist: {actual_path}")
+        if _file_sha256(actual_path) != _file_sha256(expected_path):
+            raise ValueError(
+                f"Formal M1 {label} must match the committed frozen artifact exactly."
+            )
+
+
+def _policy_artifact_snapshot(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "qualityGateSha256": _file_sha256(args.quality_gate),
+        "baselineReportSha256": (
+            _file_sha256(args.baseline_report) if args.baseline_report else None
+        ),
+    }
+
+
+def _validate_holdout_authorization(
+    args: argparse.Namespace,
+    resolved_config: dict,
+    *,
+    suite: dict,
+) -> None:
+    if args.split != "test" or args.embedding_provider == "hash":
+        return
+    if not args.allow_policy_holdout or args.winner_manifest is None:
+        raise ValueError(
+            "The M1 policy holdout requires --winner-manifest and --allow-policy-holdout."
+        )
+    if args.output is None:
+        raise ValueError("The M1 policy holdout requires an explicit non-existing --output path.")
+    if args.output.exists():
+        raise FileExistsError(f"Refusing to overwrite a frozen holdout report: {args.output}")
+    winner = json.loads(args.winner_manifest.read_text(encoding="utf-8"))
+    if winner.get("policyVersion") != POLICY_VERSION:
+        raise ValueError("Winner manifest uses an unsupported policy version.")
+    _verify_winner_manifest(args.winner_manifest, winner)
+    _validate_holdout_source(winner)
+    embedding = resolved_config["embedding"]
+    if winner.get("winnerProfileId") != embedding.get("profileId"):
+        raise ValueError("Only the preselected M1 winner may run on the policy holdout.")
+    if winner.get("winnerEmbedding") != embedding:
+        raise ValueError("Winner manifest embedding metadata does not match this run.")
+    expected_artifacts = {
+        "qualityGateSha256": _file_sha256(FROZEN_QUALITY_GATE_PATH),
+        "baselineReportSha256": _file_sha256(FROZEN_HASH_BASELINE_PATH),
+    }
+    frozen_artifacts = winner.get("frozenArtifacts") or {}
+    observed_artifacts = {
+        "qualityGateSha256": ((frozen_artifacts.get("qualityGate") or {}).get("sha256")),
+        "baselineReportSha256": (
+            (frozen_artifacts.get("baselineManifest") or {}).get("sha256")
+        ),
+    }
+    if observed_artifacts != expected_artifacts:
+        raise ValueError("Winner manifest does not bind the committed M1 policy artifacts.")
+    expected_control = normalized_dev_control(resolved_config, include_collection=True)
+    if winner.get("winnerDevControl") != expected_control:
+        raise ValueError(
+            "Holdout retrieval, runtime, collection, or Qdrant endpoint drifted from Dev."
+        )
+    receipt_path = _holdout_receipt_path(args.winner_manifest, suite)
+    if receipt_path.exists():
+        raise FileExistsError(
+            f"The M1 policy holdout has already been attempted: {receipt_path}"
+        )
+
+
+def _holdout_receipt_path(winner_manifest: Path, suite: dict) -> Path:
+    winner = json.loads(winner_manifest.read_text(encoding="utf-8"))
+    selection_sha = _winner_selection_fingerprint(winner)[:16]
+    suite_sha = str(suite.get("caseSha256") or "")[:16]
+    return EVAL_DIRECTORY.parents[1] / ".local" / f"m1-holdout-{selection_sha}-{suite_sha}.json"
+
+
+def _verify_winner_manifest(path: Path, winner: dict[str, Any]) -> None:
+    references = winner.get("devReports")
+    if not isinstance(references, dict) or set(references) != EXPECTED_PROFILES:
+        raise ValueError("Winner manifest must bind exactly the three frozen M1 profiles.")
+    report_paths: list[Path] = []
+    for profile_id in sorted(EXPECTED_PROFILES):
+        reference = references.get(profile_id)
+        if not isinstance(reference, dict):
+            raise ValueError(f"Winner manifest has an invalid Dev report for {profile_id}.")
+        filename = reference.get("filename")
+        expected_sha = reference.get("sha256")
+        if (
+            not isinstance(filename, str)
+            or not filename
+            or Path(filename).name != filename
+            or not _is_sha256_text(expected_sha)
+        ):
+            raise ValueError(f"Winner manifest has an invalid Dev report for {profile_id}.")
+        report_path = path.parent / filename
+        if not report_path.is_file() or _file_sha256(report_path) != expected_sha:
+            raise ValueError(f"Winner Dev report is missing or changed for {profile_id}.")
+        report_paths.append(report_path)
+
+    recomputed = compare_m1_reports(report_paths)
+    if set(winner) != set(recomputed):
+        raise ValueError("Winner manifest fields do not match the frozen selection output.")
+    for key, value in recomputed.items():
+        if key != "generatedAt" and winner.get(key) != value:
+            raise ValueError("Winner manifest does not match recomputation from its Dev reports.")
+
+
+def _winner_selection_fingerprint(winner: dict[str, Any]) -> str:
+    identity = {
+        "policyVersion": winner.get("policyVersion"),
+        "winnerProfileId": winner.get("winnerProfileId"),
+        "winnerEmbeddingIdentity": (winner.get("winnerEmbedding") or {}).get("identity"),
+        "winnerDevControlFingerprint": winner.get("winnerDevControlFingerprint"),
+        "devScopedSourceSha256": winner.get("devScopedSourceSha256"),
+        "frozenArtifacts": winner.get("frozenArtifacts"),
+    }
+    return _fingerprint(identity)
+
+
+def _validate_holdout_source(winner: dict[str, Any]) -> None:
+    repository = Path(__file__).resolve().parents[3]
+    current = _scoped_source_snapshot(repository)["sha256"]
+    if winner.get("devScopedSourceSha256") != current:
+        raise ValueError("Holdout Eval source differs from the source frozen by Dev reports.")
+
+
+def _is_sha256_text(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _reserve_holdout_receipt(
+    args: argparse.Namespace,
+    resolved_config: dict,
+    suite: dict,
+) -> Path | None:
+    if args.split != "test" or args.embedding_provider == "hash":
+        return None
+    path = _holdout_receipt_path(args.winner_manifest, suite)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = {
+        "schemaVersion": 1,
+        "state": "running",
+        "startedAt": datetime.now(UTC).isoformat(),
+        "winnerManifestSha256": _file_sha256(args.winner_manifest),
+        "testCaseSha256": suite["caseSha256"],
+        "testSuiteContractSha256": suite["suiteContractSha256"],
+        "holdoutControlFingerprint": _fingerprint(
+            normalized_dev_control(resolved_config, include_collection=True)
+        ),
+    }
+    try:
+        with path.open("x", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+    except FileExistsError:
+        raise FileExistsError(
+            f"The M1 policy holdout has already been attempted: {path}"
+        ) from None
+    return path
+
+
+def _finalize_holdout_receipt(
+    path: Path,
+    *,
+    state: str,
+    report_sha256: str | None = None,
+    error_type: str | None = None,
+) -> None:
+    if state not in {"complete", "failed"}:
+        raise ValueError(f"Unsupported holdout receipt state: {state}")
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if value.get("state") != "running":
+        raise ValueError("M1 holdout receipt is not in state=running.")
+    value.update(
+        {
+            "state": state,
+            "finishedAt": datetime.now(UTC).isoformat(),
+            "reportSha256": report_sha256,
+            "errorType": error_type,
+        }
+    )
+    _write_json_atomic(path, value)
 
 
 def _validate_cases(suite: dict) -> None:
@@ -962,42 +2100,71 @@ def _vector_dimensions(info: Any) -> int:
 
 def _index_schema_snapshot(info: Any) -> dict[str, Any]:
     params = info.config.params
-    dense = params.vectors.get("dense") if isinstance(params.vectors, dict) else None
+    dense = params.vectors.get("dense") if isinstance(params.vectors, Mapping) else None
     sparse = (
         params.sparse_vectors.get("lexical")
-        if isinstance(params.sparse_vectors, dict)
+        if isinstance(params.sparse_vectors, Mapping)
         else None
     )
-    return {
+    snapshot = {
         "dense": {
             "name": "dense",
             "dimensions": int(getattr(dense, "size", 0) or 0),
-            "distance": str(getattr(dense, "distance", "")),
+            "distance": _enum_value(getattr(dense, "distance", "")),
         },
         "sparse": {
             "name": "lexical",
-            "modifier": str(getattr(sparse, "modifier", "")),
+            "modifier": _enum_value(getattr(sparse, "modifier", "")),
         },
     }
+    payload_schema = getattr(info, "payload_schema", None)
+    if isinstance(payload_schema, Mapping) and payload_schema:
+        snapshot["payloadIndexes"] = {
+            field: _enum_value(
+                getattr(payload_schema.get(field), "data_type", payload_schema.get(field))
+            )
+            for field in sorted(REQUIRED_PAYLOAD_INDEXES)
+        }
+    return snapshot
 
 
-def _expected_index_schema(dimensions: int) -> dict[str, Any]:
-    return {
+def _expected_index_schema(
+    dimensions: int,
+    *,
+    include_payload_indexes: bool = False,
+) -> dict[str, Any]:
+    expected = {
         "dense": {
             "name": "dense",
             "dimensions": dimensions,
-            "distance": "Cosine",
+            "distance": _enum_value(models.Distance.COSINE),
         },
         "sparse": {
             "name": "lexical",
-            "modifier": "idf",
+            "modifier": _enum_value(models.Modifier.IDF),
         },
     }
+    if include_payload_indexes:
+        expected["payloadIndexes"] = {
+            field: _enum_value(schema)
+            for field, schema in sorted(REQUIRED_PAYLOAD_INDEXES.items())
+        }
+    return expected
 
 
-def _require_expected_index_schema(info: Any, dimensions: int) -> None:
+def _require_expected_index_schema(
+    info: Any,
+    dimensions: int,
+    *,
+    require_payload_indexes: bool = False,
+) -> None:
     actual = _index_schema_snapshot(info)
-    expected = _expected_index_schema(dimensions)
+    if not require_payload_indexes:
+        actual.pop("payloadIndexes", None)
+    expected = _expected_index_schema(
+        dimensions,
+        include_payload_indexes=require_payload_indexes,
+    )
     if actual != expected:
         raise ValueError(
             f"Existing collection schema {actual!r} does not match expected {expected!r}."
@@ -1098,6 +2265,14 @@ def _file_set_fingerprint(repository: Path, relative_paths: tuple[str, ...]) -> 
     }
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _latency_profile_fingerprint(config: dict) -> str:
     value = {
         "qdrant": config["qdrant"],
@@ -1129,6 +2304,16 @@ def _write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _write_json_atomic(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temporary.write_text(
+        json.dumps(value, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     repository = Path(__file__).resolve().parents[3]
     parser = argparse.ArgumentParser(description="Run the frozen RAG v2 quality and latency baseline.")
@@ -1148,11 +2333,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--index-manifest", type=Path)
     parser.add_argument("--index-batch-size", type=int, default=128)
     parser.add_argument("--reuse-index", action="store_true")
-    parser.add_argument("--embedding-provider", choices=("hash", "openai"), default="hash")
+    parser.add_argument("--index-action", choices=("reuse", "build", "resume"))
+    parser.add_argument("--allow-paid-index-build", action="store_true")
+    parser.add_argument(
+        "--embedding-profile",
+        choices=tuple(PROFILES),
+        help="Frozen provider/model/dimension/price profile for comparable M1 runs.",
+    )
+    parser.add_argument("--embedding-provider", choices=("hash", "openai", "qwen"), default="hash")
     parser.add_argument("--embedding-model")
     parser.add_argument("--embedding-version")
     parser.add_argument("--embedding-dimensions", type=int, default=64)
     parser.add_argument("--embedding-base-url")
+    parser.add_argument("--embedding-batch-size", type=int, default=64)
+    parser.add_argument("--embedding-max-concurrency", type=int, default=2)
+    parser.add_argument("--embedding-timeout-seconds", type=float, default=30.0)
+    parser.add_argument("--embedding-max-retries", type=int, default=4)
+    parser.add_argument("--embedding-max-batch-characters", type=int, default=250_000)
+    parser.add_argument("--embedding-query-cache-size", type=int, default=512)
+    parser.add_argument("--embedding-query-cache-ttl-seconds", type=float, default=900.0)
+    parser.add_argument("--embedding-query-instruct", default="")
+    parser.add_argument("--max-provider-cost-usd", type=float)
+    parser.add_argument("--preflight-sample-size", type=int, default=100)
+    parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--provider-smoke", action="store_true")
+    parser.add_argument("--qdrant-ready-timeout-seconds", type=float, default=1_800.0)
     parser.add_argument("--query-rewrite-provider", default="disabled")
     parser.add_argument("--global-retrieval-mode", default="candidate-filtered")
     parser.add_argument("--reranker-provider", default="heuristic-multi-signal")
@@ -1161,6 +2366,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-cases", type=int, default=1)
     parser.add_argument("--limit-cases", type=int)
     parser.add_argument("--baseline-report", type=Path)
+    parser.add_argument("--winner-manifest", type=Path)
+    parser.add_argument("--allow-policy-holdout", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--summary-output", type=Path)
     parser.add_argument("--no-fail", action="store_true")

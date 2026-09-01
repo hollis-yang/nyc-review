@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -19,7 +20,11 @@ from app.domain.models import (
     ShopEvidence,
     UserConstraints,
 )
-from app.rag.embeddings import DeterministicHashEmbeddingService
+from app.rag.embeddings import (
+    DeterministicHashEmbeddingService,
+    EmbeddingMetadata,
+    EmbeddingUsage,
+)
 from app.rag.models import RagDocument
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import QdrantRagService
@@ -176,21 +181,28 @@ def test_rag_v2_baseline_manifest_tracks_the_frozen_splits():
         partial=False,
     )
     assert self_check["passed"] is True
+    # M1 deliberately changes the index-build source set and adds an embedding
+    # identity to the resolved config.  The frozen M0 report must remain intact,
+    # so a current-source latency profile is expected to differ from its hash.
     for split in ("dev", "test"):
         args = build_parser().parse_args(["--split", split, "--reuse-index"])
         config = _resolved_config(args, _read_suite(split))
-        assert _latency_profile_fingerprint(config) == baseline["splits"][split][
+        assert _latency_profile_fingerprint(config) != baseline["splits"][split][
             "latencyProfileFingerprint"
         ]
 
 
 def test_eval_config_is_secret_free_and_future_stages_fail_fast(monkeypatch):
     monkeypatch.setenv("NYC_REVIEW_AGENT_EMBEDDING_API_KEY", "must-not-appear")
-    args = build_parser().parse_args(["--embedding-provider", "openai"])
-    config = _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+    paid_args = build_parser().parse_args(["--embedding-provider", "openai"])
+    config = _resolved_config(paid_args, {"retrievalVersion": "p12-rag-v1"})
 
     assert "must-not-appear" not in json.dumps(config)
-    assert args.collection == "hmdp_content_v2"
+    assert paid_args.collection == "hmdp_content_v2"
+
+    # Keep the provider valid so this assertion reaches the feature-stage guard
+    # instead of the earlier M1 paid-profile guard.
+    args = build_parser().parse_args([])
     args.query_rewrite_provider = "llm"
     with pytest.raises(ValueError, match="only supports 'disabled'"):
         _validate_feature_configuration(args)
@@ -198,6 +210,468 @@ def test_eval_config_is_secret_free_and_future_stages_fail_fast(monkeypatch):
     hash_args = build_parser().parse_args(["--embedding-model", "mislabelled-hash"])
     with pytest.raises(ValueError, match="implementation is fixed"):
         _validate_feature_configuration(hash_args)
+
+
+@pytest.mark.parametrize(
+    ("override", "conflicting_flag"),
+    [
+        (["--embedding-provider", "qwen"], "--embedding-provider"),
+        (["--embedding-model", "different-model"], "--embedding-model"),
+        (["--embedding-version", "moving-version"], "--embedding-version"),
+        (["--embedding-dimensions", "1536"], "--embedding-dimensions"),
+        (["--collection", "shared-collection"], "--collection"),
+        (["--max-provider-cost-usd", "0.51"], "--max-provider-cost-usd"),
+    ],
+)
+def test_m1_embedding_profiles_reject_identity_and_budget_drift(
+    override,
+    conflicting_flag,
+):
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "reuse",
+            *override,
+        ]
+    )
+
+    with pytest.raises(ValueError, match=conflicting_flag):
+        _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+
+
+def test_m1_embedding_profile_resolves_a_complete_comparable_identity():
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "qwen37-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "reuse",
+        ]
+    )
+
+    config = _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+    _validate_feature_configuration(args)
+
+    assert config["embedding"] == {
+        "provider": "qwen",
+        "model": "qwen3.7-text-embedding",
+        "dimensions": 1024,
+        "version": "qwen3.7-text-embedding-1024-m1-v1",
+        "metadataSource": "configured",
+        "endpointFingerprint": config["embedding"]["endpointFingerprint"],
+        "profileId": "qwen37-1024",
+        "apiFlavor": "dashscope-native",
+        "queryMode": "query",
+        "documentMode": "document",
+        "identity": config["embedding"]["identity"],
+        "priceUsdPerMillionTokens": 0.07,
+        "maxProviderCostUsd": 1.25,
+        "maxTotalTokens": 17_857_142,
+        "pricingSnapshotDate": "2026-08-31",
+        "runtime": {
+            "configuredBatchSize": 64,
+            "providerBatchLimit": 20,
+            "effectiveBatchSize": 20,
+            "maxConcurrency": 2,
+            "timeoutSeconds": 30.0,
+            "maxRetries": 4,
+            "maxBatchCharacters": 250_000,
+            "queryCacheSize": 512,
+            "queryCacheTtlSeconds": 900.0,
+        },
+    }
+    assert len(config["embedding"]["identity"]) == 64
+    assert args.collection == "nyc_review_content_v3_dashscope_qwen37_1024_v1"
+    assert config["experimentControlFingerprint"]
+
+
+def test_paid_index_build_requires_explicit_authorization():
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "build",
+        ]
+    )
+    _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+
+    with pytest.raises(ValueError, match="--allow-paid-index-build"):
+        _validate_feature_configuration(args)
+
+
+def test_formal_m1_requires_exact_frozen_gate_and_hash_baseline(tmp_path):
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "reuse",
+        ]
+    )
+    _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+
+    with pytest.raises(ValueError, match="frozen Hash baseline"):
+        rag_v2_runner._validate_m1_policy_artifacts(args)
+
+    args.baseline_report = RAG_V2_DIRECTORY / "baseline.hash64.local.json"
+    rag_v2_runner._validate_m1_policy_artifacts(args)
+
+    tampered_gate = tmp_path / "quality-gate.json"
+    tampered_gate.write_text("{}\n", encoding="utf-8")
+    args.quality_gate = tampered_gate
+    with pytest.raises(ValueError, match="must match the committed frozen artifact"):
+        rag_v2_runner._validate_m1_policy_artifacts(args)
+
+
+def test_holdout_binds_dev_control_and_creates_a_single_attempt_receipt(
+    tmp_path,
+    monkeypatch,
+):
+    suite = _read_suite("test")
+    winner_path = tmp_path / "winner.json"
+    output_path = tmp_path / "holdout.json"
+    receipt_path = tmp_path / "holdout-receipt.json"
+    args = build_parser().parse_args(
+        [
+            "--split",
+            "test",
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "reuse",
+            "--winner-manifest",
+            str(winner_path),
+            "--allow-policy-holdout",
+            "--baseline-report",
+            str(RAG_V2_DIRECTORY / "baseline.hash64.local.json"),
+            "--output",
+            str(output_path),
+        ]
+    )
+    resolved_config = _resolved_config(args, suite)
+    frozen_artifacts = {
+        "qualityGate": {
+            "sha256": rag_v2_runner._file_sha256(
+                RAG_V2_DIRECTORY / "quality_gate.json"
+            )
+        },
+        "baselineManifest": {
+            "sha256": rag_v2_runner._file_sha256(
+                RAG_V2_DIRECTORY / "baseline.hash64.local.json"
+            )
+        },
+    }
+    dev_reports = {}
+    for profile_id in sorted(rag_v2_runner.EXPECTED_PROFILES):
+        report_path = tmp_path / f"{profile_id}.json"
+        report_path.write_text("{}\n", encoding="utf-8")
+        dev_reports[profile_id] = {
+            "filename": report_path.name,
+            "sha256": rag_v2_runner._file_sha256(report_path),
+        }
+    winner = {
+        "schemaVersion": 2,
+        "policyVersion": rag_v2_runner.POLICY_VERSION,
+        "generatedAt": "2026-08-31T00:00:00+00:00",
+        "winnerProfileId": "openai-small-1024",
+        "winnerEmbedding": resolved_config["embedding"],
+        "winnerDevControl": rag_v2_runner.normalized_dev_control(
+            resolved_config,
+            include_collection=True,
+        ),
+        "winnerDevControlFingerprint": "f" * 64,
+        "devScopedSourceSha256": rag_v2_runner._scoped_source_snapshot(REPOSITORY)[
+            "sha256"
+        ],
+        "frozenArtifacts": frozen_artifacts,
+        "devReports": dev_reports,
+    }
+    winner_path.write_text(json.dumps(winner), encoding="utf-8")
+    monkeypatch.setattr(rag_v2_runner, "compare_m1_reports", lambda _paths: dict(winner))
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "_holdout_receipt_path",
+        lambda *_args: receipt_path,
+    )
+
+    rag_v2_runner._validate_holdout_authorization(
+        args,
+        resolved_config,
+        suite=suite,
+    )
+    reserved = rag_v2_runner._reserve_holdout_receipt(args, resolved_config, suite)
+    assert reserved == receipt_path
+    assert json.loads(receipt_path.read_text(encoding="utf-8"))["state"] == "running"
+    rag_v2_runner._finalize_holdout_receipt(
+        receipt_path,
+        state="complete",
+        report_sha256="a" * 64,
+    )
+    assert json.loads(receipt_path.read_text(encoding="utf-8"))["state"] == "complete"
+
+    with pytest.raises(FileExistsError, match="already been attempted"):
+        rag_v2_runner._validate_holdout_authorization(
+            args,
+            resolved_config,
+            suite=suite,
+        )
+
+    receipt_path.unlink()
+    drifted_args = build_parser().parse_args(
+        [
+            "--split",
+            "test",
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "reuse",
+            "--candidate-limit",
+            "9",
+            "--winner-manifest",
+            str(winner_path),
+            "--allow-policy-holdout",
+            "--output",
+            str(output_path),
+        ]
+    )
+    drifted_config = _resolved_config(drifted_args, suite)
+    with pytest.raises(ValueError, match="drifted from Dev"):
+        rag_v2_runner._validate_holdout_authorization(
+            drifted_args,
+            drifted_config,
+            suite=suite,
+        )
+
+
+def test_holdout_receipt_identity_ignores_winner_generated_at(tmp_path):
+    suite = _read_suite("test")
+    base = {
+        "policyVersion": rag_v2_runner.POLICY_VERSION,
+        "winnerProfileId": "openai-small-1024",
+        "winnerEmbedding": {"identity": "d" * 64},
+        "winnerDevControlFingerprint": "f" * 64,
+        "devScopedSourceSha256": "e" * 64,
+        "frozenArtifacts": {"qualityGate": {"sha256": "a" * 64}},
+        "devReports": {
+            profile_id: {"sha256": character * 64}
+            for profile_id, character in zip(
+                sorted(rag_v2_runner.EXPECTED_PROFILES),
+                ("1", "2", "3"),
+                strict=True,
+            )
+        },
+    }
+    first = tmp_path / "winner-first.json"
+    second = tmp_path / "winner-second.json"
+    first.write_text(
+        json.dumps({**base, "generatedAt": "2026-08-31T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    second.write_text(
+        json.dumps(
+            {
+                **base,
+                "generatedAt": "2026-08-31T01:00:00Z",
+                "devReports": {
+                    profile_id: {"sha256": character * 64}
+                    for profile_id, character in zip(
+                        sorted(rag_v2_runner.EXPECTED_PROFILES),
+                        ("4", "5", "6"),
+                        strict=True,
+                    )
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert rag_v2_runner._holdout_receipt_path(
+        first,
+        suite,
+    ) == rag_v2_runner._holdout_receipt_path(second, suite)
+
+
+def test_holdout_rejects_forged_winner_without_real_dev_report_bindings(tmp_path):
+    winner_path = tmp_path / "forged-winner.json"
+    winner = {
+        "policyVersion": rag_v2_runner.POLICY_VERSION,
+        "devReports": {"small": {}, "large": {}, "qwen": {}},
+    }
+    winner_path.write_text(json.dumps(winner), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exactly the three frozen M1 profiles"):
+        rag_v2_runner._verify_winner_manifest(winner_path, winner)
+
+
+def test_holdout_rejects_eval_source_drift(monkeypatch):
+    winner = {"devScopedSourceSha256": "a" * 64}
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "_scoped_source_snapshot",
+        lambda _repository: {"sha256": "b" * 64},
+    )
+
+    with pytest.raises(ValueError, match="Eval source differs"):
+        rag_v2_runner._validate_holdout_source(winner)
+
+def test_limit_cases_cannot_masquerade_as_a_paid_index_limit():
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "build",
+            "--allow-paid-index-build",
+            "--limit-cases",
+            "1",
+        ]
+    )
+    _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+
+    with pytest.raises(ValueError, match="does not limit indexing"):
+        _validate_feature_configuration(args)
+
+    reuse_args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "reuse",
+            "--limit-cases",
+            "1",
+        ]
+    )
+    _resolved_config(reuse_args, {"retrievalVersion": "p12-rag-v1"})
+    _validate_feature_configuration(reuse_args)
+
+
+async def test_preflight_only_returns_before_qdrant_is_constructed(monkeypatch):
+    suite = {
+        "retrievalVersion": "p12-rag-v1",
+        "caseCount": 80,
+        "indexedDocuments": 145_000,
+    }
+    embedding = SimpleNamespace(closed=False)
+
+    async def close_embedding():
+        embedding.closed = True
+
+    async def fake_preflight(_embedding, _data_directory, *, args, suite, corpus):
+        assert args.embedding_profile == "openai-small-1024"
+        assert suite["caseCount"] == 80
+        assert corpus["documentCount"] == 145_000
+        return {
+            "status": "passed",
+            "projectedTotalTokens": 10_000_000,
+            "projectedCostUsd": 0.2,
+            "hardCostCapUsd": 0.5,
+        }
+
+    embedding.aclose = close_embedding
+    monkeypatch.setattr(rag_v2_runner, "load_suite", lambda *_args, **_kwargs: (suite, {}))
+    monkeypatch.setattr(rag_v2_runner, "_embedding_service", lambda *_args: embedding)
+    monkeypatch.setattr(rag_v2_runner, "_embedding_preflight", fake_preflight)
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "_sample_corpus",
+        lambda *_args: {"documentCount": 145_000},
+    )
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "_qdrant_client",
+        lambda *_args: pytest.fail("preflight-only must not construct a Qdrant client"),
+    )
+    args = build_parser().parse_args(
+        ["--embedding-profile", "openai-small-1024", "--preflight-only"]
+    )
+
+    report, passed = await rag_v2_runner.run(args)
+
+    assert passed is True
+    assert report["mode"] == "preflight"
+    assert report["preflight"]["projectedCostUsd"] == 0.2
+    assert embedding.closed is True
+
+
+async def test_embedding_preflight_rejects_projected_cost_before_indexing(monkeypatch):
+    embedding = _UsageEmbedding()
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "_sample_corpus",
+        lambda _directory, _sample_size: {
+            "sampleTexts": ["x" * 100],
+            "sampleCharacters": 100,
+            "documentCount": 145_000,
+            "totalCharacters": 1_000,
+            "contentTypeCounts": {"shop_review": 145_000},
+        },
+    )
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--preflight-only",
+            "--max-provider-cost-usd",
+            "0.00001",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="hard cap; no index was modified"):
+        await rag_v2_runner._embedding_preflight(
+            embedding,
+            Path("unused"),
+            args=args,
+            suite={"caseCount": 80, "indexedDocuments": 145_000},
+        )
+
+    assert embedding.document_calls == 1
+    assert embedding.query_calls == 3
+    assert embedding.cache_clear_count == 1
+
+
+def test_provider_usage_report_uses_profile_price_and_hard_cap():
+    args = build_parser().parse_args(
+        ["--embedding-profile", "openai-small-1024", "--preflight-only"]
+    )
+    _resolved_config(args, {"retrievalVersion": "p12-rag-v1"})
+    usage = EmbeddingUsage(
+        network_requests=7,
+        input_texts=145_080,
+        input_characters=47_000_000,
+        total_tokens=1_500_000,
+        retry_count=1,
+        failure_count=1,
+        query_cache_hits=2,
+        latency_ms=1_234.5,
+    )
+
+    report = rag_v2_runner._provider_usage_report(usage, args)
+
+    assert report == {
+        **usage.as_dict(),
+        "priceUsdPerMillionTokens": 0.02,
+        "estimatedCostUsd": pytest.approx(0.03),
+        "hardCostCapUsd": 0.5,
+    }
 
 
 @pytest.mark.skipif(
@@ -527,6 +1001,82 @@ async def test_rag_v2_evaluator_runs_search_rank_retrieve_in_order():
     assert result["integrity"]["evidenceCoverage"] == 1.0
 
 
+async def test_run_clears_query_cache_after_warmup_before_measured_cases(monkeypatch):
+    suite = _read_suite("dev")
+    corpus_manifest = {
+        "profile": "test",
+        "dataVersion": suite["dataVersion"],
+        "datasetSha256": suite["datasetSha256"],
+    }
+
+    class Meter:
+        def __init__(self):
+            self.cache_clear_count = 0
+
+        def clear_query_cache(self):
+            self.cache_clear_count += 1
+
+        def usage_snapshot(self):
+            return EmbeddingUsage()
+
+    meter = Meter()
+    runtime = SimpleNamespace(
+        embedding_service=meter,
+        index_report={"lifecycleState": "complete"},
+        closed=False,
+    )
+
+    async def close_runtime():
+        runtime.closed = True
+
+    async def fake_build_runtime(*_args, **_kwargs):
+        return runtime
+
+    observed_cache_clears: list[int] = []
+
+    async def fake_evaluate_case(*_args, **_kwargs):
+        observed_cache_clears.append(meter.cache_clear_count)
+        return {
+            "metrics": {"recallAt10": 1.0, "ndcgAt10": 1.0},
+            "integrity": {"hardConstraintSatisfaction": 1.0},
+            "retrievalMetadata": {},
+        }
+
+    runtime.close = close_runtime
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "load_suite",
+        lambda *_args, **_kwargs: (suite, corpus_manifest),
+    )
+    monkeypatch.setattr(rag_v2_runner, "_build_runtime", fake_build_runtime)
+    monkeypatch.setattr(rag_v2_runner, "evaluate_case", fake_evaluate_case)
+    monkeypatch.setattr(rag_v2_runner, "summarize_results", lambda _results: {"overall": {}})
+    monkeypatch.setattr(
+        rag_v2_runner,
+        "evaluate_gate",
+        lambda *_args, **_kwargs: {
+            "passed": True,
+            "failures": [],
+            "warnings": [],
+            "relativeStatus": "skipped-partial",
+            "thresholds": {},
+        },
+    )
+    monkeypatch.setattr(rag_v2_runner, "_git_snapshot", lambda _repository: {})
+    monkeypatch.setattr(rag_v2_runner, "_scoped_source_snapshot", lambda _repository: {})
+    args = build_parser().parse_args(
+        ["--reuse-index", "--limit-cases", "1", "--warmup-cases", "1"]
+    )
+
+    report, passed = await rag_v2_runner.run(args)
+
+    assert passed is True
+    assert observed_cache_clears == [0, 1]
+    assert meter.cache_clear_count == 1
+    assert report["run"]["evaluatedCases"] == 1
+    assert runtime.closed is True
+
+
 async def test_adversarial_security_and_stale_documents_are_not_cited():
     fixtures = json.loads(
         (RAG_V2_DIRECTORY / "adversarial_documents.json").read_text(encoding="utf-8")
@@ -594,7 +1144,7 @@ async def test_adversarial_security_and_stale_documents_are_not_cited():
     await client.close()
 
 
-async def test_existing_index_without_manifest_cannot_be_adopted_even_for_hash(tmp_path):
+async def test_existing_index_without_manifest_cannot_be_adopted_by_a_new_build(tmp_path):
     client = AsyncQdrantClient(location=":memory:")
     dataset_sha = "d" * 64
     rag = QdrantRagService(
@@ -618,7 +1168,7 @@ async def test_existing_index_without_manifest_cannot_be_adopted_even_for_hash(t
     )
     args = SimpleNamespace(collection="existing_hash_index", embedding_provider="hash")
 
-    with pytest.raises(ValueError, match="without a matching sidecar manifest"):
+    with pytest.raises(ValueError, match="never adopts an existing collection"):
         await _require_compatible_collection(
             client,
             args=args,
@@ -631,6 +1181,327 @@ async def test_existing_index_without_manifest_cannot_be_adopted_even_for_hash(t
             manifest_path=tmp_path / "missing-index-manifest.json",
         )
     await client.close()
+
+
+async def test_new_build_rejects_an_existing_empty_collection(tmp_path):
+    client = AsyncQdrantClient(location=":memory:")
+    await client.create_collection(
+        collection_name="existing_empty_index",
+        vectors_config={
+            "dense": rag_v2_runner.models.VectorParams(
+                size=64,
+                distance=rag_v2_runner.models.Distance.COSINE,
+            )
+        },
+        sparse_vectors_config={
+            "lexical": rag_v2_runner.models.SparseVectorParams(
+                modifier=rag_v2_runner.models.Modifier.IDF,
+            )
+        },
+    )
+    args = SimpleNamespace(collection="existing_empty_index", embedding_provider="hash")
+
+    with pytest.raises(ValueError, match="even when it is empty"):
+        await _require_compatible_collection(
+            client,
+            args=args,
+            suite={
+                "dataVersion": "v1",
+                "datasetSha256": "d" * 64,
+                "retrievalVersion": "p12-rag-v1",
+                "indexedDocuments": 1,
+            },
+            resolved_config={
+                "embedding": {"dimensions": 64},
+                "qdrant": {"locationKind": "memory"},
+            },
+            manifest_path=tmp_path / "missing-index-manifest.json",
+        )
+    await client.close()
+
+
+async def test_readiness_treats_indexed_vector_count_as_observation_only():
+    info = SimpleNamespace(
+        status="green",
+        optimizer_status="ok",
+        indexed_vectors_count=0,
+    )
+
+    class Client:
+        async def get_collection(self, _collection):
+            return info
+
+        async def count(self, _collection, exact):
+            assert exact is True
+            return SimpleNamespace(count=145_000)
+
+        async def scroll(self, **_kwargs):
+            return [SimpleNamespace(id="sentinel")], None
+
+    readiness = await rag_v2_runner._wait_for_collection_ready(
+        Client(),
+        "m1-index",
+        expected_points=145_000,
+        timeout_seconds=0.1,
+        require_server_ready=True,
+    )
+
+    assert readiness["pointCount"] == 145_000
+    assert readiness["indexedVectorsCount"] == 0
+    assert readiness["indexedVectorsCountSemantics"] == "approximate-observation-only"
+    assert readiness["sentinelVisible"] is True
+
+
+async def test_preflight_rejects_wrong_corpus_size_before_provider_call(tmp_path):
+    embedding = SimpleNamespace(
+        metadata=SimpleNamespace(provider="openai"),
+        embed_documents=lambda _texts: pytest.fail("provider must not be called"),
+    )
+
+    with pytest.raises(ValueError, match="refusing any provider request"):
+        await rag_v2_runner._embedding_preflight(
+            embedding,
+            tmp_path,
+            args=SimpleNamespace(preflight_sample_size=100),
+            suite={"indexedDocuments": 145_000},
+            corpus={"documentCount": 144_999},
+        )
+
+
+async def test_cancelled_paid_build_persists_usage_before_reraising(
+    tmp_path,
+    monkeypatch,
+):
+    manifest_path = tmp_path / "cancelled-index.json"
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            "http://127.0.0.1:6333",
+            "--index-action",
+            "build",
+            "--allow-paid-index-build",
+            "--index-manifest",
+            str(manifest_path),
+        ]
+    )
+    suite = {
+        "dataVersion": "v1",
+        "datasetSha256": "d" * 64,
+        "retrievalVersion": "p12-rag-v1",
+        "indexedDocuments": 145_000,
+    }
+    resolved_config = _resolved_config(args, suite)
+
+    class Embedding:
+        metadata = EmbeddingMetadata(
+            provider="openai",
+            model="text-embedding-3-small",
+            dimensions=1_024,
+            version="text-embedding-3-small-1024-m1-v1",
+            query_mode="plain",
+            document_mode="plain",
+        )
+        dimensions = 1_024
+        closed = False
+
+        async def embed_query(self, _text):
+            return [1.0] * self.dimensions
+
+        async def embed_documents(self, _texts):
+            return [[1.0] * self.dimensions]
+
+        def usage_snapshot(self):
+            return EmbeddingUsage(
+                network_requests=1,
+                input_texts=128,
+                input_characters=12_800,
+                total_tokens=3_200,
+            )
+
+        def clear_query_cache(self):
+            return None
+
+        async def aclose(self):
+            self.closed = True
+
+    class Client:
+        closed = False
+
+        async def collection_exists(self, _collection):
+            return False
+
+        async def close(self):
+            self.closed = True
+
+    class CancelledRag:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def sync(self, _documents, *, data_version):
+            assert data_version == "v1"
+            raise asyncio.CancelledError
+
+    embedding = Embedding()
+    client = Client()
+    monkeypatch.setattr(rag_v2_runner, "_qdrant_client", lambda _location: client)
+    monkeypatch.setattr(rag_v2_runner, "QdrantRagService", CancelledRag)
+
+    with pytest.raises(asyncio.CancelledError):
+        await rag_v2_runner._build_runtime(
+            args,
+            suite,
+            DATA_DIRECTORY,
+            resolved_config,
+            inner_embedding=embedding,
+            preflight={"status": "passed"},
+        )
+
+    interrupted = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert interrupted["state"] == "building"
+    assert interrupted["cumulativeProviderUsage"]["total_tokens"] == 3_200
+    assert interrupted["attempts"][-1]["outcome"] == "failed"
+    assert embedding.closed is True
+    assert client.closed is True
+
+
+async def test_index_manifest_moves_from_building_through_resume_to_complete(tmp_path):
+    args = build_parser().parse_args(
+        [
+            "--embedding-profile",
+            "openai-small-1024",
+            "--qdrant-location",
+            ":memory:",
+            "--index-action",
+            "build",
+            "--allow-paid-index-build",
+        ]
+    )
+    suite = {
+        "dataVersion": "v1",
+        "datasetSha256": "d" * 64,
+        "retrievalVersion": "p12-rag-v1",
+        "indexedDocuments": 0,
+    }
+    resolved_config = _resolved_config(args, suite)
+    manifest_path = tmp_path / "m1-index-manifest.json"
+    preflight = {
+        "status": "passed",
+        "projectedTotalTokens": 10_000_000,
+        "projectedCostUsd": 0.2,
+    }
+    client = AsyncQdrantClient(location=":memory:")
+    try:
+        await rag_v2_runner._prepare_index_build(
+            client,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            manifest_path=manifest_path,
+            action="build",
+            preflight=preflight,
+        )
+        building = json.loads(manifest_path.read_text(encoding="utf-8"))
+        build_id = building["buildId"]
+        assert building["state"] == "building"
+        assert building["embedding"] == resolved_config["embedding"]
+        assert rag_v2_runner._index_manifest_matches(
+            manifest_path,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            required_state="building",
+        )
+
+        mismatched_config = json.loads(json.dumps(resolved_config))
+        mismatched_config["embedding"]["identity"] = "different-embedding"
+        with pytest.raises(ValueError, match="exact state=building"):
+            await rag_v2_runner._prepare_index_build(
+                client,
+                args=args,
+                suite=suite,
+                resolved_config=mismatched_config,
+                manifest_path=manifest_path,
+                action="resume",
+                preflight=preflight,
+            )
+
+        await rag_v2_runner._prepare_index_build(
+            client,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            manifest_path=manifest_path,
+            action="resume",
+            preflight=preflight,
+        )
+        await client.create_collection(
+            collection_name=args.collection,
+            vectors_config={
+                "dense": rag_v2_runner.models.VectorParams(
+                    size=1024,
+                    distance=rag_v2_runner.models.Distance.COSINE,
+                )
+            },
+            sparse_vectors_config={
+                "lexical": rag_v2_runner.models.SparseVectorParams(
+                    modifier=rag_v2_runner.models.Modifier.IDF,
+                )
+            },
+        )
+        usage = EmbeddingUsage(
+            network_requests=2,
+            input_texts=100,
+            input_characters=10_000,
+            total_tokens=2_000,
+            latency_ms=250.0,
+        )
+        await rag_v2_runner._write_complete_index_manifest(
+            client,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            manifest_path=manifest_path,
+            point_count=0,
+            index_usage=usage,
+            readiness={"status": "green", "pointsCount": 0},
+            preflight=preflight,
+        )
+
+        complete = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert complete["state"] == "complete"
+        assert complete["buildId"] == build_id
+        assert complete["embedding"] == resolved_config["embedding"]
+        assert complete["indexProviderUsage"]["total_tokens"] == 2_000
+        assert complete["indexProviderUsage"]["estimatedCostUsd"] == pytest.approx(0.00004)
+        assert rag_v2_runner._index_manifest_matches(
+            manifest_path,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            required_state="complete",
+        )
+        complete["pointCount"] = 1
+        manifest_path.write_text(json.dumps(complete), encoding="utf-8")
+        assert not rag_v2_runner._index_manifest_matches(
+            manifest_path,
+            args=args,
+            suite=suite,
+            resolved_config=resolved_config,
+            required_state="complete",
+        )
+        complete["pointCount"] = 0
+        manifest_path.write_text(json.dumps(complete), encoding="utf-8")
+        assert not rag_v2_runner._index_manifest_matches(
+            manifest_path,
+            args=args,
+            suite=suite,
+            resolved_config=mismatched_config,
+            required_state="complete",
+        )
+    finally:
+        await client.close()
 
 
 def test_blog_comment_security_flag_is_loaded(tmp_path):
@@ -811,6 +1682,54 @@ def test_latency_profile_fingerprint_binds_embedding_and_feature_configuration()
     second["embedding"]["model"] = "different-model"
 
     assert _latency_profile_fingerprint(first) != _latency_profile_fingerprint(second)
+
+
+class _UsageEmbedding:
+    def __init__(self):
+        self.metadata = EmbeddingMetadata(
+            provider="openai",
+            model="text-embedding-3-small",
+            dimensions=1024,
+            version="text-embedding-3-small-1024-m1-v1",
+            query_mode="plain",
+            document_mode="plain",
+        )
+        self._usage = EmbeddingUsage()
+        self.document_calls = 0
+        self.query_calls = 0
+        self.cache_clear_count = 0
+
+    async def embed_documents(self, texts):
+        self.document_calls += 1
+        self._increment_usage(
+            network_requests=1,
+            input_texts=len(texts),
+            input_characters=sum(map(len, texts)),
+            total_tokens=100,
+        )
+        return [[0.0] * self.metadata.dimensions for _text in texts]
+
+    async def embed_query(self, text):
+        self.query_calls += 1
+        self._increment_usage(
+            network_requests=1,
+            input_texts=1,
+            input_characters=len(text),
+            total_tokens=10,
+        )
+        return [0.0] * self.metadata.dimensions
+
+    def usage_snapshot(self):
+        return self._usage
+
+    def clear_query_cache(self):
+        self.cache_clear_count += 1
+
+    def _increment_usage(self, **increments):
+        values = self._usage.as_dict()
+        for key, increment in increments.items():
+            values[key] += increment
+        self._usage = EmbeddingUsage(**values)
 
 
 def _read_suite(split: str) -> dict:
