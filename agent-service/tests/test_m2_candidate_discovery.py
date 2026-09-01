@@ -40,6 +40,7 @@ EMBEDDING_IDENTITY = "b" * 64
 def _candidate(
     shop_id: int,
     *,
+    name: str | None = None,
     category: str = "Food & Dining",
     neighborhood: str = "Midtown",
     avg_price_cents: int | None = 2_500,
@@ -50,7 +51,7 @@ def _candidate(
 ) -> ShopCandidate:
     return ShopCandidate(
         shop_id=shop_id,
-        name=f"Merchant {shop_id}",
+        name=name or f"Merchant {shop_id}",
         category=category,
         neighborhood=neighborhood,
         latitude=40.75 + shop_id / 100_000,
@@ -448,6 +449,39 @@ async def test_hydration_is_capped_and_hard_constraints_fail_closed():
     assert result.retrieval_metadata["globalSparseRejectedPoints"] == 0
     assert result.retrieval_metadata["identityConflicts"] == 0
     assert result.retrieval_metadata["identityConflictShopIds"] == []
+
+
+async def test_hard_required_filter_precedes_brand_cap_for_unique_correct_result():
+    shared_brand = "Accessible Eats"
+    details = [
+        _candidate(1, name=shared_brand),
+        _candidate(2, name=shared_brand, tags=["quiet"]),
+        _candidate(
+            3,
+            name=shared_brand,
+            tags=["wheelchair_accessible"],
+        ),
+    ]
+    shops = _Shops(CandidateSet(candidates=[]), details)
+
+    result = await _discovery(
+        shops,
+        _Rag(),
+        _Global(_global_result([1, 2, 3], [1, 2, 3])),
+        brand_cap=1,
+    ).discover(
+        UserConstraints(
+            query="accessible dinner",
+            desired_tags=["wheelchair_accessible"],
+        ),
+        limit=3,
+    )
+
+    assert [candidate.shop_id for candidate in result.candidates] == [3]
+    assert result.retrieval_metadata["hardConstraintFilteredByReason"] == {
+        "requiredTags": 2
+    }
+    assert result.retrieval_metadata["duplicateBrandsSuppressed"] == 0
 
 
 async def test_qdrant_only_candidate_with_mismatched_external_identity_is_rejected():

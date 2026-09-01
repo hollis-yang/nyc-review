@@ -186,7 +186,7 @@ Holdout 同时保持 100% evidence coverage、0 security leakage、0 version mis
 M1 的 judgment 只完整覆盖 structured candidate pool。直接用它评测全局检索会把 Qdrant-only 商户错误地默认为 `relevance=0`。M2 因此采用可复现的两阶段协议：
 
 1. 用冻结的 M1 Dev query、Qwen winner index 和固定 treatment 配置，先融合最多 30 个商户，再通过与 control 相同的 heuristic multi-signal ranker 捕获每例最终 Top-K；
-2. Builder 只对“原 structured pool + 实际捕获的 treatment Top-K”并集按同一 attribute policy 标注；
+2. Builder 只对“本次 capture 实际返回的 structured branch external IDs + treatment Top-K”并集按同一 attribute policy 标注；
 3. control 与 treatment 都使用生成的 schema-v3 suite。任何最终返回但不在有限并集内的商户都会 fail-closed，要求重新捕获和构建，不会自动判 0。
 
 该策略每例最多新增 `candidateLimit`（当前为 10）个 judgment，避免无边界的 `80 × 5,000` 全语料笛卡尔标注。suite contract 会记录 structured、Qdrant-only、总 judgment pair 数和避免的 Cartesian pair 数，并绑定 candidate-universe fixture、配置、源码、语料、Embedding identity 与 index manifest 指纹。
@@ -200,7 +200,11 @@ uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   --qdrant-location http://127.0.0.1:6333 \
   --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
   --index-action reuse \
+  --index-manifest .local/rag-v2-remote-index-bf6ad011a2118add-65530477dcfe.json \
+  --discovery-pool-size 30 \
   --fusion-pool-limit 30 \
+  --candidate-limit 10 \
+  --warmup-cases 1 \
   --global-retrieval-mode global-hybrid \
   --global-retrieval-enabled \
   --candidate-universe-output .local/m2-candidate-universe.json \
@@ -226,7 +230,11 @@ uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   --qdrant-location http://127.0.0.1:6333 \
   --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
   --index-action reuse \
+  --index-manifest .local/rag-v2-remote-index-bf6ad011a2118add-65530477dcfe.json \
+  --discovery-pool-size 30 \
   --fusion-pool-limit 30 \
+  --candidate-limit 10 \
+  --warmup-cases 1 \
   --output .local/m2-control.json
 
 uv run --env-file ../.env python -m evals.rag_v2.run_eval \
@@ -237,7 +245,11 @@ uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   --qdrant-location http://127.0.0.1:6333 \
   --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
   --index-action reuse \
+  --index-manifest .local/rag-v2-remote-index-bf6ad011a2118add-65530477dcfe.json \
+  --discovery-pool-size 30 \
   --fusion-pool-limit 30 \
+  --candidate-limit 10 \
+  --warmup-cases 1 \
   --global-retrieval-mode global-hybrid \
   --global-retrieval-enabled \
   --baseline-report .local/m2-control.json \
@@ -249,6 +261,24 @@ uv run python -m evals.rag_v2.compare_m2 \
 ```
 
 Paired gate 要求 Recall@10 不下降、nDCG@10 至少提升 0.5pp、至少救回一个 binary-relevant structured miss，同时约束 Precision/MRR/中文 nDCG、hard negative、完整性错误、Provider 请求/token 与 Total P95（不超过 control 的 1.25 倍）。报告原生记录 structured/global dense/global sparse/aggregation/hydration/fusion/total 阶段耗时、分支可用性、去重、身份冲突、hard-filter 与 structured-miss rescue 指标。
+
+### M2 Dev 结果（2026-09-01）
+
+最终冻结产物位于 `evals/rag_v2/m2/`，机器可读摘要见 `m2_results.json`。80 条 Dev query 使用 structured pool 30、fusion pool 30、Top-10 和既有 145,000-point Qwen index；索引为纯复用，未生成任何 document embedding。
+
+| 指标 | Control | Global Hybrid | 变化 |
+| --- | ---: | ---: | ---: |
+| Recall@10 | 61.18% | 64.94% | +3.76pp |
+| Precision@5 | 83.25% | 87.25% | +4.00pp |
+| nDCG@10 | 78.30% | 82.98% | +4.68pp |
+| MRR@10 | 92.23% | 96.67% | +4.44pp |
+| 中文 nDCG@10 | 76.43% | 81.38% | +4.94pp |
+| Hard constraint satisfaction | 94.25% | 100.00% | +5.75pp |
+| Total P95 | 1.100s | 1.065s | 0.968× |
+
+Treatment 恢复了 10/10 个 eligible case、20/20 个 binary-relevant structured miss；hard-constraint violation 从 46 降至 0，hard-negative return 从 12 降至 0。每次运行的 80 条评分样本使用 80 个 Provider 请求、4,380 query token，另有 1 条 warm-up 使用 1 个请求、57 tokens；capture/control/treatment 三次正式流程合计 243 个请求、13,311 tokens，估算费用 `$0.00093177`。独立 `compare_m2` gate 通过，且显式执行了 P95 ratio 检查；单臂 treatment 中因 feature profile 不同而出现的 latency warning 不代表 paired comparison 被跳过。
+
+该结论仅适用于 deterministic bounded-union Dev evaluation。由于 treatment Top-K 参与 judgment pool，存在 selection leakage，不能据此直接晋级生产；必须新建未参与开发的 hidden holdout。生产 Compose 继续将 Global Retrieval 固定为关闭。
 
 当前 Provider cost cap 是 **per-run** 保护，不会跨 capture/control/treatment 自动合并；M2 实测时必须把三份报告的 Provider token 与估算费用另行累计记录。Qwen index sidecar 的累计 ledger 只约束 build/resume，复用索引的查询费用不应误算为已被该 ledger 覆盖。
 

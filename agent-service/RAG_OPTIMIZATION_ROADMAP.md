@@ -1,6 +1,6 @@
 # RAG v2 Optimization Roadmap
 
-状态：M0 已完成；M1 工程与实验已完成，但 policy holdout 未通过，暂不切换生产 Embedding
+状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成，生产开关继续关闭并等待新的 hidden holdout
 
 范围：`agent-service` 的 Embedding、候选召回、查询扩展、重排、评测与生产发布
 
@@ -505,19 +505,39 @@ hardConstraintFiltered
 
 ### 7.7 测试
 
-- [ ] Spring 漏掉正确商户时，Qdrant 全局召回可以恢复。
-- [ ] Qdrant Provider 失败时仍返回 Structured 分支结果。
-- [ ] Structured 分支失败时，在权限与数据版本正常的前提下可使用 Qdrant 结果。
-- [ ] Security-test 文档、其他数据版本和其他 corpus 永不进入候选。
-- [ ] 单商户多文档不会导致其分数无上限累积。
-- [ ] 品牌去重不破坏 hard-required 的唯一正确结果。
-- [ ] Fusion 对输入顺序稳定，重复运行结果一致。
+- [x] Spring 漏掉正确商户时，Qdrant 全局召回可以恢复。
+- [x] Qdrant Provider 失败时仍返回 Structured 分支结果并标记 fallback；鉴权失败 fail-closed。
+- [x] Structured 分支失败时，在权限与数据版本正常的前提下可使用 Qdrant 结果。
+- [x] Security-test 文档、其他数据版本和其他 corpus 永不进入候选。
+- [x] 单商户多文档不会导致其分数无上限累积。
+- [x] 品牌去重不破坏 hard-required 的唯一正确结果，并硬限制同品牌最多两个结果。
+- [x] Fusion 对输入顺序稳定，重复运行结果一致。
 
 ### 7.8 验收标准
 
 - Hard-negative Eval 中，Global Retrieval 能恢复至少一类当前候选生成无法召回的正确商户。
 - Recall@10 不回归，nDCG@10 有可测增益。
 - Qdrant 或 Structured 单分支失败时，Run 能受控降级并在 metadata 中标记。
+
+### 7.9 完成记录（2026-09-01）
+
+M2 工程与 Dev 验收已经完成：Structured 与全局 Qdrant Dense/Sparse 分支并行执行，文档按商户聚合后通过 merchant-level RRF 融合，再复用相同的 heuristic multi-signal ranker 输出 Top-10。正式配置为 structured pool 30、global hydration 60、fusion pool 30、`rrf_k=60`、brand cap 2；单次批量 hydration 上限为 100，并通过 Spring 内部批量详情接口完成。Global 路径统一供 single-agent、multi-agent 与 MCP 使用，支持取消、分支 timeout、受控 fallback、身份/数据版本校验和分阶段 trace。
+
+有界 Dev suite 共 80 条 query、1,565 个 judgment pair，其中 24 个为 Qdrant-only，20 个是 binary-relevant structured miss；相对于 `80 × 5,000` 全量笛卡尔标注避免了 398,435 个无界 pair。最终独立 paired gate 通过：
+
+| 指标 | Candidate-filtered control | Global-hybrid treatment | 变化 |
+| --- | ---: | ---: | ---: |
+| Recall@10 | 61.18% | 64.94% | +3.76pp |
+| Precision@5 | 83.25% | 87.25% | +4.00pp |
+| nDCG@10 | 78.30% | 82.98% | +4.68pp |
+| MRR@10 | 92.23% | 96.67% | +4.44pp |
+| 中文 nDCG@10 | 76.43% | 81.38% | +4.94pp |
+| Hard constraint satisfaction | 94.25% | 100.00% | +5.75pp |
+| Total P95 | 1.100s | 1.065s | 0.968× |
+
+Treatment 恢复 10/10 个 eligible case 与 20/20 个 relevant structured miss；hard-constraint violation 46→0、hard-negative return 12→0。Security leakage、version/citation/identity mismatch、duplicate merchant、第 3 个同品牌结果、未标注返回和 retrieval fallback 均为 0。两臂 Provider 请求/token 相同；每次包含 80 条评分样本（4,380 tokens）与 1 条 warm-up（57 tokens），最终 capture/control/treatment 共使用 13,311 query token，按 `$0.07/M tokens` 估算 `$0.00093177`。评测直接复用 145,000-point Qwen index，M2 没有新增 document embedding 成本。
+
+冻结 suite 位于 `evals/rag_v2/m2/`，精确哈希与机器可读指标见 `evals/rag_v2/m2_results.json`。该 suite 使用 treatment Top-K 构造 bounded judgment union，因此只作为 pooled Dev evaluation，不能作为生产晋级的 hidden test。生产 `NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_ENABLED` 继续锁定为 `false`；下一步必须建立新的 hidden holdout 后才能更新云端 Agent 镜像。
 
 ## 8. M3：受约束的 LLM Multi-Query
 
