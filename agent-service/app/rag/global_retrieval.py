@@ -38,6 +38,7 @@ MAX_QUERY_VARIANT_LENGTH = 2_000
 MAX_QUERY_VARIANT_ID_LENGTH = 64
 DEFAULT_QUERY_VARIANT_TIMEOUT_SECONDS = 10.0
 MAX_VARIANT_TIMEOUT_SECONDS = 120.0
+_EMBED_QUERY = object()
 
 
 class GlobalQueryVariant(BaseModel):
@@ -356,6 +357,55 @@ class QdrantGlobalDocumentRetriever:
             )
 
         started = time.perf_counter()
+        batch_embedding_latency_ms = 0.0
+        precomputed_vectors: tuple[list[float] | None, ...] | None = None
+        batch_embedder = getattr(self._embeddings, "embed_queries", None)
+        if callable(batch_embedder):
+            embedding_started = time.perf_counter()
+            try:
+                async with asyncio.timeout(float(variant_timeout_seconds)):
+                    embedded = await batch_embedder(
+                        [variant.query for variant in normalized_variants]
+                    )
+                if len(embedded) != len(normalized_variants):
+                    raise ValueError("Query embedding batch returned an invalid vector count.")
+                precomputed_vectors = tuple(embedded)
+            except TimeoutError:
+                batch_embedding_latency_ms = (
+                    time.perf_counter() - embedding_started
+                ) * 1_000
+                variant_results = tuple(
+                    _failed_variant_result(
+                        variant,
+                        status=VariantRetrievalStatus.TIMEOUT,
+                        reason="timeout",
+                        total_latency_ms=batch_embedding_latency_ms,
+                    )
+                    for variant in normalized_variants
+                )
+                return _multi_query_result(
+                    normalized_variants,
+                    variant_results,
+                    embedding_latency_ms=batch_embedding_latency_ms,
+                    total_latency_ms=(time.perf_counter() - started) * 1_000,
+                )
+            except Exception as exc:
+                if _is_authorization_failure(exc):
+                    raise
+                # One failed provider batch must not fan out into one paid retry
+                # per variant. Continue once with sparse-only retrieval instead.
+                precomputed_vectors = tuple(None for _ in normalized_variants)
+            finally:
+                if batch_embedding_latency_ms == 0.0:
+                    batch_embedding_latency_ms = (
+                        time.perf_counter() - embedding_started
+                    ) * 1_000
+
+        elapsed_seconds = time.perf_counter() - started
+        remaining_timeout_seconds = max(
+            0.001,
+            float(variant_timeout_seconds) - elapsed_seconds,
+        )
         tasks = [
             asyncio.create_task(
                 self._search_query_variant(
@@ -363,10 +413,15 @@ class QdrantGlobalDocumentRetriever:
                     document_limit=document_limit,
                     category=category,
                     neighborhood=neighborhood,
-                    timeout_seconds=float(variant_timeout_seconds),
+                    timeout_seconds=remaining_timeout_seconds,
+                    precomputed_dense_vector=(
+                        precomputed_vectors[index]
+                        if precomputed_vectors is not None
+                        else _EMBED_QUERY
+                    ),
                 )
             )
-            for variant in normalized_variants
+            for index, variant in enumerate(normalized_variants)
         ]
         try:
             variant_results = tuple(await asyncio.gather(*tasks))
@@ -377,47 +432,18 @@ class QdrantGlobalDocumentRetriever:
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
 
-        timed_out_ids = tuple(
-            result.variant.variant_id
-            for result in variant_results
-            if result.status is VariantRetrievalStatus.TIMEOUT
-        )
-        failed_ids = tuple(
-            result.variant.variant_id
-            for result in variant_results
-            if result.fallback_reason == "variant-error"
-        )
-        non_completed_ids = {*timed_out_ids, *failed_ids}
-        completed_ids = tuple(
-            result.variant.variant_id
-            for result in variant_results
-            if result.variant.variant_id not in non_completed_ids
-        )
-        partial_failure_ids = tuple(
-            result.variant.variant_id
-            for result in variant_results
-            if result.status is not VariantRetrievalStatus.COMPLETE
-        )
-        total_latency_ms = (time.perf_counter() - started) * 1_000
-        dense = _merge_variant_channels(variant_results, RetrievalChannel.DENSE)
-        sparse = _merge_variant_channels(variant_results, RetrievalChannel.SPARSE)
-        return MultiQueryGlobalRetrievalResult(
-            dense=dense,
-            sparse=sparse,
-            embedding_latency_ms=max(
-                (result.embedding_latency_ms for result in variant_results),
-                default=0.0,
+        return _multi_query_result(
+            normalized_variants,
+            variant_results,
+            embedding_latency_ms=(
+                batch_embedding_latency_ms
+                if precomputed_vectors is not None
+                else max(
+                    (result.embedding_latency_ms for result in variant_results),
+                    default=0.0,
+                )
             ),
-            total_latency_ms=total_latency_ms,
-            variants=variant_results,
-            provenance=_variant_hit_provenance(variant_results),
-            trace=MultiQueryRetrievalTrace(
-                requested_variant_ids=tuple(variant.variant_id for variant in normalized_variants),
-                completed_variant_ids=completed_ids,
-                partial_failure_variant_ids=partial_failure_ids,
-                timed_out_variant_ids=timed_out_ids,
-                failed_variant_ids=failed_ids,
-            ),
+            total_latency_ms=(time.perf_counter() - started) * 1_000,
         )
 
     async def _search_query_variant(
@@ -428,16 +454,26 @@ class QdrantGlobalDocumentRetriever:
         category: str | None,
         neighborhood: str | None,
         timeout_seconds: float,
+        precomputed_dense_vector: list[float] | None | object = _EMBED_QUERY,
     ) -> VariantGlobalRetrievalResult:
         started = time.perf_counter()
         try:
             async with asyncio.timeout(timeout_seconds):
-                result = await self.search_documents(
-                    variant.query,
-                    document_limit=document_limit,
-                    category=category,
-                    neighborhood=neighborhood,
-                )
+                if precomputed_dense_vector is _EMBED_QUERY:
+                    result = await self.search_documents(
+                        variant.query,
+                        document_limit=document_limit,
+                        category=category,
+                        neighborhood=neighborhood,
+                    )
+                else:
+                    result = await self._search_documents_with_dense_vector(
+                        variant.query,
+                        dense_vector=precomputed_dense_vector,
+                        document_limit=document_limit,
+                        category=category,
+                        neighborhood=neighborhood,
+                    )
         except TimeoutError:
             return _failed_variant_result(
                 variant,
@@ -464,6 +500,82 @@ class QdrantGlobalDocumentRetriever:
             variant=variant,
             status=status,
             fallback_reason=fallback_reason,
+        )
+
+    async def _search_documents_with_dense_vector(
+        self,
+        query: str,
+        *,
+        dense_vector: list[float] | None | object,
+        document_limit: int | None,
+        category: str | None,
+        neighborhood: str | None,
+    ) -> GlobalRetrievalResult:
+        if dense_vector is not None and not isinstance(dense_vector, list):
+            raise TypeError("Precomputed dense vectors must be lists or None.")
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError("Global retrieval query cannot be empty.")
+        limit = self._document_limit if document_limit is None else document_limit
+        if limit < 1:
+            raise ValueError("Global document limit must be positive.")
+
+        started = time.perf_counter()
+        query_filter = build_global_scope_filter(
+            self._scope,
+            category=category,
+            neighborhood=neighborhood,
+        )
+        lexical = sparse_vector(query)
+        dense_request = (
+            self._search_channel(
+                channel=RetrievalChannel.DENSE,
+                query=dense_vector,
+                vector_name=self._dense_vector_name,
+                query_filter=query_filter,
+                limit=limit,
+                category=category,
+                neighborhood=neighborhood,
+            )
+            if dense_vector is not None
+            else None
+        )
+        sparse_request = (
+            self._search_channel(
+                channel=RetrievalChannel.SPARSE,
+                query=lexical,
+                vector_name=self._sparse_vector_name,
+                query_filter=query_filter,
+                limit=limit,
+                category=category,
+                neighborhood=neighborhood,
+            )
+            if lexical.indices
+            else None
+        )
+        if dense_request is not None and sparse_request is not None:
+            dense_task = asyncio.create_task(dense_request)
+            sparse_task = asyncio.create_task(sparse_request)
+            try:
+                dense, sparse = await asyncio.gather(dense_task, sparse_task)
+            except BaseException:
+                for task in (dense_task, sparse_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(dense_task, sparse_task, return_exceptions=True)
+                raise
+        elif dense_request is not None:
+            dense = await dense_request
+            sparse = _unavailable_channel(RetrievalChannel.SPARSE, "empty-sparse-query")
+        elif sparse_request is not None:
+            dense = _unavailable_channel(RetrievalChannel.DENSE, "embedding-error")
+            sparse = await sparse_request
+        else:
+            dense = _unavailable_channel(RetrievalChannel.DENSE, "embedding-error")
+            sparse = _unavailable_channel(RetrievalChannel.SPARSE, "empty-sparse-query")
+        return GlobalRetrievalResult(
+            dense=dense,
+            sparse=sparse,
+            total_latency_ms=(time.perf_counter() - started) * 1_000,
         )
 
     async def _search_channel(
@@ -588,6 +700,53 @@ def _failed_variant_result(
         variant=variant,
         status=status,
         fallback_reason=reason,
+    )
+
+
+def _multi_query_result(
+    requested_variants: tuple[GlobalQueryVariant, ...],
+    variant_results: tuple[VariantGlobalRetrievalResult, ...],
+    *,
+    embedding_latency_ms: float,
+    total_latency_ms: float,
+) -> MultiQueryGlobalRetrievalResult:
+    timed_out_ids = tuple(
+        result.variant.variant_id
+        for result in variant_results
+        if result.status is VariantRetrievalStatus.TIMEOUT
+    )
+    failed_ids = tuple(
+        result.variant.variant_id
+        for result in variant_results
+        if result.fallback_reason == "variant-error"
+    )
+    non_completed_ids = {*timed_out_ids, *failed_ids}
+    completed_ids = tuple(
+        result.variant.variant_id
+        for result in variant_results
+        if result.variant.variant_id not in non_completed_ids
+    )
+    partial_failure_ids = tuple(
+        result.variant.variant_id
+        for result in variant_results
+        if result.status is not VariantRetrievalStatus.COMPLETE
+    )
+    return MultiQueryGlobalRetrievalResult(
+        dense=_merge_variant_channels(variant_results, RetrievalChannel.DENSE),
+        sparse=_merge_variant_channels(variant_results, RetrievalChannel.SPARSE),
+        embedding_latency_ms=embedding_latency_ms,
+        total_latency_ms=total_latency_ms,
+        variants=variant_results,
+        provenance=_variant_hit_provenance(variant_results),
+        trace=MultiQueryRetrievalTrace(
+            requested_variant_ids=tuple(
+                variant.variant_id for variant in requested_variants
+            ),
+            completed_variant_ids=completed_ids,
+            partial_failure_variant_ids=partial_failure_ids,
+            timed_out_variant_ids=timed_out_ids,
+            failed_variant_ids=failed_ids,
+        ),
     )
 
 

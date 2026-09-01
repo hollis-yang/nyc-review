@@ -364,6 +364,41 @@ async def test_query_cache_normalizes_keys_returns_copies_and_can_be_cleared():
     assert service.usage_snapshot().total_tokens == 4
 
 
+async def test_query_batch_uses_one_provider_request_and_primes_individual_cache():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        texts = _body(request)["input"]
+        vectors = [
+            [float(index + 1), 0.5, 0.25]
+            for index, _text in enumerate(texts)
+        ]
+        return _openai_response(request, vectors, total_tokens=7)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        service = _openai_service(
+            client,
+            query_prefix="query: ",
+            query_cache_size=8,
+            query_cache_ttl_seconds=60,
+        )
+        vectors = await service.embed_queries(["quiet dinner", "step-free cafe"])
+        cached = await service.embed_query("  QUIET   DINNER  ")
+
+    assert vectors == [[1.0, 0.5, 0.25], [2.0, 0.5, 0.25]]
+    assert cached == vectors[0]
+    assert len(requests) == 1
+    assert _body(requests[0])["input"] == [
+        "query: quiet dinner",
+        "query: step-free cafe",
+    ]
+    usage = service.usage_snapshot()
+    assert usage.network_requests == 1
+    assert usage.input_texts == 2
+    assert usage.query_cache_hits == 1
+
+
 async def test_query_cache_evicts_least_recently_used_entry():
     calls = 0
 

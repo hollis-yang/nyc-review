@@ -113,6 +113,8 @@ class EmbeddingService(Protocol):
 
     async def embed_query(self, text: str) -> list[float]: ...
 
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]: ...
+
     async def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
 
     def usage_snapshot(self) -> EmbeddingUsage: ...
@@ -192,17 +194,43 @@ class _HttpEmbeddingService:
         self._query_cache.clear()
 
     async def embed_query(self, text: str) -> list[float]:
-        _validate_input_text(text)
-        prepared = f"{self._metadata.query_prefix}{text}"
-        cache_key = self._query_cache_key(text)
-        cached = self._query_cache_get(cache_key)
-        if cached is not None:
-            self._increment_usage(query_cache_hits=1)
-            return cached
-        vectors = await self._embed_many([prepared], input_type="query")
-        vector = vectors[0]
-        self._query_cache_put(cache_key, vector)
-        return list(vector)
+        return (await self.embed_queries([text]))[0]
+
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        """Embed a bounded query set in provider batches and prime the query cache."""
+
+        if not texts:
+            return []
+        results: list[list[float] | None] = [None] * len(texts)
+        missing_indices: list[int] = []
+        missing_prepared: list[str] = []
+        missing_keys: list[str] = []
+        for index, text in enumerate(texts):
+            _validate_input_text(text)
+            cache_key = self._query_cache_key(text)
+            cached = self._query_cache_get(cache_key)
+            if cached is not None:
+                self._increment_usage(query_cache_hits=1)
+                results[index] = cached
+                continue
+            missing_indices.append(index)
+            missing_prepared.append(f"{self._metadata.query_prefix}{text}")
+            missing_keys.append(cache_key)
+
+        if missing_prepared:
+            vectors = await self._embed_many(missing_prepared, input_type="query")
+            for index, cache_key, vector in zip(
+                missing_indices,
+                missing_keys,
+                vectors,
+                strict=True,
+            ):
+                self._query_cache_put(cache_key, vector)
+                results[index] = list(vector)
+
+        if any(vector is None for vector in results):
+            raise EmbeddingValidationError("Query embedding batch returned an incomplete result.")
+        return [list(vector) for vector in results if vector is not None]
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         for text in texts:
@@ -681,6 +709,9 @@ class DeterministicHashEmbeddingService:
 
     async def embed_query(self, text: str) -> list[float]:
         return self._embed_one(text)
+
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed_one(text) for text in texts]
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self._embed_one(text) for text in texts]

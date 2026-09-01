@@ -173,6 +173,15 @@ class TimedEmbeddingService:
             self.texts += 1
             self.latency_ms += (time.perf_counter() - started) * 1_000
 
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        started = time.perf_counter()
+        try:
+            return await self._inner.embed_queries(texts)
+        finally:
+            self.query_calls += len(texts)
+            self.texts += len(texts)
+            self.latency_ms += (time.perf_counter() - started) * 1_000
+
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         started = time.perf_counter()
         try:

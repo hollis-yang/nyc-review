@@ -45,6 +45,17 @@ class RecordingEmbedding:
         return await self._delegate.embed_query(text)
 
 
+class BatchRecordingEmbedding(RecordingEmbedding):
+    def __init__(self, delegate: DeterministicHashEmbeddingService) -> None:
+        super().__init__(delegate)
+        self.query_batches: list[list[str]] = []
+
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        self.query_batches.append(list(texts))
+        self.queries.extend(texts)
+        return await self._delegate.embed_queries(texts)
+
+
 class RecordingQdrantClient:
     def __init__(self, point) -> None:
         self._point = point
@@ -112,7 +123,7 @@ def _variants() -> tuple[GlobalQueryVariant, ...]:
 
 async def test_multi_query_retrieves_every_variant_independently_with_shared_scope():
     delegate = DeterministicHashEmbeddingService(dimensions=64)
-    embedding = RecordingEmbedding(delegate)
+    embedding = BatchRecordingEmbedding(delegate)
     scope = _scope(embedding)
     client = RecordingQdrantClient(_point(scope))
     retriever = QdrantGlobalDocumentRetriever(client, embedding, scope)
@@ -133,6 +144,7 @@ async def test_multi_query_retrieves_every_variant_independently_with_shared_sco
     ]
     assert Counter(embedding.queries) == Counter(variant.query for variant in _variants())
     assert all(embedding.queries.count(variant.query) == 1 for variant in _variants())
+    assert embedding.query_batches == [[variant.query for variant in _variants()]]
     assert Counter(call["using"] for call in client.calls) == {
         "dense": 3,
         "lexical": 3,
@@ -193,6 +205,46 @@ async def test_single_query_api_retains_the_original_result_contract():
         "dense": 1,
         "lexical": 1,
     }
+
+
+async def test_failed_query_batch_degrades_once_to_sparse_without_paid_fanout():
+    delegate = DeterministicHashEmbeddingService(dimensions=64)
+
+    class BatchFailureEmbedding(RecordingEmbedding):
+        def __init__(self, inner: DeterministicHashEmbeddingService) -> None:
+            super().__init__(inner)
+            self.batch_calls = 0
+
+        async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+            self.batch_calls += 1
+            raise EmbeddingError("temporary provider failure")
+
+        async def embed_query(self, text: str) -> list[float]:
+            raise AssertionError("A failed batch must not fan out into per-query retries.")
+
+    embedding = BatchFailureEmbedding(delegate)
+    scope = _scope(embedding)
+    client = RecordingQdrantClient(_point(scope))
+
+    result = await QdrantGlobalDocumentRetriever(
+        client,
+        embedding,
+        scope,
+    ).search_query_variants(_variants())
+
+    assert embedding.batch_calls == 1
+    assert Counter(call["using"] for call in client.calls) == {"lexical": 3}
+    assert all(
+        item.status is VariantRetrievalStatus.PARTIAL
+        and item.dense.fallback_reason == "embedding-error"
+        and item.sparse.available
+        for item in result.variants
+    )
+    assert result.trace.partial_failure_variant_ids == (
+        "original",
+        "rules",
+        "llm-1",
+    )
 
 
 async def test_multi_query_traces_partial_non_authorization_failures():
