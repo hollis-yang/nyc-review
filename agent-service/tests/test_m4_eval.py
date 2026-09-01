@@ -49,6 +49,7 @@ from evals.rag_v2.contract import sha256_json
 from evals.rag_v2.m4_replay import (
     M4_PERFORMANCE_SCOPE,
     M4_REPLAY_VERSION,
+    FrozenCandidateDiscovery,
     FrozenQueryRewriter,
     RecordingQueryRewriter,
     build_frozen_case_artifact,
@@ -359,6 +360,14 @@ async def test_m4_rewrite_recording_and_frozen_replay_are_exact_and_zero_usage()
     assert replayed.trace.input_tokens == replayed.trace.output_tokens == 0
     assert frozen.usage_snapshot().network_requests == 0
 
+    ranked = await FrozenCandidateDiscovery([case], reranker=None).discover(constraints, limit=10)
+    metadata = ranked.retrieval_metadata
+    assert metadata["globalDenseLatencyMs"] == 0.0
+    assert metadata["globalSparseLatencyMs"] == 0.0
+    assert metadata["globalEmbeddingLatencyMs"] == 0.0
+    assert metadata["queryRewriteLatencyMs"] == 0.0
+    assert all(value == 0.0 for value in metadata["candidateDiscoveryLatencyMs"].values())
+
 
 def test_m4_replay_artifact_tampering_and_report_rounding_fail_closed():
     case = _source_case("dev-en-tamper", "en", "semantic_alias_composition")
@@ -578,6 +587,20 @@ def _replay_artifact(
             "globalRetrievalEnabled": True,
             "globalDenseAvailable": True,
             "globalSparseAvailable": True,
+            "globalDenseLatencyMs": 12.3456789,
+            "globalSparseLatencyMs": 23.4567891,
+            "globalEmbeddingLatencyMs": 34.5678912,
+            "queryRewriteLatencyMs": 45.6789123,
+            "candidateDiscoveryLatencyMs": {
+                "structured": 1.0,
+                "global": 2.0,
+                "queryRewrite": 3.0,
+                "aggregation": 4.0,
+                "hydration": 5.0,
+                "fusion": 6.0,
+                "candidateRanking": 7.0,
+                "total": 8.0,
+            },
         },
     )
     text_builder = MerchantRerankTextBuilder()

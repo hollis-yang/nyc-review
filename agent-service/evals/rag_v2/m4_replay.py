@@ -756,6 +756,13 @@ def _formal_replay_metadata(artifact: Mapping[str, Any]) -> dict[str, Any]:
     }
     base.update(zero_counts)
     base.update(_deep_copy(artifact["preRerankMetadata"]))
+    for field in (
+        "globalDenseLatencyMs",
+        "globalSparseLatencyMs",
+        "globalEmbeddingLatencyMs",
+        "queryRewriteLatencyMs",
+    ):
+        base[field] = 0.0
     base.update(
         {
             "globalRetrievalEnabled": True,
