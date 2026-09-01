@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from app.domain.business_hours import is_open_at as shared_is_open_at
 from app.rag.lexical import normalized_merchant_name
 from app.tools.services import neighborhood_matches
 
@@ -28,6 +29,22 @@ RATE_METRICS = (
     "unjudgedReturnedRate",
 )
 
+LATENCY_STAGES = (
+    "structuredSearch",
+    "candidateRanking",
+    "candidateDiscovery",
+    "globalRetrieval",
+    "globalDenseRetrieval",
+    "globalSparseRetrieval",
+    "globalEmbedding",
+    "merchantAggregation",
+    "hydration",
+    "fusion",
+    "evidenceRetrieval",
+    "embedding",
+    "total",
+)
+
 
 def ranking_metrics(
     ordered_external_ids: Sequence[str | None],
@@ -35,10 +52,7 @@ def ranking_metrics(
     *,
     relevance_threshold: int,
 ) -> dict[str, float | int]:
-    grades = {
-        str(item["externalId"]): int(item["relevance"])
-        for item in judgments
-    }
+    grades = {str(item["externalId"]): int(item["relevance"]) for item in judgments}
     relevant = {external_id for external_id, grade in grades.items() if grade >= relevance_threshold}
     if not relevant:
         raise ValueError("Every case must contain at least one binary-relevant judgment.")
@@ -69,6 +83,39 @@ def ranking_metrics(
         "mrrAt10": _mrr_at_k(ranked_grades, threshold=relevance_threshold, k=10),
         "unjudgedReturnedCount": unjudged,
         "unjudgedReturnedRate": unjudged / max(1, len(ordered_external_ids)),
+    }
+
+
+def structured_miss_metrics(
+    ordered_external_ids: Sequence[str | None],
+    judgments: Sequence[dict[str, Any]],
+    structured_external_ids: set[str],
+    *,
+    relevance_threshold: int,
+    k: int = 10,
+) -> dict[str, float | int | bool | None]:
+    """Measure relevant merchants rescued beyond the frozen structured pool.
+
+    The denominator comes from the schema-v3 judgment contract, never from an
+    unjudged live result. A case with no relevant structured miss is reported as
+    ineligible instead of being assigned a misleading perfect or zero recall.
+    """
+
+    relevant_misses = {
+        str(item["externalId"])
+        for item in judgments
+        if int(item["relevance"]) >= relevance_threshold
+        and str(item["externalId"]) not in structured_external_ids
+    }
+    returned = {str(external_id) for external_id in ordered_external_ids[:k] if external_id}
+    recovered = relevant_misses & returned
+    eligible = bool(relevant_misses)
+    return {
+        "eligible": eligible,
+        "eligibleRelevantCount": len(relevant_misses),
+        "recoveredAt10Count": len(recovered),
+        "recallAt10": len(recovered) / len(relevant_misses) if eligible else None,
+        "caseRecovered": bool(recovered),
     }
 
 
@@ -115,34 +162,13 @@ def hard_constraint_violations(candidate: Any, hard: dict[str, Any]) -> tuple[li
         if not business_hours:
             violations.append("business_hours_unknown")
             unknown.append("business_hours")
-        elif not is_open_at(business_hours, open_at):
+        elif not shared_is_open_at(
+            business_hours,
+            day_of_week=int(open_at["dayOfWeek"]),
+            local_time=str(open_at["time"]),
+        ):
             violations.append("closed_at_visit")
     return sorted(set(violations)), sorted(set(unknown))
-
-
-def is_open_at(hours: Iterable[Any], visit: dict[str, Any]) -> bool:
-    target_day = int(visit["dayOfWeek"])
-    row = next(
-        (
-            item
-            for item in hours
-            if int(_value(item, "day_of_week", "dayOfWeek") or 0) == target_day
-        ),
-        None,
-    )
-    if row is None or bool(_value(row, "closed")):
-        return False
-    opening_raw = _value(row, "open_time", "openTime")
-    closing_raw = _value(row, "close_time", "closeTime")
-    if not opening_raw or not closing_raw:
-        return False
-    target = _minutes(str(visit["time"]))
-    opening = _minutes(str(opening_raw))
-    closing = _minutes(str(closing_raw))
-    closes_next_day = bool(_value(row, "closes_next_day", "closesNextDay"))
-    if closes_next_day or closing <= opening:
-        return target >= opening or target < closing
-    return opening <= target < closing
 
 
 def integrity_metrics(
@@ -177,23 +203,14 @@ def integrity_metrics(
     brand_counts = Counter(brand for brand in brands if brand)
     duplicate_brands = sum(max(0, count - 1) for count in brand_counts.values())
     excessive_brands = sum(max(0, count - 2) for count in brand_counts.values())
-    hard_negative_ids = {
-        str(_value(item, "external_id", "externalId") or "")
-        for item in hard_negatives
-    }
+    hard_negative_ids = {str(_value(item, "external_id", "externalId") or "") for item in hard_negatives}
     hard_negative_ids.discard("")
     hard_negative_returns = len(hard_negative_ids & {item for item in external_ids if item})
 
     evidence_rows = list(_value(evidence, "evidence") or [])
-    citations = [
-        citation
-        for item in evidence_rows
-        for citation in (_value(item, "citations") or [])
-    ]
+    citations = [citation for item in evidence_rows for citation in (_value(item, "citations") or [])]
     cited_shop_ids = {
-        int(_value(item, "shop_id", "shopId") or 0)
-        for item in evidence_rows
-        if _value(item, "citations")
+        int(_value(item, "shop_id", "shopId") or 0) for item in evidence_rows if _value(item, "citations")
     }
     candidate_shop_ids = {int(_value(item, "shop_id", "shopId") or 0) for item in candidates}
     citation_ownership_mismatches = 0
@@ -203,9 +220,7 @@ def integrity_metrics(
     security_leakage = 0
     allowed_source_types = set(suite.get("allowedCitationSourceTypes") or [])
     candidate_external_by_id = {
-        int(_value(item, "shop_id", "shopId") or 0): str(
-            _value(item, "external_id", "externalId") or ""
-        )
+        int(_value(item, "shop_id", "shopId") or 0): str(_value(item, "external_id", "externalId") or "")
         for item in candidates
     }
     for evidence_item in evidence_rows:
@@ -214,10 +229,9 @@ def integrity_metrics(
             citation_shop_id = int(_value(citation, "shop_id", "shopId") or 0)
             citation_ownership_mismatches += citation_shop_id != owner_shop_id
             citation_external_id = _value(citation, "shop_external_id", "shopExternalId")
-            citation_external_id_mismatches += (
-                not citation_external_id
-                or str(citation_external_id) != candidate_external_by_id.get(owner_shop_id, "")
-            )
+            citation_external_id_mismatches += not citation_external_id or str(
+                citation_external_id
+            ) != candidate_external_by_id.get(owner_shop_id, "")
             source_type = str(_value(citation, "source_type", "sourceType") or "")
             source_mismatches += bool(allowed_source_types and source_type not in allowed_source_types)
             version_mismatches += (
@@ -293,9 +307,7 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "duplicateMerchantCount": sum(item["integrity"]["duplicateMerchantCount"] for item in results),
         "duplicateBrandCount": sum(item["integrity"]["duplicateBrandCount"] for item in results),
         "excessiveBrandCount": sum(item["integrity"]["excessiveBrandCount"] for item in results),
-        "hardNegativeReturnCount": sum(
-            item["integrity"]["hardNegativeReturnCount"] for item in results
-        ),
+        "hardNegativeReturnCount": sum(item["integrity"]["hardNegativeReturnCount"] for item in results),
         "emptyResultCount": sum(bool(item["integrity"]["emptyResult"]) for item in results),
     }
     return {
@@ -303,38 +315,29 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "byLanguage": by_language,
         "byScenario": by_scenario,
         "integrity": integrity,
-        "latencyMs": {
-            stage: latency_percentiles([item["latencyMs"][stage] for item in results])
-            for stage in ("structuredSearch", "candidateRanking", "evidenceRetrieval", "embedding", "total")
-        },
+        "structuredMissRescue": _summarize_structured_misses(results),
+        "latencyMs": _summarize_latencies(results),
         "requestCounts": {
             "embeddingRequests": sum(item["requests"]["embeddingRequests"] for item in results),
-            "queryEmbeddingCalls": sum(
-                item["requests"].get("queryEmbeddingCalls", 0) for item in results
-            ),
+            "queryEmbeddingCalls": sum(item["requests"].get("queryEmbeddingCalls", 0) for item in results),
             "documentEmbeddingCalls": sum(
                 item["requests"].get("documentEmbeddingCalls", 0) for item in results
             ),
             "embeddedTexts": sum(item["requests"]["embeddedTexts"] for item in results),
             "providerNetworkRequests": sum(
-                (item["requests"].get("providerUsage") or {}).get("network_requests", 0)
-                for item in results
+                (item["requests"].get("providerUsage") or {}).get("network_requests", 0) for item in results
             ),
             "providerTokens": sum(
-                (item["requests"].get("providerUsage") or {}).get("total_tokens", 0)
-                for item in results
+                (item["requests"].get("providerUsage") or {}).get("total_tokens", 0) for item in results
             ),
             "providerRetries": sum(
-                (item["requests"].get("providerUsage") or {}).get("retry_count", 0)
-                for item in results
+                (item["requests"].get("providerUsage") or {}).get("retry_count", 0) for item in results
             ),
             "providerFailures": sum(
-                (item["requests"].get("providerUsage") or {}).get("failure_count", 0)
-                for item in results
+                (item["requests"].get("providerUsage") or {}).get("failure_count", 0) for item in results
             ),
             "queryCacheHits": sum(
-                (item["requests"].get("providerUsage") or {}).get("query_cache_hits", 0)
-                for item in results
+                (item["requests"].get("providerUsage") or {}).get("query_cache_hits", 0) for item in results
             ),
             "rewriteRequests": sum(item["requests"]["rewriteRequests"] for item in results),
             "rerankerRequests": sum(item["requests"]["rerankerRequests"] for item in results),
@@ -379,6 +382,46 @@ def _summarize_group(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
     for metric in RATE_METRICS:
         source = "metrics" if metric == "unjudgedReturnedRate" else "integrity"
         summary[metric] = statistics.fmean(float(item[source][metric]) for item in results)
+    rescue = _summarize_structured_misses(results)
+    summary.update(
+        {
+            "structuredMissEligibleCases": rescue["eligibleCases"],
+            "structuredMissRecoveredCases": rescue["recoveredCases"],
+            "structuredMissRelevantCount": rescue["eligibleRelevantCount"],
+            "structuredMissRecoveredAt10Count": rescue["recoveredAt10Count"],
+            "structuredMissRecallAt10": rescue["recallAt10"],
+            "structuredMissCaseRecoveryRate": rescue["caseRecoveryRate"],
+        }
+    )
+    return summary
+
+
+def _summarize_structured_misses(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    rows = [item.get("structuredMissRescue") or {} for item in results]
+    eligible = [row for row in rows if bool(row.get("eligible"))]
+    eligible_relevant = sum(int(row.get("eligibleRelevantCount") or 0) for row in eligible)
+    recovered = sum(int(row.get("recoveredAt10Count") or 0) for row in eligible)
+    recovered_cases = sum(bool(row.get("caseRecovered")) for row in eligible)
+    return {
+        "eligibleCases": len(eligible),
+        "recoveredCases": recovered_cases,
+        "eligibleRelevantCount": eligible_relevant,
+        "recoveredAt10Count": recovered,
+        "recallAt10": recovered / eligible_relevant if eligible_relevant else None,
+        "caseRecoveryRate": recovered_cases / len(eligible) if eligible else None,
+    }
+
+
+def _summarize_latencies(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for stage in LATENCY_STAGES:
+        values = [
+            float(item["latencyMs"][stage])
+            for item in results
+            if (item.get("latencyMs") or {}).get(stage) is not None
+        ]
+        if values:
+            summary[stage] = {**latency_percentiles(values), "samples": len(values)}
     return summary
 
 

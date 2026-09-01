@@ -1,4 +1,4 @@
-# RAG Eval v2（M0 基线 + M1 Embedding 实验）
+# RAG Eval v2（M0 基线 + M1 Embedding + M2 全局召回）
 
 该目录是在不修改 P12 冻结套件的前提下，为 RAG 优化建立的可复现基线。它评测当前真实链路：
 
@@ -9,7 +9,7 @@ structured candidate search
 → evidence retrieval
 ```
 
-M0 冻结了 Hash/64 基线；M1 在不改变 Query Rewrite、候选范围和 reranking 的前提下，只比较真实 Embedding。全局候选召回、LLM Query Rewrite 和 Cross-Encoder 仍未实现，CLI 会对这些未实现配置 fail-fast。
+M0 冻结了 Hash/64 基线；M1 在不改变 Query Rewrite、候选范围和 reranking 的前提下，只比较真实 Embedding；M2 用显式 feature flag 隔离 candidate-filtered control 与 global-hybrid treatment。LLM Query Rewrite 和 Cross-Encoder 仍未实现，CLI 会继续对这两项配置 fail-fast。
 
 ## 冻结数据契约
 
@@ -181,6 +181,76 @@ Qwen 的唯一一次 policy holdout 已完成并封存，但质量门禁失败�
 
 Holdout 同时保持 100% evidence coverage、0 security leakage、0 version mismatch、0 citation mismatch，且直接复用 Dev Collection（`upserted=0`、`unchanged=145000`）。结论是工程实现和模型实验完成，但 active Embedding 保持不变；`qwen37-1024` 只作为 M2 全局召回实验候选。不得根据本次 Test case 调参或重跑，下一次晋级必须使用新的 hidden holdout。
 
+## M2：全局候选召回的有限标注契约
+
+M1 的 judgment 只完整覆盖 structured candidate pool。直接用它评测全局检索会把 Qdrant-only 商户错误地默认为 `relevance=0`。M2 因此采用可复现的两阶段协议：
+
+1. 用冻结的 M1 Dev query、Qwen winner index 和固定 treatment 配置，捕获每例最终 Top-K 商户；
+2. Builder 只对“原 structured pool + 实际捕获的 treatment Top-K”并集按同一 attribute policy 标注；
+3. control 与 treatment 都使用生成的 schema-v3 suite。任何最终返回但不在有限并集内的商户都会 fail-closed，要求重新捕获和构建，不会自动判 0。
+
+该策略每例最多新增 `candidateLimit`（当前为 10）个 judgment，避免无边界的 `80 × 5,000` 全语料笛卡尔标注。suite contract 会记录 structured、Qdrant-only、总 judgment pair 数和避免的 Cartesian pair 数，并绑定 candidate-universe fixture、配置、源码、语料、Embedding identity 与 index manifest 指纹。
+
+先完整捕获 Dev treatment；`--global-retrieval-mode` 与 `--global-retrieval-enabled` 必须同时出现：
+
+```bash
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
+  --split dev \
+  --embedding-profile qwen37-1024 \
+  --qdrant-location http://127.0.0.1:6333 \
+  --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
+  --index-action reuse \
+  --global-retrieval-mode global-hybrid \
+  --global-retrieval-enabled \
+  --candidate-universe-output .local/m2-candidate-universe.json \
+  --output .local/m2-capture-report.json
+```
+
+捕获必须是 80/80 完整运行、复用既有 M1 index，且不允许 branch fallback、incomplete hydration、identity conflict/mismatch、rejected payload 或 `--limit-cases`。随后在隔离目录生成 suite；命令会同时复制 adversarial fixture，并拒绝覆盖已有产物：
+
+```bash
+uv run python -m evals.rag_v2.build_m2_cases \
+  --candidate-universe .local/m2-candidate-universe.json \
+  --output-directory .local/m2-suite
+```
+
+先跑 candidate-filtered control，再跑唯一变量为全局召回开关的 treatment：
+
+```bash
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
+  --split dev \
+  --cases .local/m2-suite/cases.m2.dev.json \
+  --quality-gate evals/rag_v2/m2_quality_gate.json \
+  --embedding-profile qwen37-1024 \
+  --qdrant-location http://127.0.0.1:6333 \
+  --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
+  --index-action reuse \
+  --output .local/m2-control.json
+
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
+  --split dev \
+  --cases .local/m2-suite/cases.m2.dev.json \
+  --quality-gate evals/rag_v2/m2_quality_gate.json \
+  --embedding-profile qwen37-1024 \
+  --qdrant-location http://127.0.0.1:6333 \
+  --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
+  --index-action reuse \
+  --global-retrieval-mode global-hybrid \
+  --global-retrieval-enabled \
+  --baseline-report .local/m2-control.json \
+  --output .local/m2-treatment.json
+
+uv run python -m evals.rag_v2.compare_m2 \
+  .local/m2-control.json .local/m2-treatment.json \
+  --output .local/m2-comparison.json
+```
+
+Paired gate 要求 Recall@10 不下降、nDCG@10 至少提升 0.5pp、至少救回一个 binary-relevant structured miss，同时约束 Precision/MRR/中文 nDCG、hard negative、完整性错误、Provider 请求/token 与 Total P95（不超过 control 的 1.25 倍）。报告原生记录 structured/global dense/global sparse/aggregation/hydration/fusion/total 阶段耗时、分支可用性、去重、身份冲突、hard-filter 与 structured-miss rescue 指标。
+
+当前 Provider cost cap 是 **per-run** 保护，不会跨 capture/control/treatment 自动合并；M2 实测时必须把三份报告的 Provider token 与估算费用另行累计记录。Qwen index sidecar 的累计 ledger 只约束 build/resume，复用索引的查询费用不应误算为已被该 ledger 覆盖。
+
+`cases.test.json` 的 M1 policy holdout 已经消费且在 M2 CLI/Builder 中永久封存；不得用于 capture、调参或晋级。M2 完成 Dev 决策后必须另建新的 hidden holdout。生产 Compose 的全局召回 flag 在完整 M2 晋级前保持关闭。
+
 ## 指标和报告
 
 质量指标包括 Recall@5/10、Precision@5、nDCG@5/10、MRR@10、硬约束满足率、证据覆盖率、未标注率、hard-negative final-return rate，以及 citation owner、merchant identity、source、security、data version 和 dataset SHA 完整性。品牌指标分为从同品牌第 2 个结果起计算的 `duplicateBrandRate`，以及只惩罚第 3 个及以后结果的 `excessiveBrandRate`。
@@ -192,7 +262,7 @@ Holdout 同时保持 100% evidence coverage、0 security leakage、0 version mis
 - Structured Search、Candidate Ranking、Evidence Retrieval 和 Total：Eval 外层 wall clock；
 - Embedding：记录 logical query/document calls、Provider HTTP requests、cache hit、token、retry、failure、总时长和按冻结单价估算的费用；索引与查询 usage 分开保存。
 
-Query Planning、Qdrant、Fusion 暂时无法从现有服务接口中独立拆分；Rewrite、Global Retrieval 和 learned Reranker 尚未实现。这些字段在报告的 `stageAvailability` 中明确为 unavailable/disabled，不会用差值伪造耗时。正式 M1 Eval 对 Provider 错误 fail-closed；在线 Runtime 才允许带 metadata 的 sparse-only fallback。
+M0/M1 历史报告仍无法从旧接口拆分 Query Planning、Qdrant 与 Fusion；M2 的统一 Candidate Discovery 接口会直接暴露 global dense/sparse、Embedding、merchant aggregation、hydration 与 fusion timing，不使用总时长差值伪造阶段耗时。Rewrite 和 learned reranker 仍为 disabled。正式 M1/M2 Eval 对 Provider、分支 fallback 与未标注商户 fail-closed；在线 Runtime 才允许带 metadata 的受控降级。
 
 ## M0 Hash/64 本地基线
 

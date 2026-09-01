@@ -82,6 +82,14 @@ class Settings(BaseSettings):
     # request up to ten. This setting is only the server-side safety ceiling.
     max_candidates: int = Field(default=10, ge=1, le=20)
     discovery_pool_size: int = Field(default=50, ge=5, le=100)
+    global_retrieval_enabled: bool = False
+    global_retrieval_document_limit: int = Field(default=200, ge=1, le=1_000)
+    global_retrieval_hydration_limit: int = Field(default=60, ge=1, le=100)
+    global_retrieval_hydration_concurrency: int = Field(default=8, ge=1, le=32)
+    global_retrieval_branch_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    global_retrieval_documents_per_merchant: int = Field(default=3, ge=1, le=10)
+    global_retrieval_rrf_k: int = Field(default=60, ge=1, le=1_000)
+    global_retrieval_brand_cap: int = Field(default=2, ge=1, le=10)
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)
     max_recovery_attempts: int = Field(default=2, ge=0, le=5)
@@ -111,6 +119,28 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "qwen3.7-text-embedding requires embedding_dimensions to be one of: "
                     f"{supported}."
+                )
+        if self.global_retrieval_enabled:
+            if self.rag_adapter != "qdrant":
+                raise ValueError("Global retrieval requires rag_adapter=qdrant.")
+            if self.rag_data_directory is None:
+                raise ValueError(
+                    "Global retrieval requires rag_data_directory so its corpus scope can be verified."
+                )
+            if self.global_retrieval_document_limit < self.global_retrieval_hydration_limit:
+                raise ValueError(
+                    "Global retrieval requires document_limit >= hydration_limit."
+                )
+            if self.global_retrieval_hydration_limit < self.max_candidates:
+                raise ValueError(
+                    "Global retrieval requires hydration_limit >= max_candidates."
+                )
+            if (
+                self.global_retrieval_documents_per_merchant
+                > self.global_retrieval_document_limit
+            ):
+                raise ValueError(
+                    "Global retrieval requires documents_per_merchant <= document_limit."
                 )
         return self
 

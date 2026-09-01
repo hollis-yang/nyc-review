@@ -4,9 +4,11 @@ import argparse
 import asyncio
 import hashlib
 import heapq
+import importlib.metadata
 import json
 import logging
 import math
+import platform
 import subprocess
 import time
 import uuid
@@ -21,6 +23,10 @@ from qdrant_client import AsyncQdrantClient, models
 
 from app.config import Settings
 from app.domain.models import UserConstraints
+from app.rag.candidate_discovery import (
+    GlobalHybridCandidateDiscovery,
+    LegacyCandidateDiscovery,
+)
 from app.rag.embeddings import (
     DeterministicHashEmbeddingService,
     EmbeddingMetadata,
@@ -29,10 +35,19 @@ from app.rag.embeddings import (
     OpenAICompatibleEmbeddingService,
     QwenNativeEmbeddingService,
 )
+from app.rag.global_retrieval import GlobalRetrievalScope, QdrantGlobalDocumentRetriever
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import REQUIRED_PAYLOAD_INDEXES, QdrantRagService
 from app.runtime import _validate_data_directory
 from app.tools.services import GeneratedNycShopToolService
+from evals.rag_v2.build_m2_cases import (
+    M2_CANDIDATE_UNIVERSE_FILENAME,
+    M2_JUDGMENT_POLICY_VERSION,
+    M2_SUITE_NAME,
+    capture_candidate_universe,
+    frozen_m1_dev_source_identity,
+    validate_frozen_m1_dev_source_suite,
+)
 from evals.rag_v2.compare_m1 import (
     EXPECTED_PROFILES,
     POLICY_VERSION,
@@ -41,13 +56,19 @@ from evals.rag_v2.compare_m1 import (
 from evals.rag_v2.compare_m1 import (
     compare as compare_m1_reports,
 )
-from evals.rag_v2.contract import fixture_contract_sha256, suite_contract_sha256
+from evals.rag_v2.contract import (
+    fixture_contract_sha256,
+    m2_candidate_universe_sha256,
+    sha256_json,
+    suite_contract_sha256,
+)
 from evals.rag_v2.embedding_profiles import PROFILES, EmbeddingProfile, profile
 from evals.rag_v2.metrics import (
     hard_constraint_violations,
     integrity_metrics,
     ranking_metrics,
     rounded,
+    structured_miss_metrics,
     summarize_results,
 )
 
@@ -56,6 +77,7 @@ LOGGER = logging.getLogger(__name__)
 INDEX_BUILD_VERSION = "rag-document-transform-v3-m1"
 FROZEN_QUALITY_GATE_PATH = EVAL_DIRECTORY / "quality_gate.json"
 FROZEN_HASH_BASELINE_PATH = EVAL_DIRECTORY / "baseline.hash64.local.json"
+M2_QUALITY_GATE_PATH = EVAL_DIRECTORY / "m2_quality_gate.json"
 INDEX_BUILD_SOURCE_PATHS = (
     "agent-service/app/rag/embeddings.py",
     "agent-service/app/rag/lexical.py",
@@ -65,16 +87,26 @@ INDEX_BUILD_SOURCE_PATHS = (
     "agent-service/evals/rag_v2/embedding_profiles.py",
 )
 EVAL_SOURCE_PATHS = (
+    "agent-service/pyproject.toml",
+    "agent-service/uv.lock",
+    "agent-service/app/domain/business_hours.py",
     "agent-service/app/domain/models.py",
+    "agent-service/app/rag/candidate_discovery.py",
+    "agent-service/app/rag/candidate_fusion.py",
     "agent-service/app/rag/display_text.py",
+    "agent-service/app/rag/global_retrieval.py",
     *INDEX_BUILD_SOURCE_PATHS,
+    "agent-service/app/rag/merchant_aggregation.py",
     "agent-service/app/rag/query_plan.py",
     "agent-service/app/tools/services.py",
     "agent-service/evals/rag_v2/build_cases.py",
+    "agent-service/evals/rag_v2/build_m2_cases.py",
     "agent-service/evals/rag_v2/baseline.hash64.local.json",
     "agent-service/evals/rag_v2/compare_m1.py",
+    "agent-service/evals/rag_v2/compare_m2.py",
     "agent-service/evals/rag_v2/contract.py",
     "agent-service/evals/rag_v2/metrics.py",
+    "agent-service/evals/rag_v2/m2_quality_gate.json",
     "agent-service/evals/rag_v2/quality_gate.json",
     "agent-service/evals/rag_v2/run_eval.py",
 )
@@ -140,8 +172,9 @@ class TimedEmbeddingService:
 
 def load_suite(path: Path, data_directory: Path, *, expected_split: str | None = None) -> tuple[dict, dict]:
     suite = json.loads(path.read_text(encoding="utf-8"))
-    if int(suite.get("schemaVersion") or 0) != 2:
-        raise ValueError("RAG v2 suite must use schemaVersion=2.")
+    schema_version = int(suite.get("schemaVersion") or 0)
+    if schema_version not in {2, 3}:
+        raise ValueError("RAG v2 suite must use schemaVersion=2 or schemaVersion=3.")
     if expected_split and suite.get("split") != expected_split:
         raise ValueError(
             f"Eval suite split={suite.get('split')!r} does not match requested {expected_split!r}."
@@ -155,20 +188,18 @@ def load_suite(path: Path, data_directory: Path, *, expected_split: str | None =
         raise ValueError("Eval suite caseSha256 does not match its canonical case list.")
     actual_contract_sha = suite_contract_sha256(suite)
     if suite.get("suiteContractSha256") != actual_contract_sha:
-        raise ValueError(
-            "Eval suite suiteContractSha256 does not match its frozen evaluation contract."
-        )
+        raise ValueError("Eval suite suiteContractSha256 does not match its frozen evaluation contract.")
     _validate_adversarial_fixture(path.parent, suite)
     _validate_cases(suite)
+    if schema_version == 3:
+        _validate_m2_judgment_contract(path.parent, suite)
 
     validated_data_version, validated_dataset_sha, _ = _validate_data_directory(data_directory)
     if suite.get("dataVersion") != validated_data_version:
         raise ValueError("Eval suite dataVersion does not match the validated corpus files.")
     if suite.get("datasetSha256") != validated_dataset_sha:
         raise ValueError("Eval suite datasetSha256 does not match the validated corpus files.")
-    manifest = json.loads(
-        (data_directory / "import_manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((data_directory / "import_manifest.json").read_text(encoding="utf-8"))
     for field in ("dataVersion", "datasetSha256"):
         if suite.get(field) != manifest.get(field):
             raise ValueError(
@@ -178,22 +209,59 @@ def load_suite(path: Path, data_directory: Path, *, expected_split: str | None =
     return suite, manifest
 
 
-async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limit: int) -> dict:
+async def evaluate_case(
+    runtime: Any,
+    case: dict,
+    suite: dict,
+    *,
+    candidate_limit: int,
+    capture_only: bool = False,
+) -> dict:
     constraints = UserConstraints.model_validate(case["constraints"])
     runtime.embedding_service.reset()
     total_started = time.perf_counter()
 
-    started = time.perf_counter()
-    candidate_pool = await runtime.shop_service.search(constraints)
-    structured_ms = (time.perf_counter() - started) * 1_000
+    discovery_metadata: dict[str, Any]
+    candidate_discovery = getattr(runtime, "candidate_discovery", None)
+    if candidate_discovery is not None:
+        started = time.perf_counter()
+        ranked = await candidate_discovery.discover(constraints, limit=candidate_limit)
+        discovery_ms = (time.perf_counter() - started) * 1_000
+        discovery_metadata = dict(ranked.retrieval_metadata or {})
+        structured_ms = _timing_value(
+            discovery_metadata,
+            "structuredSearch",
+            "structured",
+            "structuredLatencyMs",
+            "structuredSearchLatencyMs",
+        )
+        ranking_ms = _timing_value(
+            discovery_metadata,
+            "candidateRanking",
+            "ranking",
+            "rankingLatencyMs",
+        )
+        structured_candidate_count = _metadata_count(discovery_metadata, "structuredCandidates")
+    else:
+        started = time.perf_counter()
+        candidate_pool = await runtime.shop_service.search(constraints)
+        structured_ms = (time.perf_counter() - started) * 1_000
 
-    started = time.perf_counter()
-    ranked = await runtime.rag_service.rank_candidates(
-        constraints,
-        candidate_pool,
-        limit=candidate_limit,
-    )
-    ranking_ms = (time.perf_counter() - started) * 1_000
+        started = time.perf_counter()
+        ranked = await runtime.rag_service.rank_candidates(
+            constraints,
+            candidate_pool,
+            limit=candidate_limit,
+        )
+        ranking_ms = (time.perf_counter() - started) * 1_000
+        discovery_ms = structured_ms + ranking_ms
+        discovery_metadata = {
+            **dict(candidate_pool.retrieval_metadata or {}),
+            **dict(ranked.retrieval_metadata or {}),
+            "globalRetrievalEnabled": False,
+            "globalRetrievalMode": "candidate-filtered",
+        }
+        structured_candidate_count = len(candidate_pool.candidates)
 
     started = time.perf_counter()
     evidence = await runtime.rag_service.retrieve(constraints, ranked)
@@ -202,11 +270,30 @@ async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limi
     embedding = runtime.embedding_service.snapshot()
 
     external_ids = [candidate.external_id for candidate in ranked.candidates]
-    metrics = ranking_metrics(
-        external_ids,
-        case["judgments"],
-        relevance_threshold=int(suite["binaryRelevanceThreshold"]),
+    judgments = {str(item["externalId"]): item for item in case["judgments"]}
+    unjudged_external_ids = sorted(
+        {str(external_id) for external_id in external_ids if str(external_id) not in judgments}
     )
+    judgment_contract = suite.get("judgmentContract") or {}
+    if judgment_contract.get("unjudgedReturnedPolicy") == "fail-closed" and unjudged_external_ids:
+        raise ValueError(
+            f"M2 case {case['id']} returned merchants outside its bounded judgment union: "
+            + ", ".join(unjudged_external_ids[:5])
+            + ". Recapture the treatment universe and rebuild the Dev suite; these merchants "
+            "must never be assigned relevance=0 implicitly."
+        )
+    if capture_only:
+        metrics: dict[str, Any] = {
+            "status": "not-scored-candidate-universe-capture",
+            "unjudgedReturnedCount": len(unjudged_external_ids),
+            "unjudgedReturnedRate": len(unjudged_external_ids) / max(1, len(external_ids)),
+        }
+    else:
+        metrics = ranking_metrics(
+            external_ids,
+            case["judgments"],
+            relevance_threshold=int(suite["binaryRelevanceThreshold"]),
+        )
     integrity, violations = integrity_metrics(
         candidates=ranked.candidates,
         evidence=evidence,
@@ -215,20 +302,30 @@ async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limi
         forbidden_document_ids=set(case.get("forbiddenDocumentIds") or []),
         hard_negatives=case.get("hardNegatives") or [],
     )
-    judgments = {str(item["externalId"]): item for item in case["judgments"]}
+    case_metadata = case.get("metadata") or {}
+    if "structuredCandidateExternalIds" in case_metadata:
+        structured_ids = {
+            str(item) for item in (case_metadata.get("structuredCandidateExternalIds") or [])
+        }
+    else:
+        structured_ids = set(judgments)
+    rescue = structured_miss_metrics(
+        external_ids,
+        case["judgments"],
+        structured_ids,
+        relevance_threshold=int(suite["binaryRelevanceThreshold"]),
+    )
     ordered = []
     for position, candidate in enumerate(ranked.candidates, start=1):
         judgment = judgments.get(str(candidate.external_id))
-        dynamic_violations, dynamic_unknowns = hard_constraint_violations(
-            candidate, case["hardConstraints"]
-        )
+        dynamic_violations, dynamic_unknowns = hard_constraint_violations(candidate, case["hardConstraints"])
         ordered.append(
             {
                 "rank": position,
                 "shopId": candidate.shop_id,
                 "externalId": candidate.external_id,
                 "name": candidate.name,
-                "relevance": int(judgment["relevance"]) if judgment else 0,
+                "relevance": int(judgment["relevance"]) if judgment else None,
                 "judged": judgment is not None,
                 "hardConstraintViolations": dynamic_violations,
                 "hardConstraintUnknowns": dynamic_unknowns,
@@ -242,18 +339,64 @@ async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limi
         "language": case["language"],
         "scenario": case["scenario"],
         "query": case["query"],
-        "candidatePoolSize": len(candidate_pool.candidates),
+        "candidatePoolSize": int(
+            structured_candidate_count if structured_candidate_count is not None else len(structured_ids)
+        ),
         "returnedCount": len(ranked.candidates),
         "relevantJudgmentCount": sum(
-            int(item["relevance"]) >= int(suite["binaryRelevanceThreshold"])
-            for item in case["judgments"]
+            int(item["relevance"]) >= int(suite["binaryRelevanceThreshold"]) for item in case["judgments"]
         ),
         "metrics": metrics,
+        "structuredMissRescue": rescue,
         "integrity": integrity,
         "constraintFailures": violations,
         "latencyMs": {
             "structuredSearch": structured_ms,
             "candidateRanking": ranking_ms,
+            "candidateDiscovery": discovery_ms,
+            "globalRetrieval": _timing_value(
+                discovery_metadata,
+                "globalRetrieval",
+                "global",
+                "globalLatencyMs",
+                "globalRetrievalLatencyMs",
+            ),
+            "globalDenseRetrieval": _timing_value(
+                discovery_metadata,
+                "globalDenseRetrieval",
+                "globalDense",
+                "denseLatencyMs",
+                "globalDenseLatencyMs",
+            ),
+            "globalSparseRetrieval": _timing_value(
+                discovery_metadata,
+                "globalSparseRetrieval",
+                "globalSparse",
+                "sparseLatencyMs",
+                "globalSparseLatencyMs",
+            ),
+            "globalEmbedding": _timing_value(
+                discovery_metadata,
+                "globalEmbedding",
+                "globalEmbeddingLatencyMs",
+                "embeddingLatencyMs",
+            ),
+            "merchantAggregation": _timing_value(
+                discovery_metadata,
+                "merchantAggregation",
+                "aggregation",
+                "aggregationLatencyMs",
+            ),
+            "hydration": _timing_value(
+                discovery_metadata,
+                "hydration",
+                "hydrationLatencyMs",
+            ),
+            "fusion": _timing_value(
+                discovery_metadata,
+                "fusion",
+                "fusionLatencyMs",
+            ),
             "evidenceRetrieval": evidence_ms,
             "embedding": embedding["embeddingLatencyMs"],
             "total": total_ms,
@@ -268,24 +411,145 @@ async def evaluate_case(runtime: Any, case: dict, suite: dict, *, candidate_limi
             "providerUsage": embedding["providerUsage"],
         },
         "orderedCandidates": ordered,
+        "retrievalTrace": _retrieval_trace(
+            discovery_metadata,
+            structured_count=len(structured_ids),
+            returned_count=len(ranked.candidates),
+        ),
         "retrievalMetadata": {
-            "candidatePool": candidate_pool.retrieval_metadata,
+            "candidateDiscovery": discovery_metadata,
+            "candidatePool": (
+                candidate_pool.retrieval_metadata if candidate_discovery is None else discovery_metadata
+            ),
             "ranking": ranked.retrieval_metadata,
             "evidence": evidence.retrieval_metadata,
         },
     }
 
 
+def _timing_value(metadata: Mapping[str, Any], *names: str) -> float | None:
+    containers = [
+        metadata,
+        metadata.get("latencyMs") or {},
+        metadata.get("stageLatencyMs") or {},
+        metadata.get("timingMs") or {},
+        metadata.get("candidateDiscoveryLatencyMs") or {},
+    ]
+    for container in containers:
+        if not isinstance(container, Mapping):
+            continue
+        for name in names:
+            value = container.get(name)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                value = float(value)
+                if math.isfinite(value) and value >= 0:
+                    return value
+    return None
+
+
+def _metadata_count(metadata: Mapping[str, Any], *names: str) -> int | None:
+    containers = [metadata, metadata.get("counts") or {}, metadata.get("trace") or {}]
+    for container in containers:
+        if not isinstance(container, Mapping):
+            continue
+        for name in names:
+            value = container.get(name)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                return value
+    return None
+
+
+def _retrieval_trace(
+    metadata: Mapping[str, Any],
+    *,
+    structured_count: int,
+    returned_count: int,
+) -> dict[str, Any]:
+    enabled = bool(metadata.get("globalRetrievalEnabled"))
+
+    def count(default: int, *names: str) -> int:
+        value = _metadata_count(metadata, *names)
+        return default if value is None else value
+
+    return {
+        "globalRetrievalEnabled": enabled,
+        "globalRetrievalMode": str(
+            metadata.get("globalRetrievalMode")
+            or metadata.get("candidateDiscoveryMode")
+            or metadata.get("mode")
+            or ("global-hybrid" if enabled else "candidate-filtered")
+        ),
+        "structuredCandidates": count(structured_count, "structuredCandidates"),
+        "globalDenseDocuments": count(0, "globalDenseDocuments", "denseDocuments", "denseReturned"),
+        "globalSparseDocuments": count(0, "globalSparseDocuments", "sparseDocuments", "sparseReturned"),
+        "globalDenseReturnedPoints": count(0, "globalDenseReturnedPoints"),
+        "globalSparseReturnedPoints": count(0, "globalSparseReturnedPoints"),
+        "globalDenseRejectedPoints": count(0, "globalDenseRejectedPoints"),
+        "globalSparseRejectedPoints": count(0, "globalSparseRejectedPoints"),
+        "globalMerchants": count(0, "globalMerchants"),
+        "fusionCandidates": count(returned_count, "fusionCandidates"),
+        "structuredOnlyMerchants": count(0, "structuredOnlyMerchants"),
+        "qdrantOnlyMerchants": count(0, "qdrantOnlyMerchants"),
+        "overlapMerchants": count(0, "overlapMerchants"),
+        "duplicateDocumentsSuppressed": count(0, "duplicateDocumentsSuppressed"),
+        "duplicateBrandsSuppressed": count(0, "duplicateBrandsSuppressed"),
+        "hardConstraintFiltered": count(0, "hardConstraintFiltered"),
+        "hydrationRequested": count(0, "hydrationRequested"),
+        "hydrationHydrated": count(0, "hydrationHydrated", "hydratedMerchants", "hydratedCandidates"),
+        "hydrationFailed": count(0, "hydrationFailed", "hydrationMissing"),
+        "identityConflicts": count(0, "identityConflicts"),
+        "identityMismatches": count(0, "identityMismatches"),
+        "identityConflictShopIds": list(metadata.get("identityConflictShopIds") or []),
+        "globalDenseAvailable": metadata.get("globalDenseAvailable"),
+        "globalSparseAvailable": metadata.get("globalSparseAvailable"),
+        "globalDenseFallbackReason": metadata.get("globalDenseFallbackReason"),
+        "globalSparseFallbackReason": metadata.get("globalSparseFallbackReason"),
+        "structuredFallback": bool(metadata.get("structuredFallback")),
+        "globalFallback": bool(metadata.get("globalFallback")),
+        "globalFallbackReason": metadata.get("globalFallbackReason"),
+    }
+
+
+def _m2_retrieval_safety_issues(results: list[dict[str, Any]]) -> dict[str, int]:
+    fields = (
+        "hydrationFailed",
+        "identityMismatches",
+        "globalDenseRejectedPoints",
+        "globalSparseRejectedPoints",
+    )
+    return {
+        field: sum(
+            int((result.get("retrievalTrace") or {}).get(field) or 0)
+            for result in results
+        )
+        for field in fields
+    }
+
+
 async def run(args: argparse.Namespace) -> tuple[dict, bool]:
     _apply_embedding_profile(args)
     _validate_feature_configuration(args)
-    _validate_m1_policy_artifacts(args)
     repository = Path(__file__).resolve().parents[3]
     data_directory = args.data_directory.resolve()
     cases_path = args.cases or EVAL_DIRECTORY / f"cases.{args.split}.json"
     suite, manifest = load_suite(cases_path.resolve(), data_directory, expected_split=args.split)
+    _validate_m1_policy_artifacts(args, suite=suite)
     gate = json.loads(args.quality_gate.read_text(encoding="utf-8"))
     resolved_config = _resolved_config(args, suite)
+    runtime_environment = _runtime_environment_snapshot()
+    m2_run = int(suite.get("schemaVersion") or 0) == 3 or (
+        int(suite.get("schemaVersion") or 0) == 2
+        and args.global_retrieval_mode == "global-hybrid"
+    )
+    initial_m2_source = _scoped_source_snapshot(repository) if m2_run else None
+    capture_only = _validate_m2_run_configuration(
+        args,
+        suite=suite,
+        resolved_config=resolved_config,
+        repository=repository,
+        scoped_source=initial_m2_source,
+        runtime_environment=runtime_environment,
+    )
     _validate_holdout_authorization(args, resolved_config, suite=suite)
     corpus_preflight = None
     if args.embedding_provider != "hash":
@@ -363,6 +627,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 warmup_case,
                 suite,
                 candidate_limit=args.candidate_limit,
+                capture_only=capture_only,
             )
         runtime.embedding_service.clear_query_cache()
 
@@ -373,71 +638,177 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 case,
                 suite,
                 candidate_limit=args.candidate_limit,
+                capture_only=capture_only,
             )
             results.append(result)
-            print(
-                f"[{index:03d}/{len(cases):03d}] {case['id']} "
-                f"R@10={result['metrics']['recallAt10']:.3f} "
-                f"nDCG@10={result['metrics']['ndcgAt10']:.3f} "
-                f"hard={result['integrity']['hardConstraintSatisfaction']:.3f}"
-            )
-
-        summary = summarize_results(results)
-        baseline = _load_baseline(args.baseline_report, split=args.split)
-        quality_gate = evaluate_gate(
-            summary,
-            gate,
-            baseline=baseline,
-            suite=suite,
-            resolved_config=resolved_config,
-            partial=len(cases) != int(suite["caseCount"]),
-        )
-        fallback_count = sum(
-            bool(
-                ((result.get("retrievalMetadata") or {}).get(stage) or {}).get(
-                    "embeddingFallback"
+            if capture_only:
+                print(
+                    f"[{index:03d}/{len(cases):03d}] {case['id']} "
+                    f"captured={result['returnedCount']} "
+                    f"unjudged={result['metrics']['unjudgedReturnedCount']}"
                 )
+            else:
+                print(
+                    f"[{index:03d}/{len(cases):03d}] {case['id']} "
+                    f"R@10={result['metrics']['recallAt10']:.3f} "
+                    f"nDCG@10={result['metrics']['ndcgAt10']:.3f} "
+                    f"hard={result['integrity']['hardConstraintSatisfaction']:.3f}"
+                )
+
+        if capture_only:
+            summary = _candidate_capture_summary(results)
+            quality_gate = {
+                "passed": True,
+                "failures": [],
+                "warnings": [
+                    "Candidate-universe capture is intentionally not scored; build the "
+                    "schema-v3 Dev suite before comparing quality."
+                ],
+                "relativeStatus": "not-applicable-candidate-capture",
+                "thresholds": {},
+            }
+        else:
+            summary = summarize_results(results)
+            baseline = _load_baseline(args.baseline_report, split=args.split)
+            quality_gate = evaluate_gate(
+                summary,
+                gate,
+                baseline=baseline,
+                suite=suite,
+                resolved_config=resolved_config,
+                partial=len(cases) != int(suite["caseCount"]),
             )
+        fallback_count = sum(
+            bool(((result.get("retrievalMetadata") or {}).get(stage) or {}).get("embeddingFallback"))
             for result in results
-            for stage in ("ranking", "evidence")
+            for stage in ("candidateDiscovery", "ranking", "evidence")
         )
+        retrieval_fallback_count = sum(
+            bool((result.get("retrievalTrace") or {}).get(name))
+            for result in results
+            for name in ("structuredFallback", "globalFallback")
+        )
+        retrieval_fallback_count += sum(
+            (result.get("retrievalTrace") or {}).get(name) is False
+            for result in results
+            if (result.get("retrievalTrace") or {}).get("globalRetrievalEnabled")
+            for name in ("globalDenseAvailable", "globalSparseAvailable")
+        )
+        identity_conflict_count = sum(
+            int((result.get("retrievalTrace") or {}).get("identityConflicts") or 0) for result in results
+        )
+        retrieval_safety_issues = _m2_retrieval_safety_issues(results)
+        retrieval_safety_rejection_count = sum(retrieval_safety_issues.values())
         if args.embedding_provider != "hash" and fallback_count:
             quality_gate["failures"].append(
                 f"Formal embedding evaluation observed {fallback_count} sparse fallbacks."
             )
             quality_gate["passed"] = False
+        if (capture_only or int(suite.get("schemaVersion") or 0) == 3) and retrieval_fallback_count:
+            quality_gate["failures"].append(
+                f"M2 observed {retrieval_fallback_count} structured/global branch fallbacks."
+            )
+            quality_gate["passed"] = False
+        if (capture_only or int(suite.get("schemaVersion") or 0) == 3) and identity_conflict_count:
+            quality_gate["failures"].append(
+                f"M2 rejected {identity_conflict_count} merchants with conflicting identities."
+            )
+            quality_gate["passed"] = False
+        if (
+            capture_only or int(suite.get("schemaVersion") or 0) == 3
+        ) and retrieval_safety_rejection_count:
+            quality_gate["failures"].append(
+                "M2 observed incomplete hydration, identity mismatches, or rejected global "
+                f"points: {retrieval_safety_issues}."
+            )
+            quality_gate["passed"] = False
+        if capture_only and not quality_gate["passed"]:
+            raise ValueError(
+                "M2 candidate capture observed a fallback, identity problem, incomplete "
+                "hydration, or rejected global point; refusing to freeze an incomplete "
+                "judgment universe."
+            )
+        final_scoped_source = _scoped_source_snapshot(repository)
+        if initial_m2_source is not None and not _same_scoped_source_snapshot(
+            initial_m2_source,
+            final_scoped_source,
+        ):
+            raise ValueError(
+                "M2 Eval/retrieval source changed while the run was in progress; refusing "
+                "to freeze or compare results from mixed source revisions."
+            )
+        scoped_source = initial_m2_source or final_scoped_source
+        config_fingerprint = _fingerprint(resolved_config)
+        experiment_fingerprint = _m2_experiment_fingerprint(resolved_config)
+        candidate_universe = None
+        if capture_only:
+            candidate_universe = capture_candidate_universe(
+                source_suite=suite,
+                results=results,
+                resolved_config=resolved_config,
+                config_fingerprint=config_fingerprint,
+                experiment_fingerprint=experiment_fingerprint,
+                index_manifest_fingerprint=runtime.index_report["manifestFingerprint"],
+                scoped_source_sha256=scoped_source["sha256"],
+                runtime_environment=runtime_environment,
+                qdrant_server=runtime.index_report["qdrantServer"],
+                candidate_limit=args.candidate_limit,
+            )
+            _write_json_exclusive(args.candidate_universe_output, candidate_universe)
+        suite_report = {
+            key: suite[key]
+            for key in (
+                "schemaVersion",
+                "suite",
+                "split",
+                "retrievalVersion",
+                "dataVersion",
+                "datasetSha256",
+                "caseCount",
+                "caseSha256",
+                "suiteContractSha256",
+                "binaryRelevanceThreshold",
+                "labelPolicyVersion",
+                "labelSource",
+                "adjudicationStatus",
+            )
+        }
+        if int(suite.get("schemaVersion") or 0) == 3:
+            suite_report["judgmentContractSha256"] = sha256_json(suite["judgmentContract"])
+            suite_report["judgmentContract"] = suite["judgmentContract"]
         report = {
-            "schemaVersion": 2,
+            "schemaVersion": (3 if capture_only or int(suite.get("schemaVersion") or 0) == 3 else 2),
             "generatedAt": datetime.now(UTC).isoformat(),
-            "suite": {
-                key: suite[key]
-                for key in (
-                    "suite",
-                    "split",
-                    "retrievalVersion",
-                    "dataVersion",
-                    "datasetSha256",
-                    "caseCount",
-                    "caseSha256",
-                    "suiteContractSha256",
-                    "binaryRelevanceThreshold",
-                    "labelPolicyVersion",
-                    "labelSource",
-                    "adjudicationStatus",
-                )
-            },
+            "mode": "m2-candidate-universe-capture" if capture_only else "evaluation",
+            "suite": suite_report,
             "run": {
                 "git": _git_snapshot(repository),
-                "scopedSource": _scoped_source_snapshot(repository),
-                "configFingerprint": _fingerprint(resolved_config),
+                "scopedSource": scoped_source,
+                "runtimeEnvironment": runtime_environment,
+                "configFingerprint": config_fingerprint,
+                "m2ExperimentFingerprint": experiment_fingerprint,
                 "latencyProfileFingerprint": _latency_profile_fingerprint(resolved_config),
                 "resolvedConfig": resolved_config,
-                "stageAvailability": _stage_availability(resolved_config),
+                "stageAvailability": _stage_availability(resolved_config, results=results),
                 "policyArtifacts": _policy_artifact_snapshot(args),
                 "evaluatedCases": len(cases),
                 "partial": len(cases) != int(suite["caseCount"]),
                 "embeddingFallbackCount": fallback_count,
+                "retrievalFallbackCount": retrieval_fallback_count,
+                "retrievalIdentityConflictCount": identity_conflict_count,
+                "retrievalSafetyRejectionCount": retrieval_safety_rejection_count,
+                "retrievalSafetyIssues": retrieval_safety_issues,
             },
+            "evaluationManifest": _evaluation_manifest(
+                suite=suite,
+                resolved_config=resolved_config,
+                config_fingerprint=config_fingerprint,
+                experiment_fingerprint=experiment_fingerprint,
+                scoped_source=scoped_source,
+                runtime_environment=runtime_environment,
+                index_report=runtime.index_report,
+                candidate_universe=candidate_universe,
+            ),
             "corpus": {
                 "profile": manifest.get("profile"),
                 "dataVersion": manifest["dataVersion"],
@@ -469,10 +840,14 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             "summary": report["summary"],
         }
         print(json.dumps(concise, indent=2, ensure_ascii=False))
+        frozen_m2_artifact = capture_only or int(suite.get("schemaVersion") or 0) == 3
         if args.output:
-            _write_json(args.output, report)
+            (_write_json_exclusive if frozen_m2_artifact else _write_json)(args.output, report)
         if args.summary_output:
-            _write_json(args.summary_output, concise)
+            (_write_json_exclusive if frozen_m2_artifact else _write_json)(
+                args.summary_output,
+                concise,
+            )
         if holdout_receipt is not None:
             _finalize_holdout_receipt(
                 holdout_receipt,
@@ -535,12 +910,9 @@ def evaluate_gate(
         if (
             baseline_suite.get("split") != suite["split"]
             or baseline_suite.get("caseSha256") != suite["caseSha256"]
-            or baseline_suite.get("suiteContractSha256")
-            != suite["suiteContractSha256"]
+            or baseline_suite.get("suiteContractSha256") != suite["suiteContractSha256"]
         ):
-            raise ValueError(
-                "Baseline report uses a different split, case SHA, or suite contract SHA."
-            )
+            raise ValueError("Baseline report uses a different split, case SHA, or suite contract SHA.")
         baseline_summary = baseline["summary"]
         for path, tolerance in (gate.get("relative") or {}).get("maxDrops", {}).items():
             current = float(_path(summary, path))
@@ -554,8 +926,7 @@ def evaluate_gate(
             previous = float(_path(baseline_summary, path))
             if current > previous + float(tolerance):
                 failures.append(
-                    f"{path} increased {current - previous:.6f}; "
-                    f"maximum allowed increase is {tolerance}"
+                    f"{path} increased {current - previous:.6f}; maximum allowed increase is {tolerance}"
                 )
         current_latency = _latency_profile_fingerprint(resolved_config)
         baseline_latency = (baseline.get("run") or {}).get("latencyProfileFingerprint")
@@ -564,9 +935,7 @@ def evaluate_gate(
                 current = float(_path(summary, path))
                 previous = float(_path(baseline_summary, path))
                 if previous > 0 and current > previous * float(ratio):
-                    failures.append(
-                        f"{path} ratio={current / previous:.6f} exceeds {ratio}"
-                    )
+                    failures.append(f"{path} ratio={current / previous:.6f} exceeds {ratio}")
         else:
             warnings.append("Latency comparison skipped because latency profiles differ.")
     return {
@@ -662,9 +1031,8 @@ async def _build_runtime(
         count = int((await client.count(args.collection, exact=True)).count)
         expected_points = int(suite.get("indexedDocuments") or 0)
         if count != expected_points:
-            raise ValueError(
-                f"Evaluation collection contains {count} points; expected {expected_points}."
-            )
+            raise ValueError(f"Evaluation collection contains {count} points; expected {expected_points}.")
+        current_qdrant_server = await _qdrant_server_metadata(args.qdrant_location)
         index_report = {
             "stats": index_stats,
             "pointCount": count,
@@ -683,8 +1051,23 @@ async def _build_runtime(
                 required_state="complete",
             ),
             "lifecycleState": "complete",
+            "qdrantServer": current_qdrant_server,
             "preflight": preflight,
         }
+        if int(suite.get("schemaVersion") or 0) == 3:
+            expected_manifest = suite["judgmentContract"].get(
+                "captureIndexManifestFingerprint"
+            )
+            if index_report["manifestFingerprint"] != expected_manifest:
+                raise ValueError(
+                    "M2 index manifest differs from the one used to capture its bounded "
+                    "candidate universe."
+                )
+            if suite["judgmentContract"].get("captureQdrantServer") != current_qdrant_server:
+                raise ValueError(
+                    "M2 Qdrant Server metadata differs from candidate capture; recapture "
+                    "the bounded Dev suite."
+                )
     except BaseException:
         if _index_action(args) in {"build", "resume"}:
             try:
@@ -703,12 +1086,47 @@ async def _build_runtime(
         closed = True
         await _close_eval_resources(embedding, client)
 
-    return SimpleNamespace(
-        shop_service=GeneratedNycShopToolService(
+    try:
+        shop_service = GeneratedNycShopToolService(
             data_directory,
             max_candidates=args.discovery_pool_size,
-        ),
+        )
+        if args.global_retrieval_enabled:
+            scope = GlobalRetrievalScope(
+                collection_name=args.collection,
+                data_version=suite["dataVersion"],
+                dataset_sha256=suite["datasetSha256"],
+                retrieval_version=suite["retrievalVersion"],
+                embedding_identity=embedding.metadata.identity,
+            )
+            global_retriever = QdrantGlobalDocumentRetriever(
+                client,
+                embedding,
+                scope,
+                document_limit=args.global_document_limit,
+            )
+            candidate_discovery = GlobalHybridCandidateDiscovery(
+                shop_service,
+                rag,
+                global_retriever,
+                document_limit=args.global_document_limit,
+                hydration_limit=args.global_merchant_limit,
+                hydration_concurrency=args.global_hydration_concurrency,
+                branch_timeout_seconds=args.global_branch_timeout_seconds,
+                documents_per_merchant=args.global_documents_per_merchant,
+                rrf_k=args.fusion_rrf_k,
+                brand_cap=args.brand_cap,
+            )
+        else:
+            candidate_discovery = LegacyCandidateDiscovery(shop_service, rag)
+    except BaseException:
+        await _close_eval_resources(embedding, client, suppress_errors=True)
+        raise
+
+    return SimpleNamespace(
+        shop_service=shop_service,
         rag_service=rag,
+        candidate_discovery=candidate_discovery,
         embedding_service=embedding,
         index_report=index_report,
         prior_provider_usage=prior_provider_usage,
@@ -743,7 +1161,7 @@ async def _validate_reused_index(
     resolved_config: dict,
     manifest_path: Path,
 ) -> dict[str, int]:
-    await _require_qdrant_server_contract(args.qdrant_location)
+    current_server = await _require_qdrant_server_contract(args.qdrant_location)
     if not await client.collection_exists(args.collection):
         raise ValueError("--reuse-index requires an existing collection.")
     info = await client.get_collection(args.collection)
@@ -788,6 +1206,11 @@ async def _validate_reused_index(
             "Reusing an index requires a matching --index-manifest; point count and vector "
             "dimensions alone cannot identify the embedding implementation."
         )
+    _require_reused_server_version(
+        args.qdrant_location,
+        manifest_path,
+        current_server=current_server,
+    )
     await _wait_for_collection_ready(
         client,
         args.collection,
@@ -841,9 +1264,7 @@ async def _prepare_index_build(
             resolved_config=resolved_config,
             required_state="building",
         ):
-            raise ValueError(
-                "--index-action resume requires an exact state=building index manifest."
-            )
+            raise ValueError("--index-action resume requires an exact state=building index manifest.")
         if exists:
             await _validate_partial_collection(
                 client,
@@ -886,9 +1307,7 @@ async def _precheck_index_intent(
     action = _index_action(args)
     await _require_qdrant_server_contract(args.qdrant_location)
     if action == "build" and manifest_path.exists():
-        raise ValueError(
-            "Index manifest already exists; refusing paid preflight before an invalid build."
-        )
+        raise ValueError("Index manifest already exists; refusing paid preflight before an invalid build.")
     if action == "resume" and not _index_manifest_matches(
         manifest_path,
         args=args,
@@ -896,16 +1315,12 @@ async def _precheck_index_intent(
         resolved_config=resolved_config,
         required_state="building",
     ):
-        raise ValueError(
-            "Resume requires an exact state=building manifest before any paid preflight."
-        )
+        raise ValueError("Resume requires an exact state=building manifest before any paid preflight.")
     client = _qdrant_client(args.qdrant_location)
     try:
         exists = await client.collection_exists(args.collection)
         if action == "build" and exists:
-            raise ValueError(
-                "Collection already exists; refusing paid preflight for a new build."
-            )
+            raise ValueError("Collection already exists; refusing paid preflight for a new build.")
         if action == "resume" and exists:
             await _validate_partial_collection(
                 client,
@@ -1002,9 +1417,7 @@ def _building_manifest(
         "embedding": resolved_config["embedding"],
         "qdrantEndpointFingerprint": resolved_config["qdrant"].get("endpointFingerprint"),
         "indexBuildVersion": INDEX_BUILD_VERSION,
-        "indexBuildSourceFingerprint": resolved_config["retrieval"][
-            "indexBuildSourceFingerprint"
-        ],
+        "indexBuildSourceFingerprint": resolved_config["retrieval"]["indexBuildSourceFingerprint"],
         "indexSchema": _expected_index_schema(
             int(resolved_config["embedding"]["dimensions"]),
             include_payload_indexes=resolved_config["qdrant"]["locationKind"] == "remote",
@@ -1124,8 +1537,7 @@ def _index_manifest_matches(
     value = json.loads(path.read_text(encoding="utf-8"))
     expected_points = int(suite.get("indexedDocuments") or 0)
     complete_count_matches = (
-        required_state != "complete"
-        or int(value.get("pointCount") or 0) == expected_points
+        required_state != "complete" or int(value.get("pointCount") or 0) == expected_points
     )
     return all(
         (
@@ -1135,8 +1547,7 @@ def _index_manifest_matches(
             value.get("datasetSha256") == suite["datasetSha256"],
             value.get("retrievalVersion") == suite["retrievalVersion"],
             value.get("embedding") == resolved_config["embedding"],
-            value.get("qdrantEndpointFingerprint")
-            == resolved_config["qdrant"].get("endpointFingerprint"),
+            value.get("qdrantEndpointFingerprint") == resolved_config["qdrant"].get("endpointFingerprint"),
             value.get("indexBuildVersion") == INDEX_BUILD_VERSION,
             value.get("indexBuildSourceFingerprint")
             == resolved_config["retrieval"].get("indexBuildSourceFingerprint"),
@@ -1145,12 +1556,9 @@ def _index_manifest_matches(
             value.get("indexSchema")
             == _expected_index_schema(
                 int(resolved_config["embedding"]["dimensions"]),
-                include_payload_indexes=(
-                    resolved_config["qdrant"]["locationKind"] == "remote"
-                ),
+                include_payload_indexes=(resolved_config["qdrant"]["locationKind"] == "remote"),
             ),
-            int(value.get("vectorDimensions") or 0)
-            == int(resolved_config["embedding"]["dimensions"]),
+            int(value.get("vectorDimensions") or 0) == int(resolved_config["embedding"]["dimensions"]),
         )
     )
 
@@ -1175,9 +1583,7 @@ def _apply_embedding_profile(args: argparse.Namespace) -> None:
     if configured_cap is not None and configured_cap > selected.max_cost_usd:
         conflicts.append("--max-provider-cost-usd")
     if conflicts:
-        raise ValueError(
-            f"Embedding profile {profile_id!r} conflicts with: {', '.join(conflicts)}."
-        )
+        raise ValueError(f"Embedding profile {profile_id!r} conflicts with: {', '.join(conflicts)}.")
     args.embedding_provider = selected.provider
     args.embedding_model = selected.model
     args.embedding_version = selected.version
@@ -1232,9 +1638,7 @@ def _embedding_service(args: argparse.Namespace, config: dict) -> EmbeddingServi
     if args.embedding_provider == "qwen":
         return QwenNativeEmbeddingService(
             base_url=(
-                args.embedding_base_url
-                or settings.qwen_embedding_base_url
-                or settings.embedding_base_url
+                args.embedding_base_url or settings.qwen_embedding_base_url or settings.embedding_base_url
             ),
             api_key=(
                 settings.qwen_embedding_api_key.get_secret_value()
@@ -1280,9 +1684,7 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
         version = args.embedding_version or "provider-revision-unavailable"
         if args.embedding_provider == "qwen":
             base_url = (
-                args.embedding_base_url
-                or settings.qwen_embedding_base_url
-                or settings.embedding_base_url
+                args.embedding_base_url or settings.qwen_embedding_base_url or settings.embedding_base_url
             ).rstrip("/")
         else:
             base_url = (args.embedding_base_url or settings.embedding_base_url).rstrip("/")
@@ -1315,9 +1717,7 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
                 "priceUsdPerMillionTokens": selected.price_usd_per_million_tokens,
                 "maxProviderCostUsd": args.max_provider_cost_usd,
                 "maxTotalTokens": int(
-                    args.max_provider_cost_usd
-                    / selected.price_usd_per_million_tokens
-                    * 1_000_000
+                    args.max_provider_cost_usd / selected.price_usd_per_million_tokens * 1_000_000
                 ),
                 "pricingSnapshotDate": "2026-08-31",
                 "runtime": {
@@ -1358,6 +1758,13 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
             "candidateLimit": args.candidate_limit,
             "discoveryPoolSize": args.discovery_pool_size,
             "mode": args.global_retrieval_mode,
+            "globalDocumentLimit": args.global_document_limit,
+            "globalMerchantLimit": args.global_merchant_limit,
+            "globalDocumentsPerMerchant": args.global_documents_per_merchant,
+            "globalHydrationConcurrency": args.global_hydration_concurrency,
+            "globalBranchTimeoutSeconds": args.global_branch_timeout_seconds,
+            "fusionRrfK": args.fusion_rrf_k,
+            "brandCap": args.brand_cap,
             "queryExpansion": "rules-v1",
             "indexBuildVersion": INDEX_BUILD_VERSION,
             "indexBuildSourceFingerprint": _file_set_fingerprint(
@@ -1370,6 +1777,7 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
         "features": {
             "queryRewriteProvider": args.query_rewrite_provider,
             "globalRetrievalMode": args.global_retrieval_mode,
+            "globalRetrievalEnabled": bool(args.global_retrieval_enabled),
             "rerankerProvider": args.reranker_provider,
         },
         "eval": {
@@ -1406,24 +1814,50 @@ def _eval_settings() -> Settings:
     return Settings(environment="development", embedding_provider="hash")
 
 
-def _stage_availability(resolved_config: dict) -> dict[str, Any]:
+def _stage_availability(
+    resolved_config: dict,
+    *,
+    results: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     real_embedding = resolved_config["embedding"]["provider"] != "hash"
-    return {
+    global_enabled = bool((resolved_config.get("features") or {}).get("globalRetrievalEnabled"))
+    availability = {
         "structuredSearch": {"available": True, "source": "eval-outer-timer"},
         "candidateRanking": {"available": True, "source": "eval-outer-timer"},
+        "candidateDiscovery": {"available": True, "source": "eval-outer-timer"},
         "evidenceRetrieval": {"available": True, "source": "eval-outer-timer"},
         "embedding": {"available": True, "source": "eval-wrapper"},
         "queryPlanning": {
             "available": False,
             "reason": "current service does not expose an isolated planning timer",
         },
-        "qdrant": {
-            "available": False,
-            "reason": "Qdrant and fusion execute inside candidate/evidence calls",
+        "globalRetrieval": {
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
+        },
+        "globalDenseRetrieval": {
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
+        },
+        "globalSparseRetrieval": {
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
+        },
+        "globalEmbedding": {
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
+        },
+        "merchantAggregation": {
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
+        },
+        "hydration": {
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
         },
         "fusion": {
-            "available": False,
-            "reason": "server-side RRF does not expose a separate timer",
+            "available": global_enabled,
+            "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
         },
         "rewrite": {"available": False, "reason": "disabled in M0 baseline"},
         "reranker": {"available": False, "reason": "no learned reranker in M0 baseline"},
@@ -1432,6 +1866,40 @@ def _stage_availability(resolved_config: dict) -> dict[str, Any]:
             "source": "provider-response-usage" if real_embedding else "not-applicable-hash",
         },
     }
+    if results:
+        for stage in (
+            "structuredSearch",
+            "candidateRanking",
+            "candidateDiscovery",
+            "globalRetrieval",
+            "globalDenseRetrieval",
+            "globalSparseRetrieval",
+            "globalEmbedding",
+            "merchantAggregation",
+            "hydration",
+            "fusion",
+        ):
+            samples = sum((item.get("latencyMs") or {}).get(stage) is not None for item in results)
+            availability[stage]["samples"] = samples
+            if samples == 0 and (
+                global_enabled
+                or stage
+                not in {
+                    "globalRetrieval",
+                    "globalDenseRetrieval",
+                    "globalSparseRetrieval",
+                    "globalEmbedding",
+                    "merchantAggregation",
+                    "hydration",
+                    "fusion",
+                }
+            ):
+                availability[stage] = {
+                    "available": False,
+                    "reason": "service did not expose this isolated stage timer",
+                    "samples": 0,
+                }
+    return availability
 
 
 def _index_action(args: argparse.Namespace) -> str:
@@ -1478,16 +1946,10 @@ async def _embedding_preflight(
     embedding.clear_query_cache()
 
     projected_document_tokens = math.ceil(
-        corpus["totalCharacters"]
-        * document_usage.total_tokens
-        / corpus["sampleCharacters"]
-        * 1.15
+        corpus["totalCharacters"] * document_usage.total_tokens / corpus["sampleCharacters"] * 1.15
     )
     projected_query_tokens = math.ceil(
-        query_usage.total_tokens
-        / len(query_examples)
-        * int(suite["caseCount"])
-        * 1.15
+        query_usage.total_tokens / len(query_examples) * int(suite["caseCount"]) * 1.15
     )
     projected_tokens = projected_document_tokens + projected_query_tokens
     price = float(_price_per_million_tokens(args))
@@ -1527,9 +1989,7 @@ def _sample_corpus(data_directory: Path, sample_size: int) -> dict[str, Any]:
     for document in iter_generated_documents(data_directory):
         document_count += 1
         total_characters += len(document.text)
-        content_type_counts[document.content_type] = (
-            content_type_counts.get(document.content_type, 0) + 1
-        )
+        content_type_counts[document.content_type] = content_type_counts.get(document.content_type, 0) + 1
         score = int.from_bytes(
             hashlib.sha256(document.document_id.encode("utf-8")).digest()[:8],
             "big",
@@ -1591,12 +2051,7 @@ def _usage_from_dict(value: dict[str, Any]) -> EmbeddingUsage:
 
 def _merge_usage(*values: EmbeddingUsage) -> EmbeddingUsage:
     fields = EmbeddingUsage().as_dict()
-    return EmbeddingUsage(
-        **{
-            key: sum(getattr(value, key) for value in values)
-            for key in fields
-        }
-    )
+    return EmbeddingUsage(**{key: sum(getattr(value, key) for value in values) for key in fields})
 
 
 async def _wait_for_collection_ready(
@@ -1635,10 +2090,7 @@ async def _wait_for_collection_ready(
             "expectedPointCount": expected_points,
         }
         count_ready = count == expected_points
-        server_ready = (
-            status.casefold() in {"green", "ok"}
-            and optimizer_status.casefold() in {"ok", "green"}
-        )
+        server_ready = status.casefold() in {"green", "ok"} and optimizer_status.casefold() in {"ok", "green"}
         if count_ready and sentinel_visible and (not require_server_ready or server_ready):
             return snapshot
         if time.monotonic() >= deadline:
@@ -1665,21 +2117,49 @@ async def _qdrant_server_metadata(location: str | Path) -> dict[str, Any]:
     }
 
 
-async def _require_qdrant_server_contract(location: str | Path) -> None:
+async def _require_qdrant_server_contract(location: str | Path) -> dict[str, Any]:
     if _location_kind(location) != "remote":
-        return
+        return await _qdrant_server_metadata(location)
     metadata = await _qdrant_server_metadata(location)
     version = str(metadata.get("version") or "")
     try:
         major, minor = (int(part) for part in version.split(".")[:2])
     except (TypeError, ValueError):
-        raise ValueError(
-            "Qdrant Server metadata/version is unavailable; refusing paid preflight."
-        ) from None
+        raise ValueError("Qdrant Server metadata/version is unavailable; refusing paid preflight.") from None
     if major != 1 or minor < 19:
+        raise ValueError(f"M1 requires Qdrant Server 1.19+ in the 1.x series; observed {version!r}.")
+    return metadata
+
+
+def _require_reused_server_version(
+    location: str | Path,
+    manifest_path: Path,
+    *,
+    current_server: Mapping[str, Any],
+) -> None:
+    if _location_kind(location) != "remote":
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    indexed_server = manifest.get("qdrantServer") or {}
+    current_version = _major_minor_version(current_server.get("version"))
+    indexed_version = _major_minor_version(indexed_server.get("version"))
+    if current_version is None or indexed_version is None:
         raise ValueError(
-            f"M1 requires Qdrant Server 1.19+ in the 1.x series; observed {version!r}."
+            "Qdrant Server major/minor metadata is missing from the current server or index manifest."
         )
+    if current_version != indexed_version:
+        raise ValueError(
+            "Qdrant Server major/minor differs from the server that built the reused index: "
+            f"current={current_server.get('version')!r}, indexed={indexed_server.get('version')!r}."
+        )
+
+
+def _major_minor_version(value: Any) -> tuple[int, int] | None:
+    try:
+        parts = str(value).split(".")
+        return int(parts[0]), int(parts[1])
+    except (IndexError, TypeError, ValueError):
+        return None
 
 
 def _enum_value(value: Any) -> str:
@@ -1702,19 +2182,42 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         raise ValueError("--warmup-cases cannot be negative.")
     if args.limit_cases is not None and args.limit_cases < 1:
         raise ValueError("--limit-cases must be positive.")
+    expected_enabled = args.global_retrieval_mode == "global-hybrid"
+    if bool(args.global_retrieval_enabled) is not expected_enabled:
+        raise ValueError(
+            "--global-retrieval-mode and the explicit --global-retrieval-enabled flag "
+            "must agree (global-hybrid requires the flag; candidate-filtered forbids it)."
+        )
+    if not 1 <= args.global_document_limit <= 500:
+        raise ValueError("--global-document-limit must be between 1 and 500.")
+    if not args.candidate_limit <= args.global_merchant_limit <= 200:
+        raise ValueError("--global-merchant-limit must be between candidate limit and 200.")
+    if args.global_document_limit < args.global_merchant_limit:
+        raise ValueError("--global-document-limit must be at least global merchant limit.")
+    if not 1 <= args.global_documents_per_merchant <= 10:
+        raise ValueError("--global-documents-per-merchant must be between 1 and 10.")
+    if args.global_documents_per_merchant > args.global_document_limit:
+        raise ValueError("--global-documents-per-merchant cannot exceed global document limit.")
+    if not 1 <= args.global_hydration_concurrency <= 64:
+        raise ValueError("--global-hydration-concurrency must be between 1 and 64.")
+    if not 0 < args.global_branch_timeout_seconds <= 120:
+        raise ValueError("--global-branch-timeout-seconds must be in (0, 120].")
+    if not 1 <= args.fusion_rrf_k <= 1_000:
+        raise ValueError("--fusion-rrf-k must be between 1 and 1000.")
+    if not 1 <= args.brand_cap <= args.candidate_limit:
+        raise ValueError("--brand-cap must be between 1 and candidate limit.")
+    if args.split == "test" and expected_enabled:
+        raise ValueError("Global retrieval may not run against the consumed M1 policy holdout.")
     action = _index_action(args)
     if args.preflight_only and args.provider_smoke:
         raise ValueError("Choose either --preflight-only or --provider-smoke, not both.")
     if args.embedding_provider == "hash":
         if args.embedding_model not in (None, "deterministic-token-sha256"):
             raise ValueError(
-                "The Hash provider implementation is fixed to "
-                "--embedding-model deterministic-token-sha256."
+                "The Hash provider implementation is fixed to --embedding-model deterministic-token-sha256."
             )
         if args.embedding_version not in (None, "hash-v1"):
-            raise ValueError(
-                "The Hash provider implementation is fixed to --embedding-version hash-v1."
-            )
+            raise ValueError("The Hash provider implementation is fixed to --embedding-version hash-v1.")
     else:
         if _selected_profile(args) is None:
             raise ValueError(
@@ -1730,9 +2233,7 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         if action in {"build", "resume"} and not (
             args.allow_paid_index_build or args.preflight_only or args.provider_smoke
         ):
-            raise ValueError(
-                "Paid index construction requires the explicit --allow-paid-index-build flag."
-            )
+            raise ValueError("Paid index construction requires the explicit --allow-paid-index-build flag.")
         if args.limit_cases is not None and action in {"build", "resume"}:
             raise ValueError(
                 "--limit-cases does not limit indexing and is forbidden during a paid build; "
@@ -1741,15 +2242,12 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         if args.max_provider_cost_usd is None or args.max_provider_cost_usd <= 0:
             raise ValueError("Paid profiles require a positive provider cost cap.")
         if args.embedding_query_instruct:
-            raise ValueError(
-                "The frozen M1 comparison does not enable a Qwen query instruction."
-            )
+            raise ValueError("The frozen M1 comparison does not enable a Qwen query instruction.")
         if args.split == "test" and not (args.preflight_only or args.provider_smoke):
             if action != "reuse":
                 raise ValueError("The M1 policy holdout must reuse the selected Dev index.")
     supported = {
         "query_rewrite_provider": (args.query_rewrite_provider, "disabled"),
-        "global_retrieval_mode": (args.global_retrieval_mode, "candidate-filtered"),
         "reranker_provider": (args.reranker_provider, "heuristic-multi-signal"),
     }
     for name, (actual, expected) in supported.items():
@@ -1760,13 +2258,17 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
             )
 
 
-def _validate_m1_policy_artifacts(args: argparse.Namespace) -> None:
+def _validate_m1_policy_artifacts(
+    args: argparse.Namespace,
+    *,
+    suite: dict[str, Any] | None = None,
+) -> None:
     if args.embedding_provider == "hash" or args.preflight_only or args.provider_smoke:
         return
+    if args.global_retrieval_mode == "global-hybrid" or int((suite or {}).get("schemaVersion") or 0) == 3:
+        return
     if args.baseline_report is None:
-        raise ValueError(
-            "Formal M1 evaluation requires the frozen Hash baseline via --baseline-report."
-        )
+        raise ValueError("Formal M1 evaluation requires the frozen Hash baseline via --baseline-report.")
     expected = {
         "quality gate": FROZEN_QUALITY_GATE_PATH,
         "Hash baseline": FROZEN_HASH_BASELINE_PATH,
@@ -1780,17 +2282,102 @@ def _validate_m1_policy_artifacts(args: argparse.Namespace) -> None:
         if not actual_path.is_file():
             raise ValueError(f"Formal M1 {label} file does not exist: {actual_path}")
         if _file_sha256(actual_path) != _file_sha256(expected_path):
+            raise ValueError(f"Formal M1 {label} must match the committed frozen artifact exactly.")
+
+
+def _validate_m2_run_configuration(
+    args: argparse.Namespace,
+    *,
+    suite: dict[str, Any],
+    resolved_config: dict[str, Any],
+    repository: Path,
+    scoped_source: dict[str, Any] | None = None,
+    runtime_environment: dict[str, str] | None = None,
+) -> bool:
+    schema_version = int(suite.get("schemaVersion") or 0)
+    global_mode = args.global_retrieval_mode == "global-hybrid"
+    capture_only = schema_version == 2 and global_mode
+    if capture_only:
+        validate_frozen_m1_dev_source_suite(suite)
+        if args.candidate_universe_output is None:
             raise ValueError(
-                f"Formal M1 {label} must match the committed frozen artifact exactly."
+                "A schema-v2 global run is capture-only and requires --candidate-universe-output."
             )
+        capture_outputs = {
+            "candidate universe": args.candidate_universe_output,
+            "report": args.output,
+            "summary": args.summary_output,
+        }
+        resolved_outputs = [
+            path.resolve() for path in capture_outputs.values() if path is not None
+        ]
+        if len(resolved_outputs) != len(set(resolved_outputs)):
+            raise ValueError("M2 capture output, summary, and candidate-universe paths must be distinct.")
+        for label, path in capture_outputs.items():
+            if path is not None and path.exists():
+                raise FileExistsError(f"Refusing to overwrite frozen M2 {label}: {path}")
+        if args.limit_cases is not None:
+            raise ValueError("M2 candidate-universe capture must run every Dev case.")
+        if _index_action(args) != "reuse":
+            raise ValueError("M2 candidate capture must reuse the selected M1 index.")
+        return True
+
+    if args.candidate_universe_output is not None:
+        raise ValueError("--candidate-universe-output is only valid for a schema-v2 global capture.")
+    if schema_version != 3:
+        return False
+    if suite.get("split") != "dev":
+        raise ValueError("Schema-v3 M2 evaluation is Dev-only.")
+    if args.output is None:
+        raise ValueError("Formal M2 evaluation requires an explicit --output path.")
+    protected_paths = {
+        "report": args.output,
+        "summary": args.summary_output,
+        "baseline": args.baseline_report,
+    }
+    resolved_paths = [path.resolve() for path in protected_paths.values() if path is not None]
+    if len(resolved_paths) != len(set(resolved_paths)):
+        raise ValueError("M2 report, summary, and baseline paths must be distinct.")
+    for label in ("report", "summary"):
+        path = protected_paths[label]
+        if path is not None and path.exists():
+            raise FileExistsError(f"Refusing to overwrite frozen M2 {label}: {path}")
+    if _file_sha256(args.quality_gate) != _file_sha256(M2_QUALITY_GATE_PATH):
+        raise ValueError("Formal M2 evaluation must use the committed m2_quality_gate.json.")
+    if _index_action(args) != "reuse":
+        raise ValueError("Formal M2 control/treatment runs must reuse the exact M1 index.")
+    contract = suite["judgmentContract"]
+    if int(contract["candidateLimit"]) != args.candidate_limit:
+        raise ValueError("M2 candidate limit differs from the bounded judgment contract.")
+    experiment_fingerprint = _m2_experiment_fingerprint(resolved_config)
+    if contract.get("experimentFingerprint") != experiment_fingerprint:
+        raise ValueError("M2 runtime differs from the retrieval configuration used to capture judgments.")
+    current_source = (scoped_source or _scoped_source_snapshot(repository))["sha256"]
+    if contract.get("captureScopedSourceSha256") != current_source:
+        raise ValueError(
+            "M2 Eval/retrieval source changed after candidate capture; recapture and rebuild "
+            "the bounded Dev suite."
+        )
+    if contract.get("captureRuntimeEnvironment") != (
+        runtime_environment or _runtime_environment_snapshot()
+    ):
+        raise ValueError(
+            "M2 Python/qdrant-client environment differs from candidate capture; recapture "
+            "and rebuild the bounded Dev suite."
+        )
+    if global_mode and args.baseline_report is None:
+        raise ValueError(
+            "M2 global-hybrid treatment requires the candidate-filtered control report via --baseline-report."
+        )
+    if not global_mode and args.baseline_report is not None:
+        raise ValueError("M2 candidate-filtered control must not use a baseline report.")
+    return False
 
 
 def _policy_artifact_snapshot(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "qualityGateSha256": _file_sha256(args.quality_gate),
-        "baselineReportSha256": (
-            _file_sha256(args.baseline_report) if args.baseline_report else None
-        ),
+        "baselineReportSha256": (_file_sha256(args.baseline_report) if args.baseline_report else None),
     }
 
 
@@ -1803,9 +2390,7 @@ def _validate_holdout_authorization(
     if args.split != "test" or args.embedding_provider == "hash":
         return
     if not args.allow_policy_holdout or args.winner_manifest is None:
-        raise ValueError(
-            "The M1 policy holdout requires --winner-manifest and --allow-policy-holdout."
-        )
+        raise ValueError("The M1 policy holdout requires --winner-manifest and --allow-policy-holdout.")
     if args.output is None:
         raise ValueError("The M1 policy holdout requires an explicit non-existing --output path.")
     if args.output.exists():
@@ -1827,22 +2412,16 @@ def _validate_holdout_authorization(
     frozen_artifacts = winner.get("frozenArtifacts") or {}
     observed_artifacts = {
         "qualityGateSha256": ((frozen_artifacts.get("qualityGate") or {}).get("sha256")),
-        "baselineReportSha256": (
-            (frozen_artifacts.get("baselineManifest") or {}).get("sha256")
-        ),
+        "baselineReportSha256": ((frozen_artifacts.get("baselineManifest") or {}).get("sha256")),
     }
     if observed_artifacts != expected_artifacts:
         raise ValueError("Winner manifest does not bind the committed M1 policy artifacts.")
     expected_control = normalized_dev_control(resolved_config, include_collection=True)
     if winner.get("winnerDevControl") != expected_control:
-        raise ValueError(
-            "Holdout retrieval, runtime, collection, or Qdrant endpoint drifted from Dev."
-        )
+        raise ValueError("Holdout retrieval, runtime, collection, or Qdrant endpoint drifted from Dev.")
     receipt_path = _holdout_receipt_path(args.winner_manifest, suite)
     if receipt_path.exists():
-        raise FileExistsError(
-            f"The M1 policy holdout has already been attempted: {receipt_path}"
-        )
+        raise FileExistsError(f"The M1 policy holdout has already been attempted: {receipt_path}")
 
 
 def _holdout_receipt_path(winner_manifest: Path, suite: dict) -> Path:
@@ -1937,9 +2516,7 @@ def _reserve_holdout_receipt(
             json.dump(value, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
     except FileExistsError:
-        raise FileExistsError(
-            f"The M1 policy holdout has already been attempted: {path}"
-        ) from None
+        raise FileExistsError(f"The M1 policy holdout has already been attempted: {path}") from None
     return path
 
 
@@ -1993,6 +2570,130 @@ def _validate_cases(suite: dict) -> None:
             terms = (case.get("metadata") or {}).get("codeSwitchTerms") or []
             if not terms or not any(term in case["query"] for term in terms):
                 raise ValueError(f"Mixed case {case.get('id')} lacks explicit code-switch terms.")
+
+
+def _validate_m2_judgment_contract(
+    directory: Path,
+    suite: dict[str, Any],
+    *,
+    trusted_source_suite: dict[str, Any] | None = None,
+) -> None:
+    if suite.get("suite") != M2_SUITE_NAME or suite.get("split") != "dev":
+        raise ValueError("Schema-v3 M2 evaluation is Dev-only and uses the dedicated M2 suite.")
+    contract = suite.get("judgmentContract") or {}
+    if contract.get("policyVersion") != M2_JUDGMENT_POLICY_VERSION:
+        raise ValueError("M2 suite uses an unsupported judgment policy.")
+    if contract.get("unjudgedReturnedPolicy") != "fail-closed":
+        raise ValueError("M2 suite must fail closed on every unjudged returned merchant.")
+    if contract.get("sourceSplit") != "dev" or contract.get("m1PolicyHoldoutUsed") is not False:
+        raise ValueError("M2 suite may not derive judgments from the consumed M1 policy holdout.")
+    committed_dev = (
+        frozen_m1_dev_source_identity()
+        if trusted_source_suite is None
+        else {
+            "suite": trusted_source_suite.get("suite"),
+            "caseSha256": trusted_source_suite.get("caseSha256"),
+            "suiteContractSha256": trusted_source_suite.get("suiteContractSha256"),
+        }
+    )
+    contract_dev = {
+        "suite": contract.get("sourceSuite"),
+        "caseSha256": contract.get("sourceSuiteCaseSha256"),
+        "suiteContractSha256": contract.get("sourceSuiteContractSha256"),
+    }
+    if contract_dev != committed_dev:
+        raise ValueError("M2 judgment contract is not derived from the committed M1 Dev suite.")
+    fixture_name = contract.get("candidateUniverseFixture")
+    if fixture_name != M2_CANDIDATE_UNIVERSE_FILENAME or Path(str(fixture_name)).name != fixture_name:
+        raise ValueError("M2 suite references an invalid candidate-universe fixture.")
+    fixture_path = directory / fixture_name
+    if not fixture_path.is_file():
+        raise ValueError(f"M2 suite requires its sibling {fixture_name} fixture.")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    actual_fixture_sha = m2_candidate_universe_sha256(fixture)
+    if (
+        fixture.get("fixtureSha256") != actual_fixture_sha
+        or contract.get("candidateUniverseFixtureSha256") != actual_fixture_sha
+    ):
+        raise ValueError("M2 candidate-universe fixture SHA does not match the suite contract.")
+    expected_fixture_fields = {
+        "split": "dev",
+        "sourceSuite": contract.get("sourceSuite"),
+        "sourceSuiteCaseSha256": contract.get("sourceSuiteCaseSha256"),
+        "sourceSuiteContractSha256": contract.get("sourceSuiteContractSha256"),
+        "dataVersion": suite["dataVersion"],
+        "datasetSha256": suite["datasetSha256"],
+        "retrievalMode": "global-hybrid",
+        "globalRetrievalEnabled": True,
+        "candidateLimit": int(contract.get("candidateLimit") or 0),
+        "experimentFingerprint": contract.get("experimentFingerprint"),
+        "configFingerprint": contract.get("captureConfigFingerprint"),
+        "indexManifestFingerprint": contract.get("captureIndexManifestFingerprint"),
+        "scopedSourceSha256": contract.get("captureScopedSourceSha256"),
+        "runtimeEnvironment": contract.get("captureRuntimeEnvironment"),
+        "qdrantServer": contract.get("captureQdrantServer"),
+        "caseCount": int(suite["caseCount"]),
+    }
+    for field, expected in expected_fixture_fields.items():
+        if fixture.get(field) != expected:
+            raise ValueError(f"M2 candidate-universe {field} differs from the suite contract.")
+
+    universe_by_case = {str(item["id"]): item for item in fixture.get("cases") or []}
+    if list(universe_by_case) != [str(case["id"]) for case in suite["cases"]]:
+        raise ValueError("M2 candidate-universe case order/IDs differ from the suite.")
+    structured_pairs = 0
+    bounded_pairs = 0
+    qdrant_only_pairs = 0
+    relevant_miss_pairs = 0
+    threshold = int(suite["binaryRelevanceThreshold"])
+    for case in suite["cases"]:
+        metadata = case.get("metadata") or {}
+        structured = list(metadata.get("structuredCandidateExternalIds") or [])
+        treatment = list(metadata.get("treatmentReturnedExternalIds") or [])
+        fixture_treatment = list(universe_by_case[str(case["id"])]["returnedExternalIds"])
+        if treatment != fixture_treatment:
+            raise ValueError(f"M2 case {case['id']} differs from its captured treatment output.")
+        if len(structured) != len(set(structured)) or len(treatment) != len(set(treatment)):
+            raise ValueError(f"M2 case {case['id']} has duplicate candidate-universe IDs.")
+        judged = {str(item["externalId"]): item for item in case["judgments"]}
+        expected_qdrant_only = sorted(set(treatment) - set(structured))
+        if not set(structured) | set(treatment) <= judged.keys():
+            raise ValueError(f"M2 case {case['id']} does not label its bounded candidate union.")
+        if metadata.get("qdrantOnlyJudgmentExternalIds") != expected_qdrant_only:
+            raise ValueError(f"M2 case {case['id']} has inconsistent Qdrant-only judgments.")
+        if int(metadata.get("boundedJudgmentCount") or 0) != len(judged):
+            raise ValueError(f"M2 case {case['id']} has an invalid bounded judgment count.")
+        if len(judged) > len(structured) + int(contract["candidateLimit"]):
+            raise ValueError(f"M2 case {case['id']} exceeds the bounded-union contract.")
+        for external_id, judgment in judged.items():
+            expected_origin = (
+                "structured-candidate-pool"
+                if external_id in set(structured)
+                else "observed-global-treatment-output"
+            )
+            if judgment.get("judgmentOrigin") != expected_origin:
+                raise ValueError(f"M2 case {case['id']} has an invalid judgment origin.")
+            relevant_miss_pairs += (
+                external_id not in set(structured) and int(judgment["relevance"]) >= threshold
+            )
+        structured_pairs += len(structured)
+        bounded_pairs += len(judged)
+        qdrant_only_pairs += len(expected_qdrant_only)
+
+    expected_counts = {
+        "structuredJudgmentPairs": structured_pairs,
+        "boundedJudgmentPairs": bounded_pairs,
+        "observedTreatmentPairs": int(fixture["candidatePairCount"]),
+        "qdrantOnlyJudgmentPairs": qdrant_only_pairs,
+        "binaryRelevantStructuredMissPairs": relevant_miss_pairs,
+    }
+    for field, expected in expected_counts.items():
+        if int(contract.get(field) or 0) != expected:
+            raise ValueError(f"M2 judgment contract {field} is inconsistent.")
+    if qdrant_only_pairs < 1 or relevant_miss_pairs < 1:
+        raise ValueError("M2 suite does not exercise a relevant structured-miss rescue.")
+    if int(contract.get("fullCartesianPairsAvoided") or 0) <= 0:
+        raise ValueError("M2 suite must document avoidance of the full corpus Cartesian product.")
 
 
 def _load_baseline(path: Path | None, *, split: str) -> dict | None:
@@ -2052,9 +2753,7 @@ def _validate_baseline_report(report: dict) -> None:
     case_count = int(suite.get("caseCount") or 0)
     evaluated = int(run.get("evaluatedCases") or 0)
     if bool(run.get("partial")) or not case_count or evaluated != case_count:
-        raise ValueError(
-            "Baseline report must be a complete run with evaluatedCases equal to caseCount."
-        )
+        raise ValueError("Baseline report must be a complete run with evaluatedCases equal to caseCount.")
     if not run.get("latencyProfileFingerprint"):
         raise ValueError("Baseline report is missing latencyProfileFingerprint.")
     quality_gate = report.get("qualityGate")
@@ -2101,11 +2800,7 @@ def _vector_dimensions(info: Any) -> int:
 def _index_schema_snapshot(info: Any) -> dict[str, Any]:
     params = info.config.params
     dense = params.vectors.get("dense") if isinstance(params.vectors, Mapping) else None
-    sparse = (
-        params.sparse_vectors.get("lexical")
-        if isinstance(params.sparse_vectors, Mapping)
-        else None
-    )
+    sparse = params.sparse_vectors.get("lexical") if isinstance(params.sparse_vectors, Mapping) else None
     snapshot = {
         "dense": {
             "name": "dense",
@@ -2120,9 +2815,7 @@ def _index_schema_snapshot(info: Any) -> dict[str, Any]:
     payload_schema = getattr(info, "payload_schema", None)
     if isinstance(payload_schema, Mapping) and payload_schema:
         snapshot["payloadIndexes"] = {
-            field: _enum_value(
-                getattr(payload_schema.get(field), "data_type", payload_schema.get(field))
-            )
+            field: _enum_value(getattr(payload_schema.get(field), "data_type", payload_schema.get(field)))
             for field in sorted(REQUIRED_PAYLOAD_INDEXES)
         }
     return snapshot
@@ -2146,8 +2839,7 @@ def _expected_index_schema(
     }
     if include_payload_indexes:
         expected["payloadIndexes"] = {
-            field: _enum_value(schema)
-            for field, schema in sorted(REQUIRED_PAYLOAD_INDEXES.items())
+            field: _enum_value(schema) for field, schema in sorted(REQUIRED_PAYLOAD_INDEXES.items())
         }
     return expected
 
@@ -2166,9 +2858,7 @@ def _require_expected_index_schema(
         include_payload_indexes=require_payload_indexes,
     )
     if actual != expected:
-        raise ValueError(
-            f"Existing collection schema {actual!r} does not match expected {expected!r}."
-        )
+        raise ValueError(f"Existing collection schema {actual!r} does not match expected {expected!r}.")
 
 
 def _default_index_manifest(location: str | Path, collection: str) -> Path:
@@ -2176,11 +2866,7 @@ def _default_index_manifest(location: str | Path, collection: str) -> Path:
     if value.startswith(("http://", "https://")):
         endpoint = _endpoint_fingerprint(value)[:16]
         collection_id = hashlib.sha256(collection.encode("utf-8")).hexdigest()[:12]
-        return (
-            EVAL_DIRECTORY.parents[1]
-            / ".local"
-            / f"rag-v2-remote-index-{endpoint}-{collection_id}.json"
-        )
+        return EVAL_DIRECTORY.parents[1] / ".local" / f"rag-v2-remote-index-{endpoint}-{collection_id}.json"
     if value == ":memory:":
         collection_id = hashlib.sha256(collection.encode("utf-8")).hexdigest()[:12]
         return EVAL_DIRECTORY.parents[1] / ".local" / f"rag-v2-memory-{collection_id}.json"
@@ -2251,6 +2937,23 @@ def _scoped_source_snapshot(repository: Path) -> dict[str, Any]:
     }
 
 
+def _same_scoped_source_snapshot(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> bool:
+    return before.get("sha256") == after.get("sha256") and before.get(
+        "fileSha256"
+    ) == after.get("fileSha256")
+
+
+def _runtime_environment_snapshot() -> dict[str, str]:
+    return {
+        "pythonImplementation": platform.python_implementation(),
+        "pythonVersion": platform.python_version(),
+        "qdrantClientVersion": importlib.metadata.version("qdrant-client"),
+    }
+
+
 def _file_set_fingerprint(repository: Path, relative_paths: tuple[str, ...]) -> dict[str, Any]:
     file_sha256: dict[str, str] = {}
     for relative_path in relative_paths:
@@ -2284,6 +2987,66 @@ def _latency_profile_fingerprint(config: dict) -> str:
     return _fingerprint(value)
 
 
+def _m2_experiment_fingerprint(config: dict[str, Any]) -> str:
+    """Bind every control except the single M2 feature under test."""
+
+    value = json.loads(json.dumps(config))
+    value.pop("experimentControlFingerprint", None)
+    (value.get("retrieval") or {}).pop("mode", None)
+    features = value.get("features") or {}
+    features.pop("globalRetrievalMode", None)
+    features.pop("globalRetrievalEnabled", None)
+    return _fingerprint(value)
+
+
+def _evaluation_manifest(
+    *,
+    suite: dict[str, Any],
+    resolved_config: dict[str, Any],
+    config_fingerprint: str,
+    experiment_fingerprint: str,
+    scoped_source: dict[str, Any],
+    runtime_environment: dict[str, str],
+    index_report: dict[str, Any],
+    candidate_universe: dict[str, Any] | None,
+) -> dict[str, Any]:
+    judgment_contract = suite.get("judgmentContract")
+    return {
+        "version": "rag-v2-eval-manifest-v2",
+        "suiteSchemaVersion": int(suite["schemaVersion"]),
+        "suiteContractSha256": suite["suiteContractSha256"],
+        "caseSha256": suite["caseSha256"],
+        "judgmentContractSha256": (sha256_json(judgment_contract) if judgment_contract else None),
+        "candidateUniverseFixtureSha256": (
+            candidate_universe.get("fixtureSha256")
+            if candidate_universe
+            else (judgment_contract or {}).get("candidateUniverseFixtureSha256")
+        ),
+        "configFingerprint": config_fingerprint,
+        "m2ExperimentFingerprint": experiment_fingerprint,
+        "scopedSourceSha256": scoped_source.get("sha256"),
+        "runtimeEnvironmentFingerprint": _fingerprint(runtime_environment),
+        "indexManifestFingerprint": index_report.get("manifestFingerprint"),
+        "qdrantServerFingerprint": _fingerprint(index_report.get("qdrantServer") or {}),
+        "embeddingIdentity": (resolved_config.get("embedding") or {}).get("identity"),
+        "retrievalMode": (resolved_config.get("retrieval") or {}).get("mode"),
+        "globalRetrievalEnabled": (resolved_config.get("features") or {}).get("globalRetrievalEnabled"),
+    }
+
+
+def _candidate_capture_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "capture": {
+            "caseCount": len(results),
+            "returnedCandidatePairs": sum(item["returnedCount"] for item in results),
+            "unjudgedCandidatePairs": sum(int(item["metrics"]["unjudgedReturnedCount"]) for item in results),
+            "qdrantOnlyMerchantObservations": sum(
+                int((item.get("retrievalTrace") or {}).get("qdrantOnlyMerchants") or 0) for item in results
+            ),
+        }
+    }
+
+
 def _fingerprint(value: Any) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
@@ -2302,6 +3065,16 @@ def _path(value: dict, path: str) -> Any:
 def _write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _write_json_exclusive(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+    except FileExistsError:
+        raise FileExistsError(f"Refusing to overwrite frozen artifact: {path}") from None
 
 
 def _write_json_atomic(path: Path, value: dict) -> None:
@@ -2359,7 +3132,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider-smoke", action="store_true")
     parser.add_argument("--qdrant-ready-timeout-seconds", type=float, default=1_800.0)
     parser.add_argument("--query-rewrite-provider", default="disabled")
-    parser.add_argument("--global-retrieval-mode", default="candidate-filtered")
+    parser.add_argument(
+        "--global-retrieval-mode",
+        choices=("candidate-filtered", "global-hybrid"),
+        default="candidate-filtered",
+    )
+    parser.add_argument(
+        "--global-retrieval-enabled",
+        action="store_true",
+        help="Explicit treatment flag; required together with --global-retrieval-mode global-hybrid.",
+    )
+    parser.add_argument("--global-document-limit", type=int, default=200)
+    parser.add_argument("--global-merchant-limit", type=int, default=60)
+    parser.add_argument("--global-documents-per-merchant", type=int, default=3)
+    parser.add_argument("--global-hydration-concurrency", type=int, default=8)
+    parser.add_argument("--global-branch-timeout-seconds", type=float, default=15.0)
+    parser.add_argument("--fusion-rrf-k", type=int, default=60)
+    parser.add_argument("--brand-cap", type=int, default=2)
     parser.add_argument("--reranker-provider", default="heuristic-multi-signal")
     parser.add_argument("--discovery-pool-size", type=int, default=100)
     parser.add_argument("--candidate-limit", type=int, default=10)
@@ -2370,6 +3159,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-policy-holdout", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--summary-output", type=Path)
+    parser.add_argument("--candidate-universe-output", type=Path)
     parser.add_argument("--no-fail", action="store_true")
     return parser
 

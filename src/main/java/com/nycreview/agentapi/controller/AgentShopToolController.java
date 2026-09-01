@@ -1,6 +1,7 @@
 package com.nycreview.agentapi.controller;
 
 import com.nycreview.agentapi.dto.AgentShopCandidate;
+import com.nycreview.agentapi.dto.AgentShopDetailsRequest;
 import com.nycreview.agentapi.dto.AgentShopEvidence;
 import com.nycreview.agentapi.dto.AgentShopSearchRequest;
 import com.nycreview.agentapi.dto.AgentToolResponse;
@@ -35,6 +36,19 @@ public class AgentShopToolController {
         String traceId = UUID.randomUUID().toString();
         AgentShopToolService.SearchResult result = toolService.search(request);
         return AgentToolResponse.ok("search_shops", traceId, result.candidates(), result.warnings());
+    }
+
+    @PostMapping("/details")
+    public AgentToolResponse<List<AgentShopCandidate>> details(
+            @RequestBody(required = false) AgentShopDetailsRequest request
+    ) {
+        String traceId = UUID.randomUUID().toString();
+        List<Long> shopIds = request == null ? List.of() : request.shopIds();
+        return AgentToolResponse.ok(
+                "get_shop_details",
+                traceId,
+                toolService.details(shopIds)
+        );
     }
 
     @GetMapping("/{shopId}/evidence")

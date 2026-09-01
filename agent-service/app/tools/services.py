@@ -29,6 +29,8 @@ class ShopToolService(Protocol):
 
     async def detail(self, shop_id: int) -> ShopCandidate | None: ...
 
+    async def details(self, shop_ids: list[int]) -> list[ShopCandidate]: ...
+
 
 class RagService(Protocol):
     async def rank_candidates(
@@ -125,6 +127,11 @@ class MockShopToolService:
             None,
         )
 
+    async def details(self, shop_ids: list[int]) -> list[ShopCandidate]:
+        candidates = await self.search(UserConstraints(query="shop details"))
+        by_id = {candidate.shop_id: candidate for candidate in candidates.candidates}
+        return [by_id[shop_id] for shop_id in dict.fromkeys(shop_ids) if shop_id in by_id]
+
 
 class GeneratedNycShopToolService:
     """Read-only business-tool adapter over a generated NYC dataset."""
@@ -144,6 +151,7 @@ class GeneratedNycShopToolService:
         if not isinstance(shops, list):
             raise ValueError("Generated shops.json must contain a list.")
         self._shops: list[dict] = shops
+        self._shops_by_id = {int(shop["id"]): shop for shop in shops}
         self._max_candidates = max_candidates
         hours_path = data_directory / "shop_business_hours.json"
         subcategories_path = data_directory / "shop_subcategories.json"
@@ -259,10 +267,20 @@ class GeneratedNycShopToolService:
         )
 
     async def detail(self, shop_id: int) -> ShopCandidate | None:
-        shop = next((item for item in self._shops if item["id"] == shop_id), None)
+        shop = self._shops_by_id.get(shop_id)
         if shop is None:
             return None
         return self._to_candidate(shop, self.CATEGORY_NAMES[shop["typeId"]], None)
+
+    async def details(self, shop_ids: list[int]) -> list[ShopCandidate]:
+        candidates: list[ShopCandidate] = []
+        for shop_id in dict.fromkeys(shop_ids):
+            shop = self._shops_by_id.get(shop_id)
+            if shop is not None:
+                candidates.append(
+                    self._to_candidate(shop, self.CATEGORY_NAMES[shop["typeId"]], None)
+                )
+        return candidates
 
     def _to_candidate(
         self,
@@ -437,6 +455,32 @@ class HttpShopToolService:
         response.raise_for_status()
         item = response.json().get("data")
         return self._to_candidate(item) if isinstance(item, dict) else None
+
+    async def details(self, shop_ids: list[int]) -> list[ShopCandidate]:
+        unique_ids = list(dict.fromkeys(shop_ids))
+        if not unique_ids:
+            return []
+        if len(unique_ids) > 100:
+            raise ValueError("shop_ids cannot contain more than 100 unique shop IDs.")
+        if any(shop_id <= 0 for shop_id in unique_ids):
+            raise ValueError("shop_ids must contain only positive integers.")
+
+        authorization = request_authorization.get() or self._auth_token
+        headers = {"authorization": authorization} if authorization else {}
+        timeout = httpx.Timeout(15.0, connect=5.0, pool=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{self._base_url}/internal/agent/tools/shops/details",
+                headers=headers,
+                json={"shopIds": unique_ids},
+            )
+        response.raise_for_status()
+        rows = response.json().get("data")
+        if not isinstance(rows, list):
+            raise RuntimeError("Shop details tool returned an invalid data payload.")
+        candidates = [self._to_candidate(item) for item in rows if isinstance(item, dict)]
+        by_id = {candidate.shop_id: candidate for candidate in candidates}
+        return [by_id[shop_id] for shop_id in unique_ids if shop_id in by_id]
 
     async def _post_search(self, payload: dict, headers: dict[str, str]) -> dict:
         async with httpx.AsyncClient(timeout=None) as client:

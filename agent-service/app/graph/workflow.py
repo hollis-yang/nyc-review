@@ -16,6 +16,7 @@ from app.agents.nodes import (
     VerifierAgent,
 )
 from app.graph.state import AgentState
+from app.rag.candidate_discovery import CandidateDiscovery, LegacyCandidateDiscovery
 from app.tools.services import ItineraryService, RagService, ShopToolService
 
 
@@ -25,6 +26,10 @@ class WorkflowServices:
     rag: RagService
     itinerary: ItineraryService
     final_candidate_limit: int = 5
+    candidate_discovery: CandidateDiscovery | None = None
+
+    def resolved_candidate_discovery(self) -> CandidateDiscovery:
+        return self.candidate_discovery or LegacyCandidateDiscovery(self.shops, self.rag)
 
 
 def traced_node(name: str, agent: str, operation):
@@ -56,7 +61,10 @@ def traced_node(name: str, agent: str, operation):
 
 def build_multi_agent_graph(services: WorkflowServices):
     supervisor = SupervisorAgent()
-    discovery = DiscoveryAgent(services.shops, services.rag, services.final_candidate_limit)
+    discovery = DiscoveryAgent(
+        services.resolved_candidate_discovery(),
+        services.final_candidate_limit,
+    )
     evidence = EvidenceAgent(services.rag)
     itinerary = ItineraryAgent(services.itinerary)
     verifier = VerifierAgent()
@@ -86,7 +94,7 @@ def build_multi_agent_graph(services: WorkflowServices):
 def build_single_agent_graph(services: WorkflowServices):
     supervisor = SupervisorAgent()
     single = SingleAgent(
-        services.shops,
+        services.resolved_candidate_discovery(),
         services.rag,
         services.itinerary,
         services.final_candidate_limit,

@@ -30,8 +30,21 @@ from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import QdrantRagService
 from app.tools.services import GeneratedNycShopToolService
 from evals.rag_v2.build_cases import FAMILY_QUOTAS, build_artifacts
+from evals.rag_v2.build_m2_cases import (
+    M2_CANDIDATE_UNIVERSE_FILENAME,
+    build_m2_dev_suite,
+    capture_candidate_universe,
+)
+from evals.rag_v2.compare_m2 import compare as compare_m2_reports
 from evals.rag_v2.contract import fixture_contract_sha256, suite_contract_sha256
-from evals.rag_v2.metrics import hard_constraint_violations, integrity_metrics, ranking_metrics
+from evals.rag_v2.metrics import (
+    hard_constraint_violations,
+    integrity_metrics,
+    ranking_metrics,
+    rounded,
+    structured_miss_metrics,
+    summarize_results,
+)
 from evals.rag_v2.run_eval import (
     TimedEmbeddingService,
     _default_index_manifest,
@@ -1682,6 +1695,758 @@ def test_latency_profile_fingerprint_binds_embedding_and_feature_configuration()
     second["embedding"]["model"] = "different-model"
 
     assert _latency_profile_fingerprint(first) != _latency_profile_fingerprint(second)
+
+
+def test_m2_global_mode_requires_an_explicit_matching_flag_and_seals_m1_test():
+    missing_flag = build_parser().parse_args(["--global-retrieval-mode", "global-hybrid"])
+    with pytest.raises(ValueError, match="explicit --global-retrieval-enabled"):
+        _validate_feature_configuration(missing_flag)
+
+    conflicting_flag = build_parser().parse_args(["--global-retrieval-enabled"])
+    with pytest.raises(ValueError, match="must agree"):
+        _validate_feature_configuration(conflicting_flag)
+
+    treatment = build_parser().parse_args(
+        [
+            "--global-retrieval-mode",
+            "global-hybrid",
+            "--global-retrieval-enabled",
+        ]
+    )
+    _validate_feature_configuration(treatment)
+    config = _resolved_config(treatment, {"retrievalVersion": "p12-rag-v1"})
+    assert config["features"]["globalRetrievalEnabled"] is True
+    assert config["retrieval"]["mode"] == "global-hybrid"
+
+    holdout = build_parser().parse_args(
+        [
+            "--split",
+            "test",
+            "--global-retrieval-mode",
+            "global-hybrid",
+            "--global-retrieval-enabled",
+        ]
+    )
+    with pytest.raises(ValueError, match="consumed M1 policy holdout"):
+        _validate_feature_configuration(holdout)
+
+
+def test_m2_eval_source_binding_covers_behavior_but_not_index_reuse_sources():
+    required_behavior = {
+        "agent-service/pyproject.toml",
+        "agent-service/uv.lock",
+        "agent-service/app/domain/business_hours.py",
+        "agent-service/app/rag/candidate_discovery.py",
+        "agent-service/app/rag/candidate_fusion.py",
+        "agent-service/app/rag/global_retrieval.py",
+        "agent-service/app/rag/merchant_aggregation.py",
+    }
+
+    assert required_behavior <= set(rag_v2_runner.EVAL_SOURCE_PATHS)
+    assert required_behavior.isdisjoint(rag_v2_runner.INDEX_BUILD_SOURCE_PATHS)
+
+
+def test_reused_qdrant_server_requires_the_index_major_minor(tmp_path):
+    manifest = tmp_path / "index.json"
+    manifest.write_text(
+        json.dumps({"qdrantServer": {"mode": "server", "version": "1.19.2"}}),
+        encoding="utf-8",
+    )
+
+    rag_v2_runner._require_reused_server_version(
+        "http://127.0.0.1:6333",
+        manifest,
+        current_server={"mode": "server", "version": "1.19.9"},
+    )
+    with pytest.raises(ValueError, match="major/minor differs"):
+        rag_v2_runner._require_reused_server_version(
+            "http://127.0.0.1:6333",
+            manifest,
+            current_server={"mode": "server", "version": "1.20.0"},
+        )
+
+
+def test_m2_source_snapshot_comparison_binds_digest_and_each_file():
+    before = {"sha256": "a" * 64, "fileSha256": {"source.py": "b" * 64}}
+
+    assert rag_v2_runner._same_scoped_source_snapshot(before, dict(before)) is True
+    assert (
+        rag_v2_runner._same_scoped_source_snapshot(
+            before,
+            {"sha256": "a" * 64, "fileSha256": {"source.py": "c" * 64}},
+        )
+        is False
+    )
+
+
+def test_m2_capture_outputs_must_be_distinct_and_new(tmp_path):
+    shared = tmp_path / "capture.json"
+    args = build_parser().parse_args(
+        [
+            "--reuse-index",
+            "--global-retrieval-mode",
+            "global-hybrid",
+            "--global-retrieval-enabled",
+            "--candidate-universe-output",
+            str(shared),
+            "--output",
+            str(shared),
+        ]
+    )
+    suite = _read_suite("dev")
+
+    with pytest.raises(ValueError, match="paths must be distinct"):
+        rag_v2_runner._validate_m2_run_configuration(
+            args,
+            suite=suite,
+            resolved_config=_resolved_config(args, suite),
+            repository=REPOSITORY,
+        )
+
+
+def test_m2_formal_outputs_are_required_distinct_and_new(tmp_path):
+    suite = {"schemaVersion": 3, "split": "dev"}
+    missing_output = build_parser().parse_args(["--reuse-index"])
+    with pytest.raises(ValueError, match="explicit --output"):
+        rag_v2_runner._validate_m2_run_configuration(
+            missing_output,
+            suite=suite,
+            resolved_config={},
+            repository=REPOSITORY,
+        )
+
+    shared = tmp_path / "shared.json"
+    overlapping = build_parser().parse_args(
+        [
+            "--reuse-index",
+            "--output",
+            str(shared),
+            "--summary-output",
+            str(shared),
+        ]
+    )
+    with pytest.raises(ValueError, match="paths must be distinct"):
+        rag_v2_runner._validate_m2_run_configuration(
+            overlapping,
+            suite=suite,
+            resolved_config={},
+            repository=REPOSITORY,
+        )
+
+    shared.write_text("{}\n", encoding="utf-8")
+    existing = build_parser().parse_args(
+        ["--reuse-index", "--output", str(shared)]
+    )
+    with pytest.raises(FileExistsError, match="frozen M2 report"):
+        rag_v2_runner._validate_m2_run_configuration(
+            existing,
+            suite=suite,
+            resolved_config={},
+            repository=REPOSITORY,
+        )
+
+
+def test_structured_miss_metric_uses_only_frozen_outside_pool_judgments():
+    metrics = structured_miss_metrics(
+        ["global-relevant", "structured-relevant", "unjudged"],
+        [
+            {"externalId": "structured-relevant", "relevance": 3},
+            {"externalId": "global-relevant", "relevance": 2},
+            {"externalId": "global-irrelevant", "relevance": 0},
+        ],
+        {"structured-relevant"},
+        relevance_threshold=2,
+    )
+
+    assert metrics == {
+        "eligible": True,
+        "eligibleRelevantCount": 1,
+        "recoveredAt10Count": 1,
+        "recallAt10": 1.0,
+        "caseRecovered": True,
+    }
+
+
+def test_m2_capture_safety_rejects_partial_hydration_and_invalid_points():
+    issues = rag_v2_runner._m2_retrieval_safety_issues(
+        [
+            {
+                "retrievalTrace": {
+                    "hydrationFailed": 1,
+                    "identityMismatches": 2,
+                    "globalDenseRejectedPoints": 3,
+                    "globalSparseRejectedPoints": 4,
+                }
+            }
+        ]
+    )
+
+    assert issues == {
+        "hydrationFailed": 1,
+        "identityMismatches": 2,
+        "globalDenseRejectedPoints": 3,
+        "globalSparseRejectedPoints": 4,
+    }
+    assert sum(issues.values()) == 10
+
+
+async def test_m2_eval_fails_closed_instead_of_scoring_unjudged_global_merchants():
+    candidate = _candidate(2, external_id="global:2", tags=["quiet"])
+
+    class Discovery:
+        async def discover(self, _constraints, *, limit):
+            assert limit == 10
+            return CandidateSet(
+                candidates=[candidate],
+                retrieval_metadata={
+                    "globalRetrievalEnabled": True,
+                    "candidateDiscoveryMode": "global-hybrid",
+                    "globalDenseLatencyMs": 1.25,
+                    "globalSparseLatencyMs": 0.75,
+                    "candidateDiscoveryLatencyMs": {
+                        "structured": 1.0,
+                        "global": 2.0,
+                        "aggregation": 0.5,
+                        "hydration": 0.25,
+                        "fusion": 0.1,
+                    },
+                },
+            )
+
+    class Rag:
+        async def retrieve(self, _constraints, _candidates):
+            return EvidencePack(evidence=[])
+
+    runtime = SimpleNamespace(
+        candidate_discovery=Discovery(),
+        rag_service=Rag(),
+        embedding_service=TimedEmbeddingService(DeterministicHashEmbeddingService(64)),
+    )
+    case = _minimal_eval_case(
+        judgments=[{"externalId": "structured:1", "relevance": 3}],
+        structured_ids=[],
+    )
+    suite = _minimal_eval_suite(schema_version=3)
+
+    with pytest.raises(ValueError, match="must never be assigned relevance=0"):
+        await evaluate_case(runtime, case, suite, candidate_limit=10)
+
+    capture_suite = _minimal_eval_suite(schema_version=2)
+    captured = await evaluate_case(
+        runtime,
+        case,
+        capture_suite,
+        candidate_limit=10,
+        capture_only=True,
+    )
+    assert captured["orderedCandidates"][0]["relevance"] is None
+    assert captured["metrics"]["status"] == "not-scored-candidate-universe-capture"
+    assert captured["candidatePoolSize"] == 0
+    assert captured["latencyMs"]["globalRetrieval"] == 2.0
+    assert captured["latencyMs"]["globalDenseRetrieval"] == 1.25
+    assert captured["latencyMs"]["globalSparseRetrieval"] == 0.75
+    assert captured["latencyMs"]["merchantAggregation"] == 0.5
+
+
+def test_m2_bounded_builder_labels_observed_qdrant_only_merchants(tmp_path):
+    data_directory = tmp_path / "data"
+    data_directory.mkdir()
+    source_suite = _minimal_source_suite()
+    shops = [
+        _raw_shop(1, "structured:1", ["quiet"]),
+        _raw_shop(2, "global:2", ["quiet", "vegan_options"]),
+        _raw_shop(3, "unused:3", []),
+    ]
+    fixture_files = {
+        "shops.json": shops,
+        "shop_business_hours.json": [],
+        "shop_reviews.json": [],
+        "blogs.json": [],
+        "blog_comments.json": [],
+        "import_manifest.json": {
+            "dataVersion": source_suite["dataVersion"],
+            "datasetSha256": source_suite["datasetSha256"],
+        },
+    }
+    for filename, value in fixture_files.items():
+        (data_directory / filename).write_text(json.dumps(value), encoding="utf-8")
+
+    resolved = _resolved_config_fixture()
+    resolved["retrieval"]["mode"] = "global-hybrid"
+    resolved["features"].update({"globalRetrievalMode": "global-hybrid", "globalRetrievalEnabled": True})
+    universe = capture_candidate_universe(
+        source_suite=source_suite,
+        results=[
+            {
+                "id": "dev-en-001",
+                "orderedCandidates": [{"externalId": "global:2"}],
+            }
+        ],
+        resolved_config=resolved,
+        config_fingerprint="a" * 64,
+        experiment_fingerprint="b" * 64,
+        index_manifest_fingerprint="1" * 64,
+        scoped_source_sha256="c" * 64,
+        runtime_environment=rag_v2_runner._runtime_environment_snapshot(),
+        qdrant_server={"mode": "server", "version": "1.19.0"},
+        candidate_limit=10,
+        trusted_source_suite=source_suite,
+    )
+    suite = build_m2_dev_suite(
+        data_directory,
+        source_suite,
+        universe,
+        trusted_source_suite=source_suite,
+    )
+    judgments = {item["externalId"]: item for item in suite["cases"][0]["judgments"]}
+
+    assert set(judgments) == {"structured:1", "global:2"}
+    assert judgments["global:2"]["relevance"] == 3
+    assert judgments["global:2"]["judgmentOrigin"] == "observed-global-treatment-output"
+    assert suite["judgmentContract"]["boundedJudgmentPairs"] == 2
+    assert suite["judgmentContract"]["fullCartesianPairsAvoided"] == 1
+    assert suite["judgmentContract"]["m1PolicyHoldoutUsed"] is False
+
+    (tmp_path / M2_CANDIDATE_UNIVERSE_FILENAME).write_text(json.dumps(universe), encoding="utf-8")
+    rag_v2_runner._validate_m2_judgment_contract(
+        tmp_path,
+        suite,
+        trusted_source_suite=source_suite,
+    )
+
+
+def test_m2_capture_rejects_a_schema2_dev_suite_with_uncommitted_identity():
+    source_suite = _minimal_source_suite()
+    resolved = _resolved_config_fixture()
+    resolved["retrieval"]["mode"] = "global-hybrid"
+    resolved["features"].update(
+        {"globalRetrievalMode": "global-hybrid", "globalRetrievalEnabled": True}
+    )
+
+    with pytest.raises(ValueError, match="committed frozen M1 Dev suite identity"):
+        capture_candidate_universe(
+            source_suite=source_suite,
+            results=[{"id": "dev-en-001", "orderedCandidates": []}],
+            resolved_config=resolved,
+            config_fingerprint="a" * 64,
+            experiment_fingerprint="b" * 64,
+            index_manifest_fingerprint="1" * 64,
+            scoped_source_sha256="c" * 64,
+            runtime_environment=rag_v2_runner._runtime_environment_snapshot(),
+            qdrant_server={"mode": "server", "version": "1.19.0"},
+            candidate_limit=10,
+        )
+
+
+def test_m2_compare_enforces_paired_quality_performance_and_rescue_gates(tmp_path):
+    control_result = _m2_report_result(recall=0.5, ndcg=0.5, recovered=0, total_ms=100.0)
+    treatment_result = _m2_report_result(
+        recall=0.6,
+        ndcg=0.51,
+        recovered=1,
+        total_ms=110.0,
+    )
+    control = _m2_report(control_result, mode="candidate-filtered", enabled=False)
+    treatment = _m2_report(treatment_result, mode="global-hybrid", enabled=True)
+    control_path = tmp_path / "control.json"
+    treatment_path = tmp_path / "treatment.json"
+    control_path.write_text(json.dumps(control), encoding="utf-8")
+    treatment_path.write_text(json.dumps(treatment), encoding="utf-8")
+
+    comparison = compare_m2_reports(control_path, treatment_path)
+
+    assert comparison["passed"] is True
+    assert comparison["deltas"]["overall.recallAt10"] == pytest.approx(0.1)
+    assert comparison["treatment"]["summary"]["structuredMissRescue"]["recoveredAt10Count"] == 1
+
+
+def test_m2_compare_recomputes_report_fingerprints(tmp_path):
+    control = _m2_report(
+        _m2_report_result(recall=0.5, ndcg=0.5, recovered=0, total_ms=100.0),
+        mode="candidate-filtered",
+        enabled=False,
+    )
+    treatment = _m2_report(
+        _m2_report_result(recall=0.6, ndcg=0.51, recovered=1, total_ms=110.0),
+        mode="global-hybrid",
+        enabled=True,
+    )
+    treatment["run"]["configFingerprint"] = "0" * 64
+    control_path = tmp_path / "control.json"
+    treatment_path = tmp_path / "treatment.json"
+    control_path.write_text(json.dumps(control), encoding="utf-8")
+    treatment_path.write_text(json.dumps(treatment), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="config fingerprint"):
+        compare_m2_reports(control_path, treatment_path)
+
+
+async def test_runtime_closes_resources_when_candidate_discovery_construction_fails(
+    monkeypatch,
+):
+    args = build_parser().parse_args(["--reuse-index", "--qdrant-location", ":memory:"])
+    suite = {
+        "schemaVersion": 2,
+        "dataVersion": "v1",
+        "datasetSha256": "d" * 64,
+        "retrievalVersion": "p12-rag-v1",
+        "indexedDocuments": 0,
+    }
+    resolved_config = _resolved_config(args, suite)
+
+    class Embedding:
+        metadata = EmbeddingMetadata(
+            provider="hash",
+            model="deterministic-token-sha256",
+            dimensions=64,
+            version="hash-v1",
+            query_mode="symmetric",
+            document_mode="symmetric",
+        )
+
+        def __init__(self):
+            self.closed = False
+
+        def usage_snapshot(self):
+            return EmbeddingUsage()
+
+        def clear_query_cache(self):
+            return None
+
+        async def embed_query(self, _text):
+            return [0.0] * 64
+
+        async def embed_documents(self, texts):
+            return [[0.0] * 64 for _text in texts]
+
+        async def aclose(self):
+            self.closed = True
+
+    class Client:
+        def __init__(self):
+            self.closed = False
+
+        async def get_collection(self, _collection):
+            return object()
+
+        async def count(self, _collection, *, exact):
+            assert exact is True
+            return SimpleNamespace(count=0)
+
+        async def close(self):
+            self.closed = True
+
+    async def validate_reused(*_args, **_kwargs):
+        return {"status": "ready"}
+
+    def fail_shop_service(*_args, **_kwargs):
+        raise RuntimeError("candidate discovery constructor failed")
+
+    embedding = Embedding()
+    client = Client()
+    monkeypatch.setattr(rag_v2_runner, "_qdrant_client", lambda _location: client)
+    monkeypatch.setattr(rag_v2_runner, "_validate_reused_index", validate_reused)
+    monkeypatch.setattr(rag_v2_runner, "_vector_dimensions", lambda _info: 64)
+    monkeypatch.setattr(rag_v2_runner, "_index_schema_snapshot", lambda _info: {})
+    monkeypatch.setattr(rag_v2_runner, "_manifest_fingerprint", lambda _path: "1" * 64)
+    monkeypatch.setattr(rag_v2_runner, "_index_manifest_matches", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(rag_v2_runner, "GeneratedNycShopToolService", fail_shop_service)
+
+    with pytest.raises(RuntimeError, match="constructor failed"):
+        await rag_v2_runner._build_runtime(
+            args,
+            suite,
+            DATA_DIRECTORY,
+            resolved_config,
+            inner_embedding=embedding,
+            preflight=None,
+        )
+
+    assert embedding.closed is True
+    assert client.closed is True
+
+
+def _minimal_eval_case(*, judgments, structured_ids):
+    return {
+        "id": "dev-en-001",
+        "intentGroup": "intent-m2",
+        "split": "dev",
+        "language": "en",
+        "scenario": "semantic_alias_composition",
+        "query": "quiet vegan dining",
+        "constraints": {
+            "query": "quiet vegan dining",
+            "category": "Food & Dining",
+            "neighborhood": "Midtown",
+        },
+        "hardConstraints": {
+            "category": "Food & Dining",
+            "neighborhood": "Midtown",
+            "borough": "Manhattan",
+            "businessStatus": "OPERATIONAL",
+            "maxPricePerPersonCents": None,
+            "openAt": None,
+            "requiredTags": [],
+            "excludedTags": [],
+        },
+        "judgments": judgments,
+        "hardNegatives": [],
+        "forbiddenDocumentIds": [],
+        "metadata": {"structuredCandidateExternalIds": structured_ids},
+    }
+
+
+def _minimal_eval_suite(*, schema_version):
+    suite = {
+        "schemaVersion": schema_version,
+        "binaryRelevanceThreshold": 2,
+        "dataVersion": "v1",
+        "datasetSha256": "d" * 64,
+        "allowedCitationSourceTypes": [],
+    }
+    if schema_version == 3:
+        suite["judgmentContract"] = {"unjudgedReturnedPolicy": "fail-closed"}
+    return suite
+
+
+def _minimal_source_suite():
+    case = _minimal_eval_case(
+        judgments=[
+            {
+                "shopId": 1,
+                "externalId": "structured:1",
+                "relevance": 2,
+                "matchedPreferences": ["quiet"],
+                "hardConstraintViolations": [],
+                "hardConstraintUnknowns": [],
+                "negativeType": "partial-preference-match",
+            }
+        ],
+        structured_ids=[],
+    )
+    case.update(
+        {
+            "challengeTypes": ["semantic_alias_composition"],
+            "preferenceTags": ["quiet", "vegan_options"],
+            "metadata": {
+                "templateId": "m2-test",
+                "labelPolicyVersion": "derived-merchant-attributes-v1",
+                "judgmentCompleteness": "complete-for-structured-candidate-pool",
+                "candidatePoolSize": 1,
+                "codeSwitchTerms": [],
+            },
+        }
+    )
+    cases = [case]
+    canonical = json.dumps(cases, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    suite = {
+        "schemaVersion": 2,
+        "suite": "rag-v2-hard-negative-v1",
+        "split": "dev",
+        "retrievalVersion": "p12-rag-v1",
+        "generatorVersion": "test",
+        "labelPolicyVersion": "derived-merchant-attributes-v1",
+        "labelSource": "deterministic-derived-merchant-attributes",
+        "adjudicationStatus": "not-human-adjudicated",
+        "dataVersion": "v1",
+        "datasetSha256": "d" * 64,
+        "binaryRelevanceThreshold": 2,
+        "allowedCitationSourceTypes": [],
+        "indexedDocuments": 3,
+        "caseCount": 1,
+        "caseSha256": hashlib.sha256(canonical.encode()).hexdigest(),
+        "suiteContractSha256": "",
+        "languageCounts": {"en": 1},
+        "scenarioCounts": {"semantic_alias_composition": 1},
+        "evaluationDesign": {
+            "languageSlices": "test",
+            "holdout": "dev",
+        },
+        "splitIsolation": {},
+        "hardNegativeCoverage": {},
+        "adversarialFixtureSha256": "f" * 64,
+        "cases": cases,
+    }
+    suite["suiteContractSha256"] = suite_contract_sha256(suite)
+    return suite
+
+
+def _raw_shop(shop_id, external_id, tags):
+    return {
+        "id": shop_id,
+        "externalId": external_id,
+        "name": f"Shop {shop_id}",
+        "typeId": 1,
+        "neighborhood": "Midtown",
+        "borough": "Manhattan",
+        "businessStatus": "OPERATIONAL",
+        "avgPriceCents": 3000,
+        "tags": tags,
+    }
+
+
+def _m2_report_result(*, recall, ndcg, recovered, total_ms):
+    quality = {
+        "recallAt5": recall,
+        "recallAt10": recall,
+        "precisionAt5": 0.4,
+        "ndcgAt5": ndcg,
+        "ndcgAt10": ndcg,
+        "mrrAt10": 1.0,
+        "unjudgedReturnedCount": 0,
+        "unjudgedReturnedRate": 0.0,
+    }
+    integrity = {
+        "hardConstraintSatisfaction": 1.0,
+        "hardConstraintViolationCount": 0,
+        "hardConstraintUnknownCount": 0,
+        "evidenceCoverage": 1.0,
+        "duplicateMerchantCount": 0,
+        "duplicateMerchantRate": 0.0,
+        "duplicateBrandCount": 0,
+        "duplicateBrandRate": 0.0,
+        "excessiveBrandCount": 0,
+        "excessiveBrandRate": 0.0,
+        "hardNegativeReturnCount": 0,
+        "hardNegativeReturnRate": 0.0,
+        "citationCount": 1,
+        "citationOwnershipMismatchCount": 0,
+        "citationExternalIdMismatchCount": 0,
+        "citationSourceMismatchCount": 0,
+        "citationSourceMismatchRate": 0.0,
+        "securityLeakageCount": 0,
+        "versionMismatchCount": 0,
+        "versionMismatchRate": 0.0,
+        "emptyResult": False,
+    }
+    return {
+        "id": "dev-zh-001",
+        "language": "zh",
+        "scenario": "semantic_alias_composition",
+        "metrics": quality,
+        "integrity": integrity,
+        "structuredMissRescue": {
+            "eligible": True,
+            "eligibleRelevantCount": 1,
+            "recoveredAt10Count": recovered,
+            "recallAt10": float(recovered),
+            "caseRecovered": bool(recovered),
+        },
+        "latencyMs": {"total": total_ms},
+        "requests": {
+            "embeddingRequests": 1,
+            "queryEmbeddingCalls": 1,
+            "documentEmbeddingCalls": 0,
+            "embeddedTexts": 1,
+            "providerUsage": {
+                "network_requests": 1,
+                "total_tokens": 10,
+                "retry_count": 0,
+                "failure_count": 0,
+                "query_cache_hits": 0,
+            },
+            "rewriteRequests": 0,
+            "rerankerRequests": 0,
+        },
+        "orderedCandidates": [{"externalId": "global:2", "judged": True, "relevance": 3}],
+    }
+
+
+def _m2_report(result, *, mode, enabled):
+    summary = rounded(summarize_results([result]))
+    resolved_config = {
+        "retrieval": {"mode": mode, "candidateLimit": 10},
+        "embedding": {"identity": "qwen:test:1024:v1:plain:plain"},
+        "qdrant": {"collection": "m2-test", "reuseIndex": True},
+        "features": {
+            "globalRetrievalMode": mode,
+            "globalRetrievalEnabled": enabled,
+            "queryRewriteProvider": "disabled",
+            "rerankerProvider": "heuristic-multi-signal",
+        },
+        "eval": {"split": "dev", "concurrency": 1},
+    }
+    config_fingerprint = rag_v2_runner._fingerprint(resolved_config)
+    experiment_fingerprint = rag_v2_runner._m2_experiment_fingerprint(resolved_config)
+    source_files = {"agent-service/app/rag/candidate_discovery.py": "9" * 64}
+    source_sha256 = rag_v2_runner._fingerprint(source_files)
+    runtime_environment = rag_v2_runner._runtime_environment_snapshot()
+    qdrant_server = {
+        "mode": "server",
+        "version": "1.19.0",
+        "commit": "test",
+        "metadataAvailable": True,
+    }
+    judgment_contract = {
+        "candidateUniverseFixtureSha256": "7" * 64,
+        "captureRuntimeEnvironment": runtime_environment,
+        "captureQdrantServer": qdrant_server,
+    }
+    judgment_sha256 = rag_v2_runner._fingerprint(judgment_contract)
+    index_fingerprint = "1" * 64
+    return {
+        "schemaVersion": 3,
+        "suite": {
+            "schemaVersion": 3,
+            "suite": "rag-v2-m2-global-retrieval-dev-v1",
+            "split": "dev",
+            "caseCount": 1,
+            "caseSha256": "a" * 64,
+            "suiteContractSha256": "b" * 64,
+            "judgmentContractSha256": judgment_sha256,
+            "judgmentContract": judgment_contract,
+        },
+        "run": {
+            "evaluatedCases": 1,
+            "partial": False,
+            "embeddingFallbackCount": 0,
+            "retrievalFallbackCount": 0,
+            "retrievalIdentityConflictCount": 0,
+            "retrievalSafetyRejectionCount": 0,
+            "m2ExperimentFingerprint": experiment_fingerprint,
+            "configFingerprint": config_fingerprint,
+            "scopedSource": {
+                "sha256": source_sha256,
+                "fileSha256": source_files,
+                "fileCount": len(source_files),
+                "dirty": False,
+            },
+            "runtimeEnvironment": runtime_environment,
+            "policyArtifacts": {
+                "qualityGateSha256": rag_v2_runner._file_sha256(
+                    RAG_V2_DIRECTORY / "m2_quality_gate.json"
+                )
+            },
+            "resolvedConfig": resolved_config,
+        },
+        "index": {
+            "manifestFingerprint": index_fingerprint,
+            "lifecycleState": "complete",
+            "qdrantServer": qdrant_server,
+        },
+        "evaluationManifest": {
+            "version": "rag-v2-eval-manifest-v2",
+            "suiteSchemaVersion": 3,
+            "suiteContractSha256": "b" * 64,
+            "caseSha256": "a" * 64,
+            "judgmentContractSha256": judgment_sha256,
+            "candidateUniverseFixtureSha256": "7" * 64,
+            "configFingerprint": config_fingerprint,
+            "m2ExperimentFingerprint": experiment_fingerprint,
+            "scopedSourceSha256": source_sha256,
+            "runtimeEnvironmentFingerprint": rag_v2_runner._fingerprint(
+                runtime_environment
+            ),
+            "indexManifestFingerprint": index_fingerprint,
+            "qdrantServerFingerprint": rag_v2_runner._fingerprint(qdrant_server),
+            "embeddingIdentity": resolved_config["embedding"]["identity"],
+            "retrievalMode": mode,
+            "globalRetrievalEnabled": enabled,
+        },
+        "qualityGate": {"passed": True},
+        "summary": summary,
+        "results": [result],
+    }
 
 
 class _UsageEmbedding:

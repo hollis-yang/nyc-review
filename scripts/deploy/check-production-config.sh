@@ -260,6 +260,7 @@ legacy_rag_contract = {
     "NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY": "/data/nyc-real-p13-full",
     "NYC_REVIEW_AGENT_EMBEDDING_PROVIDER": "hash",
     "NYC_REVIEW_AGENT_EMBEDDING_DIMENSIONS": "64",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_ENABLED": "false",
     "NYC_REVIEW_AGENT_RETRIEVAL_VERSION": "p12-rag-v1",
 }
 legacy_mismatches = {

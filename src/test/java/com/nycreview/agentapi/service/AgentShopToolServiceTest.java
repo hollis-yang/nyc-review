@@ -1,5 +1,6 @@
 package com.nycreview.agentapi.service;
 
+import com.nycreview.agentapi.dto.AgentShopDetailsRequest;
 import com.nycreview.entity.ShopReview;
 import org.junit.jupiter.api.Test;
 
@@ -7,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentShopToolServiceTest {
@@ -18,6 +20,43 @@ class AgentShopToolServiceTest {
         assertEquals(100, AgentShopToolService.normalizeLimit(100));
         assertEquals(20, AgentShopToolService.normalizeEvidenceLimit(null));
         assertEquals(50, AgentShopToolService.normalizeEvidenceLimit(100));
+    }
+
+    @Test
+    void normalizesBatchDetailIdsWithoutChangingRequestOrder() {
+        List<Long> requested = new java.util.ArrayList<>();
+        requested.add(null);
+        requested.add(-1L);
+        requested.add(7L);
+        requested.add(7L);
+        requested.add(3L);
+        for (long shopId = 100; shopId < 205; shopId++) {
+            requested.add(shopId);
+        }
+
+        List<Long> normalized = AgentShopToolService.normalizeDetailIds(requested);
+
+        assertEquals(100, normalized.size());
+        assertEquals(List.of(7L, 3L, 100L), normalized.subList(0, 3));
+        assertEquals(197L, normalized.get(99));
+        assertEquals(List.of(), AgentShopToolService.normalizeDetailIds(null));
+    }
+
+    @Test
+    void rejectsInvalidBatchDetailRequestsAtTheDtoBoundary() {
+        List<Long> oversized = java.util.stream.LongStream.rangeClosed(1, 101)
+                .boxed()
+                .toList();
+
+        assertThrows(IllegalArgumentException.class, () -> new AgentShopDetailsRequest(oversized));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AgentShopDetailsRequest(java.util.Arrays.asList(1L, null))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AgentShopDetailsRequest(List.of(1L, 0L))
+        );
     }
 
     @Test

@@ -14,12 +14,18 @@ from app.config import Settings
 from app.domain.models import AgentMode
 from app.graph.workflow import WorkflowServices, build_multi_agent_graph, build_single_agent_graph
 from app.model_gateway import HeuristicModelGateway, OpenAICompatibleModelGateway
+from app.rag.candidate_discovery import (
+    CandidateDiscovery,
+    GlobalHybridCandidateDiscovery,
+    LegacyCandidateDiscovery,
+)
 from app.rag.embeddings import (
     DeterministicHashEmbeddingService,
     EmbeddingService,
     OpenAICompatibleEmbeddingService,
     QwenNativeEmbeddingService,
 )
+from app.rag.global_retrieval import GlobalRetrievalScope, QdrantGlobalDocumentRetriever
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import QdrantRagService
 from app.runs.manager import AgentRunManager
@@ -57,6 +63,7 @@ class AgentRuntime:
     rag_service: Any = None
     itinerary_service: Any = None
     embedding_service: EmbeddingService | None = None
+    candidate_discovery: CandidateDiscovery | None = None
     _closed: bool = field(default=False, init=False, repr=False)
 
     @classmethod
@@ -107,11 +114,46 @@ class AgentRuntime:
                 )
 
             itinerary = HaversineItineraryService()
+            if settings.global_retrieval_enabled:
+                if qdrant_client is None or embedding_service is None:
+                    raise RuntimeError("Global retrieval requires Qdrant and an embedding service.")
+                if not data_version or not dataset_sha256:
+                    raise ValueError(
+                        "Global retrieval requires verified data_version and dataset_sha256 values."
+                    )
+                scope = GlobalRetrievalScope(
+                    collection_name=settings.qdrant_collection,
+                    data_version=data_version,
+                    dataset_sha256=dataset_sha256,
+                    retrieval_version=settings.retrieval_version,
+                    embedding_identity=embedding_service.metadata.identity,
+                )
+                global_retriever = QdrantGlobalDocumentRetriever(
+                    qdrant_client,
+                    embedding_service,
+                    scope,
+                    document_limit=settings.global_retrieval_document_limit,
+                )
+                candidate_discovery = GlobalHybridCandidateDiscovery(
+                    shops,
+                    rag,
+                    global_retriever,
+                    document_limit=settings.global_retrieval_document_limit,
+                    hydration_limit=settings.global_retrieval_hydration_limit,
+                    hydration_concurrency=settings.global_retrieval_hydration_concurrency,
+                    branch_timeout_seconds=settings.global_retrieval_branch_timeout_seconds,
+                    documents_per_merchant=settings.global_retrieval_documents_per_merchant,
+                    rrf_k=settings.global_retrieval_rrf_k,
+                    brand_cap=settings.global_retrieval_brand_cap,
+                )
+            else:
+                candidate_discovery = LegacyCandidateDiscovery(shops, rag)
             services = WorkflowServices(
                 shops=shops,
                 rag=rag,
                 itinerary=itinerary,
                 final_candidate_limit=settings.max_candidates,
+                candidate_discovery=candidate_discovery,
             )
             workflows = {
                 AgentMode.SINGLE: build_single_agent_graph(services),
@@ -145,6 +187,7 @@ class AgentRuntime:
                 rag_service=rag,
                 itinerary_service=itinerary,
                 embedding_service=embedding_service,
+                candidate_discovery=candidate_discovery,
             )
             model_gateway = _build_model_gateway(settings)
             run_store = SQLiteRunStore(settings.run_store_path)

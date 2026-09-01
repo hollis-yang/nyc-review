@@ -45,6 +45,7 @@ async def health() -> dict[str, str]:
         "service": settings.app_name,
         "adapter": settings.adapter,
         "rag": settings.rag_adapter,
+        "globalRetrieval": "enabled" if settings.global_retrieval_enabled else "disabled",
         "model": settings.model_provider,
         "mcp": "enabled" if settings.mcp_enabled else "disabled",
     }

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
-
+from app.domain.business_hours import is_shop_open
 from app.domain.models import (
-    ShopCandidate,
     VerificationIssue,
     VerificationReport,
     VerificationSeverity,
 )
 from app.graph.state import AgentState
-from app.tools.services import ItineraryService, RagService, ShopToolService, neighborhood_matches
+from app.rag.candidate_discovery import CandidateDiscovery
+from app.tools.services import ItineraryService, RagService, neighborhood_matches
 
 HARD_DESIRED_TAGS = {"wheelchair_accessible"}
 
@@ -39,17 +37,13 @@ class SupervisorAgent:
 
 
 class DiscoveryAgent:
-    def __init__(self, tools: ShopToolService, rag: RagService, final_limit: int):
-        self._tools = tools
-        self._rag = rag
+    def __init__(self, discovery: CandidateDiscovery, final_limit: int):
+        self._discovery = discovery
         self._final_limit = final_limit
 
     async def run(self, state: AgentState) -> dict:
-        candidate_pool = await self._tools.search(state["constraints"])
-        candidates = await _rank_candidates(
-            self._rag,
+        candidates = await self._discovery.discover(
             state["constraints"],
-            candidate_pool,
             limit=min(self._final_limit, state["constraints"].result_limit),
         )
         return {
@@ -86,23 +80,20 @@ class SingleAgent:
 
     def __init__(
         self,
-        tools: ShopToolService,
+        discovery: CandidateDiscovery,
         rag: RagService,
         itinerary: ItineraryService,
         final_limit: int,
     ):
-        self._tools = tools
+        self._discovery = discovery
         self._rag = rag
         self._itinerary = itinerary
         self._final_limit = final_limit
 
     async def run(self, state: AgentState) -> dict:
         constraints = state["constraints"]
-        candidate_pool = await self._tools.search(constraints)
-        candidates = await _rank_candidates(
-            self._rag,
+        candidates = await self._discovery.discover(
             constraints,
-            candidate_pool,
             limit=min(self._final_limit, constraints.result_limit),
         )
         evidence = await self._rag.retrieve(constraints, candidates)
@@ -349,65 +340,3 @@ class VerifierAgent:
             verified_shop_ids=sorted(candidate_ids) if not has_errors else [],
         )
         return {"verification": report, "events": ["verifier:checks_completed"]}
-
-
-async def _rank_candidates(
-    rag: RagService,
-    constraints,
-    candidate_pool,
-    *,
-    limit: int,
-):
-    """Keep lightweight/custom RAG adapters compatible with the P12 contract."""
-
-    ranker = getattr(rag, "rank_candidates", None)
-    if ranker is not None:
-        return await ranker(constraints, candidate_pool, limit=limit)
-    return candidate_pool.model_copy(
-        update={
-            "candidates": candidate_pool.candidates[:limit],
-            "retrieval_metadata": {
-                **candidate_pool.retrieval_metadata,
-                "retrievalVersion": "legacy-adapter",
-                "candidatePool": len(candidate_pool.candidates),
-                "finalCandidates": min(limit, len(candidate_pool.candidates)),
-            },
-        }
-    )
-
-
-def is_shop_open(candidate: ShopCandidate, visit_time: str) -> bool:
-    try:
-        moment = datetime.fromisoformat(visit_time.replace("Z", "+00:00"))
-        timezone = ZoneInfo(candidate.timezone or "America/New_York")
-        if moment.tzinfo is None:
-            moment = moment.replace(tzinfo=timezone)
-        else:
-            moment = moment.astimezone(timezone)
-    except (ValueError, KeyError):
-        return False
-
-    current_day = moment.isoweekday()
-    current_time = moment.time().replace(tzinfo=None)
-    hours_by_day = {item.day_of_week: item for item in candidate.business_hours}
-    today = hours_by_day.get(current_day)
-    if today and not today.closed and today.open_time and today.close_time:
-        opening = time.fromisoformat(today.open_time)
-        closing = time.fromisoformat(today.close_time)
-        if today.closes_next_day:
-            if current_time >= opening:
-                return True
-        elif opening <= current_time < closing:
-            return True
-
-    previous_day = 7 if current_day == 1 else current_day - 1
-    previous = hours_by_day.get(previous_day)
-    if (
-        previous
-        and not previous.closed
-        and previous.closes_next_day
-        and previous.close_time
-        and current_time < time.fromisoformat(previous.close_time)
-    ):
-        return True
-    return False

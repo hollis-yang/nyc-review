@@ -40,11 +40,12 @@ class McpDomainService:
             longitude=longitude,
             visit_time=visit_time,
         )
-        candidate_pool = await self._runtime.shop_service.search(constraints)
         final_limit = self._runtime.settings.max_candidates if self._runtime.settings else 5
-        candidates = await self._runtime.rag_service.rank_candidates(
+        discovery = self._runtime.candidate_discovery
+        if discovery is None:
+            raise RuntimeError("Agent runtime does not have candidate discovery.")
+        candidates = await discovery.discover(
             constraints,
-            candidate_pool,
             limit=final_limit,
         )
         return candidates.model_dump(mode="json")

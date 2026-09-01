@@ -135,6 +135,36 @@ public class AgentShopToolService {
         return toCandidate(shop, typeMap, loadEnrichment(List.of(shop)), null, null);
     }
 
+    public List<AgentShopCandidate> details(List<Long> requestedShopIds) {
+        List<Long> shopIds = normalizeDetailIds(requestedShopIds);
+        if (shopIds.isEmpty()) {
+            return List.of();
+        }
+        List<Shop> shops = shopService.listByIds(shopIds);
+        Map<Long, Shop> shopsById = shops.stream()
+                .collect(Collectors.toMap(Shop::getId, Function.identity(), (first, ignored) -> first));
+        Map<Long, ShopType> typeMap = shopTypeService.list().stream()
+                .collect(Collectors.toMap(ShopType::getId, Function.identity(), (first, ignored) -> first));
+        Enrichment enrichment = loadEnrichment(shops);
+        return shopIds.stream()
+                .map(shopsById::get)
+                .filter(java.util.Objects::nonNull)
+                .map(shop -> toCandidate(shop, typeMap, enrichment, null, null))
+                .toList();
+    }
+
+    static List<Long> normalizeDetailIds(List<Long> requestedShopIds) {
+        if (requestedShopIds == null) {
+            return List.of();
+        }
+        return requestedShopIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(shopId -> shopId > 0)
+                .distinct()
+                .limit(MAX_LIMIT)
+                .toList();
+    }
+
     private Enrichment loadEnrichment(List<Shop> shops) {
         if (shops.isEmpty()) {
             return Enrichment.empty();
