@@ -23,6 +23,11 @@ html, body, #root {
   #root {
     height: 100dvh;
   }
+
+  [data-mobile-context-back] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
 }
 
 /* Picker wheels must own touch gestures instead of allowing page scroll to steal them. */

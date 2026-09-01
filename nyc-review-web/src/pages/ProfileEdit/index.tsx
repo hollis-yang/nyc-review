@@ -166,7 +166,7 @@ export default function ProfileEdit() {
   return (
     <div ref={pageRef} className={styles.container}>
       <div className={styles.header}>
-        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
+        <button type="button" data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
         </button>
         <div className={styles.title}>{t('profileEdit.title')}</div>
@@ -359,7 +359,7 @@ export default function ProfileEdit() {
         />
       </div>
 
-      <FootBar activeBtn={4} />
+      <FootBar activeBtn={4} mobileOnly />
     </div>
   );
 }

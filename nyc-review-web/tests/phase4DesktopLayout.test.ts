@@ -61,6 +61,8 @@ test('my profile keeps all nine surfaces in a sticky desktop workspace', () => {
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.desktopLayout\s*\{[^}]*grid-template-columns:\s*340px minmax\(0, 1fr\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.profileRail\s*\{[^}]*position:\s*sticky;[^}]*display:\s*flex;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.profileCard,[\s\S]*?\.activityCard,[\s\S]*?\.content\s*\{[^}]*width:\s*100%;[^}]*box-sizing:\s*border-box;/s);
+  assert.match(styles, /\.activityGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.activityGrid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.content\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*visible;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.checkInPanel\s*\{[^}]*width:\s*min\(640px, 100%\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.content\[data-section='notes'\] \.blogItem:last-child\s*\{[^}]*border-bottom:\s*1px solid #f0e9e6;/s);

@@ -33,7 +33,7 @@ test('blog editor preserves publishing behavior in a bounded desktop workspace',
   assert.match(page, /setShops\(\(previous\) => replace \? records : \[\.\.\.previous, \.\.\.records\]\)/);
   assert.match(page, /setShopTotal\(Math\.max\(reportedTotal, \(page - 1\) \* 30 \+ records\.length\)\)/);
   assert.match(page, /setShopPage\(page\)/);
-  assert.match(page, /if \(replace && requestId === shopRequestRef\.current\) setShops\(\[\]\)/);
+  assert.match(page, /if \(replace && requestId === shopRequestRef\.current\) \{\s*setShops\(\[\]\);\s*setShopTotal\(0\);\s*setShopPage\(1\);\s*\}/s);
   assert.match(page, /if \(requestId === shopRequestRef\.current\) setShopsLoading\(false\)/);
   assert.match(page, /window\.setTimeout\(\(\) => \{\s*void queryShops\(1, true, selectedTypeId, shopName\);\s*\}, 300\)/s);
   assert.match(page, /window\.clearTimeout\(timer\)/);
@@ -67,12 +67,19 @@ test('blog editor preserves publishing behavior in a bounded desktop workspace',
   assert.match(page, /event\.key !== 'Tab'/);
   assert.match(page, /document\.addEventListener\('keydown', handleDialogKeyDown\)/);
   assert.match(page, /previouslyFocused\?\.isConnected/);
-  assert.match(page, /setSelectedShop\(s\); setShowDialog\(false\)/);
+  assert.match(page, /const handleShopSelection = \(shop: ShopItem, closeAfterSelection: boolean\)/);
+  assert.match(page, /setSelectedShop\(shop\);\s*if \(closeAfterSelection\) setShowDialog\(false\)/s);
+  assert.match(page, /onClick=\{\(\) => handleShopSelection\(shop, closeAfterSelection\)\}/);
+  assert.match(page, /\{renderShopPicker\(false\)\}/);
+  assert.match(page, /\{renderShopPicker\(true\)\}/);
+  assert.match(page, /aria-pressed=\{selected\}/);
   assert.match(page, /shopsLoading && <div className=\{styles\.listStatus\}/);
   assert.match(page, /!shopsLoading && shops\.length === 0/);
   assert.match(page, /!shopsLoading && shops\.length < shopTotal/);
   assert.match(page, /queryShops\(shopPage \+ 1, false\)/);
   assert.match(page, /<FootBar activeBtn=\{3\}/);
+  assert.match(page, /<div className=\{styles\.desktopPublish\}>[\s\S]*?className=\{styles\.desktopPublishButton\}[\s\S]*?onClick=\{handleSubmit\}[\s\S]*?aria-busy=\{publishing\}/s);
+  assert.match(page, /isDesktop && \([\s\S]*?<section className=\{styles\.inlineShopPicker\}/s);
 
   assertInOrder(page, [
     'styles.mediaPanel',
@@ -80,9 +87,11 @@ test('blog editor preserves publishing behavior in a bounded desktop workspace',
     'styles.editorPanel',
     'styles.blogTitle',
     'styles.blogContent',
+    'styles.desktopPublish',
     'styles.shopPanel',
     'styles.divider',
     'styles.blogShop',
+    'styles.inlineShopPicker',
     'styles.shopDialog',
   ]);
 
@@ -93,9 +102,12 @@ test('blog editor preserves publishing behavior in a bounded desktop workspace',
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.editorPanel\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1 \/ span 2;[^}]*display:\s*flex;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mediaPanel\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.shopPanel\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*2;/s);
-  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mask\s*\{[^}]*z-index:\s*1300;/s);
-  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.shopDialog\s*\{[^}]*top:\s*50%;[^}]*left:\s*calc\(50% \+ 40px\);[^}]*width:\s*min\(720px,[^}]*transform:\s*translate\(-50%, -50%\);[^}]*animation:\s*none;/s);
-  assert.match(styles, /@media \(min-width: 1280px\)[\s\S]*?\.shopDialog\s*\{[^}]*left:\s*calc\(50% \+ 108px\);[^}]*width:\s*min\(720px, calc\(100vw - 312px\)\);/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.cancelBtn,\s*\.commit\s*\{\s*display:\s*none;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.desktopPublish\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mobileShopTrigger\s*\{\s*display:\s*none;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.inlineShopPicker\s*\{[^}]*display:\s*flex;[^}]*max-height:\s*500px;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mask,\s*\.shopDialog\s*\{\s*display:\s*none;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.shopList\s*\{[^}]*max-height:\s*310px;[^}]*scrollbar-width:\s*thin;/s);
 });
 
 test('AI workspace preserves run, evidence, history, and approval behavior', () => {

@@ -5,6 +5,10 @@
   min-width: 0;
 }
 
+.desktopNavigation {
+  display: none;
+}
+
 .routeFallback {
   min-height: 100%;
   box-sizing: border-box;
@@ -67,6 +71,10 @@
 @media (min-width: 1024px) {
   .shell {
     background: var(--color-bg-page);
+  }
+
+  .desktopNavigation {
+    display: block;
   }
 
   .withPrimaryNavigation {

@@ -63,9 +63,9 @@ Protected pages:
   content grid capped at `1280px`.
 - At very wide viewports: cap the working canvas at `1440px` rather than
   stretching content indefinitely.
-- Convert the existing bottom navigation to the desktop rail on Home, Map, AI,
-  My Profile, Profile Edit, Other Profile, and Account Security; keep the same
-  rail on Blog Edit at desktop widths without adding a mobile bottom bar there.
+- Convert the existing bottom navigation to the desktop rail on the five
+  primary routes. Keep that rail visible but fully gray on every other desktop
+  route, while preserving the existing mobile footer behavior.
 - Ordinary pages use one primary scroll surface. Independent scrolling is
   retained only where the feature requires it, such as the map, AI event log,
   suggestion lists, and modal result lists.
@@ -95,7 +95,8 @@ Protected pages:
   allow action rows to wrap, and keep the comment composer attached only to
   the main column.
 - Blog edit: approximately `760px` title/body editor plus a `320px` image and
-  linked-shop panel. Present the current shop picker as a desktop dialog.
+  linked-shop panel. Keep shop search, filtering, results, and selection inline
+  in that panel, with Publish inside the editor canvas rather than the header.
 
 ### AI and profiles
 
@@ -277,8 +278,9 @@ Completed in Phase 5:
 - organized Blog Edit into an approximately `760px + 320px` responsive editor
   workspace, with the title/body canvas on the left and the unchanged photo and
   linked-shop controls on the right;
-- converted the existing shop picker from a mobile bottom sheet to a bounded,
-  route-centered desktop dialog above the navigation rail, while preserving
+- converted the existing shop picker from a mobile bottom sheet to a bounded
+  desktop surface, later refined into a permanent inline right-column panel,
+  while preserving
   category filtering, debounced search, stale-request protection, loading,
   empty, pagination, selection, and every upload/publish API contract;
 - kept Blog Edit's mobile upload-title-body-shop order and bottom-sheet
@@ -369,7 +371,7 @@ Completed in Phase 7:
   recovery validation, anonymous AI completion, and approval recovery while
   leaving every authenticated write behind its existing confirmation boundary;
 - replaced the hidden desktop Map filter scroller with a seven-column adaptive
-  top grid, let the Blog Edit shop categories wrap in its desktop dialog, and
+  top grid, let the Blog Edit shop categories wrap in its desktop picker, and
   kept the corresponding mobile horizontal strips unchanged;
 - centered Blog Detail's title when an owner's second action is present,
   bounded long merchant/review titles, vertically centered Shop Detail header
@@ -386,6 +388,20 @@ Completed in Phase 7:
   Credentialed success-state behavior remains covered by the Phase 6
   authentication, mutation, recovery, and localization contracts; a supplied
   operator test account can be used for an additional live signed-in pass.
+
+### Post-Phase 7 detail refinements
+
+- bounded arbitrarily long shop names to two readable lines without fixing the
+  card height or removing the full accessible name;
+- kept the five-action desktop navigation rail visible on every route, with no
+  active item outside Home, Map, Create a Note, AI Guide, and My Profile, and
+  hid ambiguous context-back controls only at desktop widths;
+- moved Blog Edit's Publish action into the editor canvas and made shop linking
+  a permanent inline picker on desktop while retaining the mobile header action,
+  bottom sheet, focus trap, and selection-close behavior;
+- stacked the six My Profile activity entries into one desktop column while
+  preserving the mobile two-column grid;
+- expanded the responsive source contracts to cover these refinements.
 
 ## Validation matrix
 

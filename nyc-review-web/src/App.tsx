@@ -22,6 +22,7 @@ import MapPage from './pages/Map';
 import AiWorkspace from './pages/AiWorkspace';
 import ProtectedRoute from './components/ProtectedRoute';
 import LegacyRedirect from './components/LegacyRedirect';
+import FootBar from './components/FootBar';
 import styles from './App.module.css';
 
 const routesWithPrimaryNavigation = [
@@ -30,13 +31,11 @@ const routesWithPrimaryNavigation = [
   '/ai',
   '/blog-edit',
   '/profile',
-  '/profile-edit',
-  '/account-security',
 ];
 
 function hasPrimaryNavigation(pathname: string) {
   const normalizedPath = pathname === '/' ? pathname : pathname.replace(/\/+$/, '');
-  return routesWithPrimaryNavigation.includes(normalizedPath) || /^\/user\/[^/]+$/.test(normalizedPath);
+  return routesWithPrimaryNavigation.includes(normalizedPath);
 }
 
 function RouteFallback() {
@@ -61,7 +60,12 @@ function AppRoutes() {
   const withPrimaryNavigation = hasPrimaryNavigation(pathname);
 
   return (
-    <div className={`${styles.shell} ${withPrimaryNavigation ? styles.withPrimaryNavigation : ''}`}>
+    <div className={`${styles.shell} ${styles.withPrimaryNavigation}`}>
+      {!withPrimaryNavigation && (
+        <div className={styles.desktopNavigation}>
+          <FootBar activeBtn={0} />
+        </div>
+      )}
       <div className={styles.routeViewport}>
         <Routes>
           <Route path="/" element={<Home />} />

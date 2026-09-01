@@ -11,6 +11,8 @@ test('responsive app shell preserves every current route', () => {
   const app = readSource('../src/App.tsx');
   const shellStyles = readSource('../src/App.module.css');
   const routes = [...app.matchAll(/<Route path="([^"]+)"/g)].map((match) => match[1]);
+  const navigationList = app.match(/const routesWithPrimaryNavigation = \[([\s\S]*?)\];/)?.[1] ?? '';
+  const navigationRoutes = [...navigationList.matchAll(/'([^']+)'/g)].map((match) => match[1]);
 
   assert.deepEqual(routes, [
     '/',
@@ -41,9 +43,14 @@ test('responsive app shell preserves every current route', () => {
     '/other-info.html',
     '*',
   ]);
+  assert.deepEqual(navigationRoutes, ['/', '/map', '/ai', '/blog-edit', '/profile']);
   assert.match(app, /function AppRoutes\(\)/);
   assert.match(app, /pathname\.replace\(\/\\\/\+\$\//);
+  assert.match(app, /<div className=\{`\$\{styles\.shell\} \$\{styles\.withPrimaryNavigation\}`\}>/);
+  assert.match(app, /!withPrimaryNavigation && \([\s\S]*?<div className=\{styles\.desktopNavigation\}>[\s\S]*?<FootBar activeBtn=\{0\} \/>/s);
   assert.match(shellStyles, /@media \(min-width: 1024px\)/);
+  assert.match(shellStyles, /\.desktopNavigation\s*\{\s*display:\s*none;/s);
+  assert.match(shellStyles, /@media \(min-width: 1024px\)[\s\S]*?\.desktopNavigation\s*\{\s*display:\s*block;/s);
   assert.match(shellStyles, /\.withPrimaryNavigation\s*\{[^}]*padding-left:\s*var\(--desktop-nav-compact-width\)/s);
 });
 
@@ -65,13 +72,33 @@ test('primary navigation keeps the five existing actions and gains a desktop rai
   assert.match(navigation, /styles\.createMobileIcon/);
   assert.match(navigation, /styles\.createDesktopIcon/);
   assert.match(navigation, /styles\.createText[^\n]*nav\.create/);
+  assert.match(navigation, /mobileOnly\?: boolean/);
+  assert.match(navigation, /mobileOnly \? styles\.mobileOnly : ''/);
   assert.match(navigation, /activeBtn === 3 \? styles\.active/);
   assert.match(navigation, /aria-current=\{activeBtn === 3 \? 'page'/);
   assert.match(styles, /\.createDesktopIcon,\s*\.createText\s*\{\s*display:\s*none;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createMobileIcon\s*\{\s*display:\s*none;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createDesktopIcon\s*\{[^}]*display:\s*flex;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.createText\s*\{\s*display:\s*block;/s);
+  assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.mobileOnly\s*\{\s*display:\s*none;/s);
   assert.doesNotMatch(styles, /\.createBox\s*\{/);
+});
+
+test('context pages keep a gray desktop rail and expose back controls only on mobile', () => {
+  const globalStyles = readSource('../src/styles/global.css');
+  const app = readSource('../src/App.tsx');
+  const profileEdit = readSource('../src/pages/ProfileEdit/index.tsx');
+  const accountSecurity = readSource('../src/pages/AccountSecurity/index.tsx');
+  const otherProfile = readSource('../src/pages/OtherProfile/index.tsx');
+
+  assert.match(app, /<FootBar activeBtn=\{0\} \/>/);
+  assert.match(profileEdit, /data-mobile-context-back="true"/);
+  assert.match(accountSecurity, /data-mobile-context-back="true"/);
+  assert.match(otherProfile, /data-mobile-context-back="true"/);
+  assert.match(profileEdit, /<FootBar activeBtn=\{4\} mobileOnly \/>/);
+  assert.match(accountSecurity, /<FootBar activeBtn=\{4\} mobileOnly \/>/);
+  assert.match(otherProfile, /<FootBar activeBtn=\{0\} mobileOnly \/>/);
+  assert.match(globalStyles, /@media \(min-width: 1024px\)[\s\S]*?\[data-mobile-context-back\]\s*\{[^}]*visibility:\s*hidden !important;[^}]*pointer-events:\s*none !important;/s);
 });
 
 test('home retains its mobile contract and defines the desktop grid contract', () => {

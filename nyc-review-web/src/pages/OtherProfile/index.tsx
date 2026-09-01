@@ -113,7 +113,7 @@ export default function OtherProfile() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
+        <button type="button" data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={18} color="white" />
         </button>
         <div className={styles.headerTitle}>
@@ -215,7 +215,7 @@ export default function OtherProfile() {
         </div>
       )}
 
-      <FootBar activeBtn={0} />
+      <FootBar activeBtn={0} mobileOnly />
     </div>
   );
 }

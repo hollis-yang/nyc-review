@@ -49,7 +49,20 @@ export default function BlogEdit() {
   const [shopTotal, setShopTotal] = useState(0);
   const [shopsLoading, setShopsLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+  ));
   const loginUrl = buildAuthEntryUrl('/login', '/blog-edit');
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const handleViewportChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsDesktop(event.matches);
+      if (event.matches) setShowDialog(false);
+    };
+    media.addEventListener('change', handleViewportChange);
+    return () => media.removeEventListener('change', handleViewportChange);
+  }, []);
 
   useEffect(() => {
     const token = sessionStorage.getItem('token');
@@ -81,7 +94,11 @@ export default function BlogEdit() {
       setShopTotal(Math.max(reportedTotal, (page - 1) * 30 + records.length));
       setShopPage(page);
     } catch {
-      if (replace && requestId === shopRequestRef.current) setShops([]);
+      if (replace && requestId === shopRequestRef.current) {
+        setShops([]);
+        setShopTotal(0);
+        setShopPage(1);
+      }
     } finally {
       if (requestId === shopRequestRef.current) setShopsLoading(false);
     }
@@ -89,23 +106,26 @@ export default function BlogEdit() {
 
   const openShopDialog = () => {
     setShowDialog(true);
-    if (shopTypes.length === 0) {
-      getShopTypes()
-        .then((response) => setShopTypes(response.data ?? response))
-        .catch(() => setShopTypes([]));
-    }
   };
 
   useEffect(() => {
-    if (!showDialog) return;
+    if (!showDialog && !isDesktop) return;
+    if (shopTypes.length > 0) return;
+    getShopTypes()
+      .then((response) => setShopTypes(response.data ?? response))
+      .catch(() => setShopTypes([]));
+  }, [isDesktop, shopTypes.length, showDialog]);
+
+  useEffect(() => {
+    if (!showDialog && !isDesktop) return;
     const timer = window.setTimeout(() => {
       void queryShops(1, true, selectedTypeId, shopName);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [queryShops, selectedTypeId, shopName, showDialog]);
+  }, [isDesktop, queryShops, selectedTypeId, shopName, showDialog]);
 
   useEffect(() => {
-    if (!showDialog) return;
+    if (!showDialog || isDesktop) return;
     const previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -159,7 +179,7 @@ export default function BlogEdit() {
       });
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, [showDialog]);
+  }, [isDesktop, showDialog]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -212,6 +232,95 @@ export default function BlogEdit() {
     if (window.history.length > 1) navigate(-1);
     else navigate('/');
   };
+
+  const handleShopSelection = (shop: ShopItem, closeAfterSelection: boolean) => {
+    setSelectedShop(shop);
+    if (closeAfterSelection) setShowDialog(false);
+  };
+
+  const renderShopPicker = (closeAfterSelection: boolean) => (
+    <>
+      <div className={styles.categoryList} aria-label={t('blogEdit.categoryFilter')}>
+        <button
+          type="button"
+          className={selectedTypeId == null ? styles.categoryActive : ''}
+          onClick={() => setSelectedTypeId(undefined)}
+        >
+          {t('shopList.allCategories')}
+        </button>
+        {shopTypes.map((type) => (
+          <button
+            type="button"
+            key={type.id}
+            className={selectedTypeId === type.id ? styles.categoryActive : ''}
+            onClick={() => setSelectedTypeId(type.id)}
+          >
+            {t(`shopTypes.${type.name}`, type.name)}
+          </button>
+        ))}
+      </div>
+      <div className={styles.searchBar}>
+        <div className={styles.searchInput}>
+          <button
+            type="button"
+            className={styles.searchAction}
+            onClick={() => queryShops(1, true)}
+            aria-label={t('blogEdit.searchShop')}
+          >
+            <SearchOutline fontSize={14} />
+          </button>
+          <input
+            ref={shopSearchRef}
+            value={shopName}
+            onChange={(e) => setShopName(e.target.value)}
+            type="text"
+            placeholder={t('blogEdit.searchShop')}
+            onKeyDown={(e) => { if (e.key === 'Enter') queryShops(1, true); }}
+          />
+        </div>
+      </div>
+      <div className={styles.resultSummary}>
+        {shopsLoading
+          ? t('blogEdit.searchingShops')
+          : t('blogEdit.shopResults', { count: shopTotal })}
+      </div>
+      <div className={styles.shopList}>
+        {shops.map((shop) => {
+          const selected = selectedShop?.id === shop.id;
+          return (
+            <button
+              type="button"
+              key={shop.id}
+              className={`${styles.shopItem} ${selected ? styles.shopItemSelected : ''}`}
+              onClick={() => handleShopSelection(shop, closeAfterSelection)}
+              aria-pressed={selected}
+            >
+              <span className={styles.shopItemCopy}>
+                <span className={styles.shopItemName}>{shop.name}</span>
+                <span className={styles.shopItemMeta}>
+                  {[shop.area, shop.borough].filter(Boolean).join(', ')}
+                </span>
+              </span>
+              {selected && <span className={styles.selectedMark} aria-hidden="true">✓</span>}
+            </button>
+          );
+        })}
+        {shopsLoading && <div className={styles.listStatus}>{t('home.loading')}</div>}
+        {!shopsLoading && shops.length === 0 && (
+          <div className={styles.listStatus}>{t('blogEdit.noShops')}</div>
+        )}
+        {!shopsLoading && shops.length < shopTotal && (
+          <button
+            type="button"
+            className={styles.loadMore}
+            onClick={() => queryShops(shopPage + 1, false)}
+          >
+            {t('blogEdit.loadMore')}
+          </button>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <div className={styles.container}>
@@ -274,6 +383,17 @@ export default function BlogEdit() {
               placeholder={t('blogEdit.contentPlaceholder')}
             />
           </div>
+          <div className={styles.desktopPublish}>
+            <button
+              type="button"
+              className={styles.desktopPublishButton}
+              onClick={handleSubmit}
+              disabled={publishing}
+              aria-busy={publishing}
+            >
+              {t('blogEdit.publish')}
+            </button>
+          </div>
         </main>
 
         <div className={styles.shopPanel}>
@@ -282,7 +402,7 @@ export default function BlogEdit() {
           <button
             ref={shopTriggerRef}
             type="button"
-            className={styles.blogShop}
+            className={`${styles.blogShop} ${styles.mobileShopTrigger}`}
             onClick={openShopDialog}
           >
             <div className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
@@ -292,6 +412,20 @@ export default function BlogEdit() {
               <div className={styles.selectHint}>{t('blogEdit.selectShop')}</div>
             )}
           </button>
+
+          {isDesktop && (
+            <section className={styles.inlineShopPicker} aria-labelledby="inline-shop-picker-title">
+              <div className={styles.inlineShopHeader}>
+                <div id="inline-shop-picker-title" className={styles.shopLeft}>
+                  {t('blogEdit.linkShop')}
+                </div>
+                <div className={styles.inlineSelection} aria-live="polite">
+                  {selectedShop ? selectedShop.name : t('blogEdit.selectShop')}
+                </div>
+              </div>
+              {renderShopPicker(false)}
+            </section>
+          )}
         </div>
       </div>
 
@@ -309,73 +443,7 @@ export default function BlogEdit() {
               <div id="shop-dialog-title" className={styles.shopLeft}>{t('blogEdit.linkShop')}</div>
               <button type="button" onClick={() => setShowDialog(false)}>{t('common.cancel')}</button>
             </div>
-            <div className={styles.categoryList} aria-label={t('blogEdit.categoryFilter')}>
-              <button
-                type="button"
-                className={selectedTypeId == null ? styles.categoryActive : ''}
-                onClick={() => {
-                  setSelectedTypeId(undefined);
-                }}
-              >
-                {t('shopList.allCategories')}
-              </button>
-              {shopTypes.map((type) => (
-                <button
-                  type="button"
-                  key={type.id}
-                  className={selectedTypeId === type.id ? styles.categoryActive : ''}
-                  onClick={() => {
-                    setSelectedTypeId(type.id);
-                  }}
-                >
-                  {t(`shopTypes.${type.name}`, type.name)}
-                </button>
-              ))}
-            </div>
-            <div className={styles.searchBar}>
-              <div className={styles.searchInput}>
-                <SearchOutline fontSize={14} onClick={() => queryShops(1, true)} style={{ cursor: 'pointer' }} />
-                <input
-                  ref={shopSearchRef}
-                  value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
-                  type="text"
-                  placeholder={t('blogEdit.searchShop')}
-                  onKeyDown={(e) => { if (e.key === 'Enter') queryShops(1, true); }}
-                />
-              </div>
-            </div>
-            <div className={styles.resultSummary}>
-              {shopsLoading
-                ? t('blogEdit.searchingShops')
-                : t('blogEdit.shopResults', { count: shopTotal })}
-            </div>
-            <div className={styles.shopList}>
-              {shops.map((s) => (
-                <button
-                  type="button"
-                  key={s.id}
-                  className={styles.shopItem}
-                  onClick={() => { setSelectedShop(s); setShowDialog(false); }}
-                >
-                  <div className={styles.shopItemName}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: '#999' }}>{[s.area, s.borough].filter(Boolean).join(', ')}</div>
-                </button>
-              ))}
-              {shopsLoading && <div className={styles.listStatus}>{t('home.loading')}</div>}
-              {!shopsLoading && shops.length === 0 && (
-                <div className={styles.listStatus}>{t('blogEdit.noShops')}</div>
-              )}
-              {!shopsLoading && shops.length < shopTotal && (
-                <button
-                  type="button"
-                  className={styles.loadMore}
-                  onClick={() => queryShops(shopPage + 1, false)}
-                >
-                  {t('blogEdit.loadMore')}
-                </button>
-              )}
-            </div>
+            {renderShopPicker(true)}
           </div>
         </>
       )}

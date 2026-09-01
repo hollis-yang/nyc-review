@@ -52,6 +52,8 @@ test('shop card keeps every existing display field and gains bounded desktop med
   assert.match(shopCard, /<Link[\s\S]*?to=\{`\/shop-detail\/\$\{shop\.id\}`\}/s);
   assert.match(styles, /\.img\s*\{[^}]*width:\s*30%;/s);
   assert.match(styles, /\.img img\s*\{[^}]*height:\s*80px;/s);
+  assert.match(styles, /\.title\s*\{[^}]*display:\s*-webkit-box;[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;/s);
+  assert.match(styles, /\.title\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*-webkit-box-orient:\s*vertical;[^}]*-webkit-line-clamp:\s*2;[^}]*line-clamp:\s*2;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.img\s*\{[^}]*width:\s*136px;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.img img\s*\{[^}]*height:\s*108px;/s);
 });

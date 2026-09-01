@@ -83,7 +83,7 @@ export default function Login() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
+        <button type="button" data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
           <LeftOutline fontSize={22} color="white" />
         </button>
         <div className={styles.headerTitle}>{t('login.title')}</div>

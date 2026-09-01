@@ -92,7 +92,7 @@ export default function AccountSecurity() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.backBtn} onClick={() => navigate('/profile-edit')} aria-label={t('auth.back')}>
+        <button type="button" data-mobile-context-back="true" className={styles.backBtn} onClick={() => navigate('/profile-edit')} aria-label={t('auth.back')}>
           <LeftOutline fontSize={22} color="white" />
         </button>
         <div className={styles.title}>{t('accountSecurity.title')}</div>
@@ -144,7 +144,7 @@ export default function AccountSecurity() {
         </section>
         </div>
       </main>
-      <FootBar activeBtn={4} />
+      <FootBar activeBtn={4} mobileOnly />
     </div>
   );
 }

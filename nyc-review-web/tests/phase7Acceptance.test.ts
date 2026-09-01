@@ -64,7 +64,7 @@ test('desktop top filters remain fully reachable without hidden horizontal scrol
   );
   const editorDesktop = editorStyles.slice(
     editorStyles.indexOf('@media (min-width: 1024px)'),
-    editorStyles.indexOf('@media (min-width: 1280px)'),
+    editorStyles.length,
   );
 
   assert.match(mapDesktop, /\.filterScroller\s*\{[^}]*display:\s*grid;/s);
@@ -75,6 +75,8 @@ test('desktop top filters remain fully reachable without hidden horizontal scrol
   assert.match(mapDesktop, /\.modeBadge\s*\{[^}]*top:\s*112px;/s);
   assert.match(mapDesktop, /\.emptyBadge\s*\{[^}]*top:\s*148px;/s);
   assert.match(editorDesktop, /\.categoryList\s*\{[^}]*flex-wrap:\s*wrap;[^}]*overflow-x:\s*visible;/s);
+  assert.match(editorDesktop, /\.inlineShopPicker\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/s);
+  assert.match(editorDesktop, /\.mask,\s*\.shopDialog\s*\{\s*display:\s*none;/s);
 });
 
 test('profile edit uses navigation-aware desktop overlays with mouse-wheel pickers', () => {

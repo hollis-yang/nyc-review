@@ -34,7 +34,7 @@ export default function Header({
     <div className={styles.header}>
       <div className={styles.left}>
         {showBack && (
-          <div className={styles.backBtn} onClick={handleBack}>
+          <div data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack}>
             <LeftOutline fontSize={18} />
           </div>
         )}

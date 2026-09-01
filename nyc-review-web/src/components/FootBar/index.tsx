@@ -42,9 +42,10 @@ import styles from './FootBar.module.css';
 
 interface FootBarProps {
   activeBtn: number;
+  mobileOnly?: boolean;
 }
 
-export default function FootBar({ activeBtn }: FootBarProps) {
+export default function FootBar({ activeBtn, mobileOnly = false }: FootBarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -63,7 +64,10 @@ export default function FootBar({ activeBtn }: FootBarProps) {
   };
 
   return (
-    <nav className={styles.foot} aria-label={t('login.brand')}>
+    <nav
+      className={`${styles.foot} ${mobileOnly ? styles.mobileOnly : ''}`}
+      aria-label={t('login.brand')}
+    >
       <button
         type="button"
         className={`${styles.footBox} ${activeBtn === 1 ? styles.active : ''}`}

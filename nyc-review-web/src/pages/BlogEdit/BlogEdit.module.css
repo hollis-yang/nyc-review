@@ -40,6 +40,7 @@
 }
 
 .title {
+  grid-column: 2;
   justify-self: center;
   text-align: center;
   font-size: 16px;
@@ -48,6 +49,7 @@
 }
 
 .commit {
+  grid-column: 3;
   justify-self: end;
   display: flex;
   justify-content: flex-end;
@@ -199,6 +201,11 @@
   color: #ccc;
 }
 
+.desktopPublish,
+.inlineShopPicker {
+  display: none;
+}
+
 .divider {
   height: 1px;
   background: transparent;
@@ -319,12 +326,27 @@
 
 .searchInput {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   background: #f5f5f5;
   border-radius: 20px;
   padding: 6px 12px;
   gap: 4px;
+}
+
+.searchAction {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  color: #777;
+  background: transparent;
 }
 
 .resultSummary {
@@ -336,6 +358,7 @@
 
 .searchInput input {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -350,6 +373,10 @@
 
 .shopItem {
   width: 100%;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
   border: 0;
   padding: 14px 0;
   border-bottom: 1px solid #f5f5f5;
@@ -366,9 +393,46 @@
 }
 
 .shopItemName {
+  display: block;
+  overflow: hidden;
   font-size: 14px;
   color: #333;
   margin-bottom: 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopItemCopy {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.shopItemMeta {
+  display: block;
+  overflow: hidden;
+  color: #999;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopItemSelected {
+  background: #fff4ef;
+}
+
+.selectedMark {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .listStatus {
@@ -402,18 +466,13 @@
     padding: 0 var(--desktop-page-gutter);
   }
 
-  .cancelBtn {
-    font-size: 15px;
+  .cancelBtn,
+  .commit {
+    display: none;
   }
 
   .title {
     font-size: 19px;
-  }
-
-  .commitBtn {
-    border-radius: 18px;
-    padding: 7px 18px;
-    font-size: 14px;
   }
 
   .editorWorkspace {
@@ -508,8 +567,79 @@
     line-height: 1.7;
   }
 
+  .desktopPublish {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+
+  .desktopPublishButton {
+    min-width: 152px;
+    min-height: 46px;
+    border: 0;
+    border-radius: 23px;
+    padding: 0 28px;
+    color: #fff;
+    background: var(--color-primary-gradient);
+    box-shadow: 0 10px 24px rgba(255, 91, 45, 0.24);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 750;
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+  }
+
+  .desktopPublishButton:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 13px 28px rgba(255, 91, 45, 0.3);
+  }
+
+  .desktopPublishButton:disabled {
+    cursor: wait;
+    opacity: 0.62;
+    transform: none;
+  }
+
   .divider {
     display: none;
+  }
+
+  .mobileShopTrigger {
+    display: none;
+  }
+
+  .inlineShopPicker {
+    display: flex;
+    min-height: 0;
+    max-height: 500px;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid rgba(78, 51, 40, 0.07);
+    border-radius: var(--radius-lg);
+    background: #fff;
+    box-shadow: var(--shadow-card);
+  }
+
+  .inlineShopHeader {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #f1e9e5;
+    padding: 16px 18px 13px;
+    font-size: 15px;
+  }
+
+  .inlineSelection {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-primary);
+    font-size: 12px;
+    font-weight: 650;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .blogShop {
@@ -531,32 +661,9 @@
     font-size: 14px;
   }
 
-  .mask {
-    z-index: 1300;
-  }
-
+  .mask,
   .shopDialog {
-    top: 50%;
-    right: auto;
-    bottom: auto;
-    left: calc(50% + 40px);
-    width: min(720px, calc(100vw - 176px));
-    height: min(680px, calc(100dvh - 96px));
-    box-sizing: border-box;
-    border-radius: 20px;
-    z-index: 1301;
-    transform: translate(-50%, -50%);
-    animation: none;
-    box-shadow: 0 24px 72px rgba(47, 38, 34, 0.24);
-  }
-
-  .dialogHeader {
-    padding: 18px 20px;
-    font-size: 17px;
-  }
-
-  .dialogHeader button {
-    font-size: 14px;
+    display: none;
   }
 
   .categoryList {
@@ -590,6 +697,7 @@
 
   .shopList {
     min-height: 0;
+    max-height: 310px;
     padding: 0 20px 18px;
     scrollbar-width: thin;
     scrollbar-color: rgba(119, 70, 49, 0.28) transparent;
@@ -604,9 +712,16 @@
     background: #fff7f3;
   }
 
+  .shopItemSelected,
+  .shopItemSelected:hover {
+    background: #fff0e9;
+  }
+
   .blogShop:focus-visible,
+  .desktopPublishButton:focus-visible,
   .dialogHeader button:focus-visible,
   .categoryList button:focus-visible,
+  .searchAction:focus-visible,
   .searchInput input:focus-visible,
   .shopItem:focus-visible,
   .loadMore:focus-visible {
@@ -616,12 +731,5 @@
 
   .loadMore {
     font-size: 13px;
-  }
-}
-
-@media (min-width: 1280px) {
-  .shopDialog {
-    left: calc(50% + 108px);
-    width: min(720px, calc(100vw - 312px));
   }
 }

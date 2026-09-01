@@ -479,7 +479,7 @@ export default function BlogDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
-          <div className={styles.backBtn} onClick={handleBack}>
+          <div data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack}>
             <LeftOutline fontSize={20} color="#fff" />
           </div>
           <div className={styles.title}>{t('blogDetail.title')}</div>
@@ -494,7 +494,7 @@ export default function BlogDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
-          <div className={styles.backBtn} onClick={handleBack}>
+          <div data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack}>
             <LeftOutline fontSize={20} color="#fff" />
           </div>
           <div className={styles.title}>{t('blogDetail.title')}</div>
@@ -645,7 +645,7 @@ export default function BlogDetail() {
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <div data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={20} color="#fff" />
         </div>
         <div className={styles.title}>{t('blogDetail.title')}</div>

@@ -984,6 +984,10 @@ button.statItem {
     font-size: 16px;
   }
 
+  .activityGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .activityItem {
     min-height: 56px;
     padding: 9px 10px;

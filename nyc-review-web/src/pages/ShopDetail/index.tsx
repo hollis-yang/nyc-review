@@ -438,7 +438,7 @@ export default function ShopDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
-          <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
+          <button type="button" data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
             <LeftOutline fontSize={18} color="white" />
           </button>
           <div className={styles.title}>{t('shopDetail.title')}</div>
@@ -465,7 +465,7 @@ export default function ShopDetail() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <div className={styles.backBtn} onClick={handleBack}>
+        <div data-mobile-context-back="true" className={styles.backBtn} onClick={handleBack}>
           <LeftOutline fontSize={18} color="white" />
         </div>
         <div className={styles.title}>{shop.name}</div>
