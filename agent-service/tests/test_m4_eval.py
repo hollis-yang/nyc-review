@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from copy import deepcopy
 
 import pytest
 
+from app.domain.models import (
+    CandidateSet,
+    EvidenceCitation,
+    EvidencePack,
+    ShopCandidate,
+    ShopEvidence,
+    UserConstraints,
+)
+from app.rag.candidate_discovery import _reranker_query
+from app.rag.query_rewriter import DisabledQueryRewriter, QueryRewriteTrace
+from app.rag.reranker import MerchantRerankTextBuilder, RerankCandidate
 from evals.rag_v2.build_m3_cases import (
     M3_JUDGMENT_POLICY_VERSION,
     M3_SUITE_NAME,
@@ -18,6 +30,7 @@ from evals.rag_v2.build_m4_cases import (
     M4_SUITE_NAME,
     build_m4_dev_suite,
     capture_m4_candidate_universe,
+    m4_candidate_pool_contract_rows,
     m4_candidate_universe_sha256,
     m4_experiment_fingerprint,
     m4_suite_contract_sha256,
@@ -33,6 +46,17 @@ from evals.rag_v2.compare_m4 import (
     write_comparison,
 )
 from evals.rag_v2.contract import sha256_json
+from evals.rag_v2.m4_replay import (
+    M4_PERFORMANCE_SCOPE,
+    M4_REPLAY_VERSION,
+    FrozenQueryRewriter,
+    RecordingQueryRewriter,
+    build_frozen_case_artifact,
+    frozen_rewrite_artifact,
+    m4_replay_implementation_sha256,
+    replay_metadata_for_case,
+    validate_frozen_case_artifact,
+)
 from evals.rag_v2.metrics import rounded
 from evals.rag_v2.run_eval import _reranker_case_usage, _retrieval_trace, build_parser
 
@@ -62,21 +86,19 @@ def test_m4_schema_v5_labels_complete_shared_pool_and_freezes_inputs(tmp_path):
     assert suite["caseSha256"] == sha256_json(suite["cases"])
     assert suite["suiteContractSha256"] == m4_suite_contract_sha256(suite)
     assert universe["fixtureSha256"] == m4_candidate_universe_sha256(universe)
-    assert universe["candidatePoolContractSha256"] == sha256_json(universe["cases"])
+    assert universe["candidatePoolContractSha256"] == sha256_json(
+        m4_candidate_pool_contract_rows(universe["cases"])
+    )
+    assert suite["judgmentContract"]["performanceScope"] == M4_PERFORMANCE_SCOPE
     for case in suite["cases"]:
         assert {item["externalId"] for item in case["judgments"]} == {
             "merchant:low",
             "merchant:high",
             "merchant:medium",
         }
-        assert all(
-            item["judgmentOrigins"] == ["m4-shared-pre-rerank-top-30"]
-            for item in case["judgments"]
-        )
-        assert case["metadata"]["judgmentCompleteness"] == (
-            "complete-for-frozen-m4-pre-rerank-top-30-pool"
-        )
-        assert case["metadata"]["rerankerInputFingerprint"] == "a" * 64
+        assert all(item["judgmentOrigins"] == ["m4-shared-pre-rerank-top-30"] for item in case["judgments"])
+        assert case["metadata"]["judgmentCompleteness"] == ("complete-for-frozen-m4-pre-rerank-top-30-pool")
+        validate_frozen_case_artifact(case["metadata"]["frozenM4ReplayArtifact"])
 
 
 def test_m4_capture_rejects_non_m3_source_and_pool_or_input_tampering(tmp_path):
@@ -122,6 +144,24 @@ def test_m4_capture_rejects_non_m3_source_and_pool_or_input_tampering(tmp_path):
             trusted_source_suite=source,
         )
 
+    capture = _capture_report(source)
+    capture["results"][0]["m4ReplayCapture"] = _replay_artifact(
+        source["cases"][0],
+        evidence_source_type="not-allowed",
+    )
+    universe = capture_m4_candidate_universe(
+        source_suite=source,
+        capture_report=capture,
+        trusted_source_suite=source,
+    )
+    with pytest.raises(ValueError, match="full-pool evidence contract"):
+        build_m4_dev_suite(
+            _write_dataset(tmp_path / "bad-evidence-data"),
+            source,
+            universe,
+            trusted_source_suite=source,
+        )
+
 
 def test_m4_compare_passes_quality_with_latency_waiver_and_deterministic_ci(tmp_path):
     source = _source_suite()
@@ -152,12 +192,8 @@ def test_m4_compare_passes_quality_with_latency_waiver_and_deterministic_ci(tmp_
     assert result["latencyObservation"]["gating"] is False
     assert result["latencyObservation"]["total"]["ratio"] == 5.0
 
-    ci = paired_bootstrap_mean_ci(
-        [0.2, -0.1, 0.3], confidence=0.95, resamples=1000, seed=7
-    )
-    assert ci == paired_bootstrap_mean_ci(
-        [0.2, -0.1, 0.3], confidence=0.95, resamples=1000, seed=7
-    )
+    ci = paired_bootstrap_mean_ci([0.2, -0.1, 0.3], confidence=0.95, resamples=1000, seed=7)
+    assert ci == paired_bootstrap_mean_ci([0.2, -0.1, 0.3], confidence=0.95, resamples=1000, seed=7)
 
 
 def test_m4_compare_rejects_pool_drift_fallback_and_failed_bootstrap_gate(tmp_path):
@@ -292,6 +328,51 @@ def test_m4_run_eval_cli_and_metadata_normalization_are_schema_v5_ready():
     assert reranker_config_fingerprint(changed_instruction) != original_fingerprint
 
 
+@pytest.mark.asyncio
+async def test_m4_rewrite_recording_and_frozen_replay_are_exact_and_zero_usage():
+    case = _source_case("dev-en-replay", "en", "semantic_alias_composition")
+    constraints = UserConstraints.model_validate(case["constraints"])
+    recorder = RecordingQueryRewriter(DisabledQueryRewriter(prompt_version="m3-v1"))
+    captured_plan = await recorder.rewrite(constraints)
+    recorder.clear_cache()
+    artifact = recorder.artifact_for_case(
+        case_id=case["id"],
+        constraints=constraints,
+    )
+    assert artifact["plan"]["retrieval_queries"] == captured_plan.retrieval_queries
+
+    recorder.reset()
+    with pytest.raises(ValueError, match="did not record"):
+        recorder.artifact_for_case(case_id=case["id"], constraints=constraints)
+
+    full_artifact = _replay_artifact(case, base_plan=captured_plan)
+    case["metadata"] = {"frozenM4ReplayArtifact": full_artifact}
+    frozen = FrozenQueryRewriter([case])
+    replayed = await frozen.rewrite(constraints)
+    captured = full_artifact["rewritePlan"]["plan"]
+    assert replayed.original.model_dump(mode="json") == captured["original"]
+    assert replayed.rule.model_dump(mode="json") == captured["rule"]
+    assert [item.model_dump(mode="json") for item in replayed.rewrites] == captured["rewrites"]
+    assert replayed.trace.requested_provider == "openai"
+    assert replayed.trace.provider == "frozen-replay"
+    assert replayed.trace.network_requests == 0
+    assert replayed.trace.input_tokens == replayed.trace.output_tokens == 0
+    assert frozen.usage_snapshot().network_requests == 0
+
+
+def test_m4_replay_artifact_tampering_and_report_rounding_fail_closed():
+    case = _source_case("dev-en-tamper", "en", "semantic_alias_composition")
+    artifact = _replay_artifact(case)
+    result = rounded({"m4ReplayCapture": artifact, "latency": 1.23456789})
+    assert result["m4ReplayCapture"] == artifact
+    assert result["latency"] == 1.234568
+
+    tampered = deepcopy(artifact)
+    tampered["rerankCandidates"][0]["rerank_text"]["text"] += " changed"
+    with pytest.raises(ValueError, match="input|component|envelope"):
+        validate_frozen_case_artifact(tampered)
+
+
 def _source_suite() -> dict:
     cases = [
         _source_case("dev-en-001", "en", "semantic_alias_composition"),
@@ -332,14 +413,21 @@ def _source_suite() -> dict:
 
 
 def _source_case(case_id: str, language: str, scenario: str) -> dict:
+    query = f"query for {case_id}" if language == "en" else f"安静素食 {case_id}"
     return {
         "id": case_id,
         "split": "dev",
         "language": language,
         "scenario": scenario,
         "intentGroup": case_id,
-        "query": f"query for {case_id}",
-        "constraints": {},
+        "query": query,
+        "constraints": {
+            "query": query,
+            "category": "Food & Dining",
+            "neighborhood": "Midtown",
+            "desired_tags": ["quiet", "vegan_options"],
+            "result_limit": 10,
+        },
         "preferenceTags": ["quiet", "vegan"],
         "hardConstraints": {
             "category": "Food & Dining",
@@ -366,7 +454,7 @@ def _source_case(case_id: str, language: str, scenario: str) -> dict:
     }
 
 
-def _config(provider: str) -> dict:
+def _config(provider: str, *, replay_contract_sha256: str | None = None) -> dict:
     learned = provider != "heuristic-multi-signal"
     config = {
         "retrieval": {
@@ -387,8 +475,16 @@ def _config(provider: str) -> dict:
         "queryRewrite": {
             "enabled": True,
             "provider": "openai",
+            "model": "fixture-rewrite-model",
             "promptVersion": "m3-v1",
             "promptFingerprint": "2" * 64,
+            "executionMode": ("frozen-replay" if replay_contract_sha256 else "live-capture"),
+            "captureProvider": "openai",
+            "captureModel": "fixture-rewrite-model",
+            "replayVersion": M4_REPLAY_VERSION,
+            "replayImplementationSha256": m4_replay_implementation_sha256(),
+            "replayArtifactContractSha256": replay_contract_sha256,
+            "performanceScope": M4_PERFORMANCE_SCOPE,
         },
         "reranker": {
             "enabled": learned,
@@ -403,6 +499,131 @@ def _config(provider: str) -> dict:
     }
     config["features"]["queryRewriteConfigFingerprint"] = rewrite_config_fingerprint(config)
     return config
+
+
+def _replay_artifact(
+    case: dict,
+    *,
+    base_plan=None,
+    evidence_source_type: str = "shop_review",
+) -> dict:
+    constraints = UserConstraints.model_validate(case["constraints"])
+    if base_plan is None:
+        base_plan = asyncio.run(DisabledQueryRewriter(prompt_version="m3-v1").rewrite(constraints))
+    plan = base_plan.model_copy(
+        update={
+            "trace": QueryRewriteTrace(
+                requested_provider="openai",
+                requested_model="fixture-rewrite-model",
+                provider="openai",
+                model="fixture-rewrite-model",
+                prompt_version="m3-v1",
+                rewrite_count=0,
+                network_requests=1,
+                input_tokens=25,
+                output_tokens=5,
+                latency_ms=12.3456789,
+                cache_hit=False,
+                fallback_used=False,
+                fallback_reason=None,
+                response_content_length=10,
+            )
+        },
+        deep=True,
+    )
+    rewrite_artifact = frozen_rewrite_artifact(
+        plan,
+        case_id=case["id"],
+        constraints=constraints,
+        rule_query=base_plan.rule.text,
+    )
+    candidates = [
+        ShopCandidate(
+            shop_id=1,
+            external_id="merchant:low",
+            name="low",
+            category="Food & Dining",
+            neighborhood="Midtown",
+            latitude=40.0,
+            longitude=-73.0,
+            tags=[],
+            data_version="fixture-v1",
+        ),
+        ShopCandidate(
+            shop_id=2,
+            external_id="merchant:high",
+            name="high",
+            category="Food & Dining",
+            neighborhood="Midtown",
+            latitude=40.0,
+            longitude=-73.0,
+            tags=["quiet", "vegan_options"],
+            data_version="fixture-v1",
+        ),
+        ShopCandidate(
+            shop_id=3,
+            external_id="merchant:medium",
+            name="medium",
+            category="Food & Dining",
+            neighborhood="Midtown",
+            latitude=40.0,
+            longitude=-73.0,
+            tags=["quiet"],
+            data_version="fixture-v1",
+        ),
+    ]
+    pool = CandidateSet(
+        candidates=candidates,
+        retrieval_metadata={
+            "globalRetrievalEnabled": True,
+            "globalDenseAvailable": True,
+            "globalSparseAvailable": True,
+        },
+    )
+    text_builder = MerchantRerankTextBuilder()
+    rerank_candidates = tuple(
+        RerankCandidate(
+            shop_id=candidate.shop_id,
+            original_rank=index,
+            rerank_text=text_builder.build(candidate),
+        )
+        for index, candidate in enumerate(candidates, start=1)
+    )
+    evidence = EvidencePack(
+        evidence=[
+            ShopEvidence(
+                shop_id=candidate.shop_id,
+                citations=[
+                    EvidenceCitation(
+                        citation_id=f"review:{candidate.shop_id}",
+                        shop_id=candidate.shop_id,
+                        shop_external_id=candidate.external_id,
+                        content_type="review",
+                        excerpt=f"Evidence for {candidate.name}",
+                        source_id=f"review:{candidate.shop_id}",
+                        source_type=evidence_source_type,
+                        data_version="fixture-v1",
+                        dataset_sha256="d" * 64,
+                    )
+                ],
+            )
+            for candidate in candidates
+        ]
+    )
+    control = pool.model_copy(
+        update={"candidates": [candidates[1], candidates[2], candidates[0]]},
+        deep=True,
+    )
+    return build_frozen_case_artifact(
+        case_id=case["id"],
+        constraints=constraints,
+        rewrite_artifact=rewrite_artifact,
+        pre_rerank_candidate_set=pool,
+        rerank_query=_reranker_query(constraints),
+        rerank_candidates=rerank_candidates,
+        evidence_pack=evidence,
+        control_final_candidate_set=control,
+    )
 
 
 def _capture_report(source: dict) -> dict:
@@ -428,19 +649,22 @@ def _capture_report(source: dict) -> dict:
         "evaluatedCases": source["caseCount"],
         "partial": False,
     }
-    pool = ["merchant:low", "merchant:high", "merchant:medium"]
-    results = [
-        {
-            "id": case["id"],
-            "orderedCandidates": [],
-            "retrievalTrace": {
-                "preRerankCandidateExternalIds": pool,
-                "preRerankPoolFingerprint": sha256_json(pool),
-                "rerankerInputFingerprint": "a" * 64,
-            },
-        }
-        for case in source["cases"]
-    ]
+    results = []
+    for case in source["cases"]:
+        artifact = _replay_artifact(case)
+        pre = artifact["preRerankMetadata"]
+        results.append(
+            {
+                "id": case["id"],
+                "orderedCandidates": [],
+                "retrievalTrace": {
+                    "preRerankCandidateExternalIds": pre["preRerankCandidateExternalIds"],
+                    "preRerankPoolFingerprint": pre["preRerankPoolFingerprint"],
+                    "rerankerInputFingerprint": pre["rerankerInputFingerprint"],
+                },
+                "m4ReplayCapture": artifact,
+            }
+        )
     return {
         "schemaVersion": 4,
         "suite": {
@@ -512,12 +736,14 @@ def _comparison_reports(suite: dict, capture: dict) -> tuple[dict, dict]:
 
     def report(*, treatment: bool) -> dict:
         provider = "qwen3-rerank" if treatment else "heuristic-multi-signal"
-        config = _config(provider)
+        contract = suite["judgmentContract"]
+        config = _config(
+            provider,
+            replay_contract_sha256=contract["replayArtifactContractSha256"],
+        )
         results = [
             _result_row(
-                case_id=case["id"],
-                language=case["language"],
-                scenario=case["scenario"],
+                case=case,
                 treatment=treatment,
             )
             for case in suite["cases"]
@@ -530,26 +756,32 @@ def _comparison_reports(suite: dict, capture: dict) -> tuple[dict, dict]:
             "rerankerConfigFingerprint": reranker_config_fingerprint(config),
             "rewriteConfigFingerprint": rewrite_config_fingerprint(config),
             "resolvedConfig": config,
+            "performanceScope": M4_PERFORMANCE_SCOPE,
+            "onlineEndToEndLatencyClaimAllowed": False,
+            "rewriteProviderCost": {
+                "scoredEstimatedCostUsd": 0.0,
+                "warmupEstimatedCostUsd": 0.0,
+                "estimatedCostUsd": 0.0,
+                "hardCostCapUsd": 0.1,
+            },
             "rerankerProviderCost": {
                 "scoredEstimatedCostUsd": summary["costUsd"]["reranker"],
                 "warmupEstimatedCostUsd": 0.0,
                 "estimatedCostUsd": summary["costUsd"]["reranker"],
                 "hardCostCapUsd": 0.5,
             },
-            "policyArtifacts": {
-                "qualityGateSha256": hashlib.sha256(DEFAULT_GATE.read_bytes()).hexdigest()
-            },
+            "policyArtifacts": {"qualityGateSha256": hashlib.sha256(DEFAULT_GATE.read_bytes()).hexdigest()},
         }
-        contract = suite["judgmentContract"]
         manifest = {
             "suiteSchemaVersion": 5,
             "suiteContractSha256": suite["suiteContractSha256"],
             "caseSha256": suite["caseSha256"],
             "judgmentContractSha256": sha256_json(contract),
-            "candidateUniverseFixtureSha256": contract[
-                "candidateUniverseFixtureSha256"
-            ],
+            "candidateUniverseFixtureSha256": contract["candidateUniverseFixtureSha256"],
             "candidatePoolContractSha256": contract["candidatePoolContractSha256"],
+            "replayArtifactContractSha256": contract["replayArtifactContractSha256"],
+            "replayImplementationSha256": contract["replayImplementationSha256"],
+            "performanceScope": M4_PERFORMANCE_SCOPE,
             "configFingerprint": run["configFingerprint"],
             "m4ExperimentFingerprint": run["m4ExperimentFingerprint"],
             "rerankerConfigFingerprint": run["rerankerConfigFingerprint"],
@@ -558,6 +790,8 @@ def _comparison_reports(suite: dict, capture: dict) -> tuple[dict, dict]:
         }
         return {
             "schemaVersion": 5,
+            "performanceScope": M4_PERFORMANCE_SCOPE,
+            "onlineEndToEndLatencyClaimAllowed": False,
             "suite": deepcopy(suite_report),
             "run": run,
             "index": deepcopy(capture["index"]),
@@ -570,9 +804,12 @@ def _comparison_reports(suite: dict, capture: dict) -> tuple[dict, dict]:
     return report(treatment=False), report(treatment=True)
 
 
-def _result_row(*, case_id: str, language: str, scenario: str, treatment: bool) -> dict:
+def _result_row(*, case: dict, treatment: bool) -> dict:
+    case_id = str(case["id"])
+    language = str(case["language"])
+    scenario = str(case["scenario"])
     ndcg = 0.41 if treatment else 0.4
-    pool = ["merchant:low", "merchant:high", "merchant:medium"]
+    pool = list(case["metadata"]["preRerankCandidateExternalIds"])
     usage = {
         "network_requests": int(treatment),
         "total_tokens": 100 if treatment else 0,
@@ -585,9 +822,7 @@ def _result_row(*, case_id: str, language: str, scenario: str, treatment: bool) 
         "id": case_id,
         "language": language,
         "scenario": scenario,
-        "semanticRuleCoverage": (
-            "outOfDictionary" if scenario == "semantic_alias_composition" else None
-        ),
+        "semanticRuleCoverage": ("outOfDictionary" if scenario == "semantic_alias_composition" else None),
         "metrics": {
             "recallAt5": 0.5,
             "recallAt10": 0.5,
@@ -598,6 +833,7 @@ def _result_row(*, case_id: str, language: str, scenario: str, treatment: bool) 
             "unjudgedReturnedCount": 0,
             "unjudgedReturnedRate": 0.0,
         },
+        "returnedCount": len(pool),
         "integrity": {
             "hardConstraintSatisfaction": 1.0,
             "hardConstraintViolationCount": 0,
@@ -633,39 +869,52 @@ def _result_row(*, case_id: str, language: str, scenario: str, treatment: bool) 
             "total": 500.0 if treatment else 100.0,
         },
         "requests": {
-            "embeddingRequests": 1,
-            "queryEmbeddingCalls": 1,
+            "embeddingRequests": 0,
+            "queryEmbeddingCalls": 0,
             "documentEmbeddingCalls": 0,
             "embeddedTexts": 1,
             "providerUsage": {
-                "network_requests": 1,
-                "total_tokens": 10,
+                "network_requests": 0,
+                "total_tokens": 0,
                 "retry_count": 0,
                 "failure_count": 0,
                 "query_cache_hits": 0,
             },
-            "rewriteRequests": 1,
+            "rewriteRequests": 0,
             "rewriteProviderUsage": {
-                "network_requests": 1,
-                "total_tokens": 100,
+                "network_requests": 0,
+                "total_tokens": 0,
                 "retry_count": 0,
                 "failure_count": 0,
                 "query_cache_hits": 0,
-                "estimated_cost_usd": 0.001,
+                "estimated_cost_usd": 0.0,
             },
             "rerankerRequests": int(treatment),
             "rerankerProviderUsage": usage,
             "rerankerFallback": False,
         },
         "orderedCandidates": [
-            {"externalId": "merchant:high", "judged": True, "relevance": 3}
+            {
+                "externalId": external_id,
+                "judged": True,
+                "relevance": next(
+                    int(item["relevance"]) for item in case["judgments"] if item["externalId"] == external_id
+                ),
+            }
+            for external_id in replay_metadata_for_case(case)["controlFinalExternalIds"]
         ],
         "retrievalTrace": {
             "preRerankCandidateExternalIds": pool,
             "preRerankPoolFingerprint": sha256_json(pool),
-            "rerankerInputFingerprint": "a" * 64,
+            "rerankerInputFingerprint": case["metadata"]["rerankerInputFingerprint"],
             "rerankerCandidates": len(pool),
+            "finalCandidates": len(pool),
+            "queryRewriteExecutionMode": "frozen-replay",
+            "queryRewriteEffectiveProvider": "frozen-replay",
+            "queryRewriteNetworkRequests": 0,
+            "queryRewriteFallback": False,
         },
+        "m4Replay": replay_metadata_for_case(case),
     }
 
 

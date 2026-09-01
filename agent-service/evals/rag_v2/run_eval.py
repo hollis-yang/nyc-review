@@ -22,7 +22,7 @@ import httpx
 from qdrant_client import AsyncQdrantClient, models
 
 from app.config import Settings
-from app.domain.models import UserConstraints
+from app.domain.models import CandidateSet, EvidencePack, UserConstraints
 from app.rag.candidate_discovery import (
     GlobalHybridCandidateDiscovery,
     LegacyCandidateDiscovery,
@@ -98,6 +98,19 @@ from evals.rag_v2.contract import (
     suite_contract_sha256,
 )
 from evals.rag_v2.embedding_profiles import PROFILES, EmbeddingProfile, profile
+from evals.rag_v2.m4_replay import (
+    M4_PERFORMANCE_SCOPE,
+    M4_REPLAY_VERSION,
+    FrozenCandidateDiscovery,
+    FrozenQueryRewriter,
+    FrozenRagService,
+    RecordingGlobalHybridCandidateDiscovery,
+    RecordingQueryRewriter,
+    frozen_replay_contract_sha256,
+    m4_replay_implementation_sha256,
+    replay_metadata_for_case,
+    validate_frozen_case_artifact,
+)
 from evals.rag_v2.metrics import (
     hard_constraint_violations,
     integrity_metrics,
@@ -161,6 +174,7 @@ M4_EVAL_SOURCE_PATHS = (
     "agent-service/app/rag/reranker.py",
     "agent-service/evals/rag_v2/build_m4_cases.py",
     "agent-service/evals/rag_v2/compare_m4.py",
+    "agent-service/evals/rag_v2/m4_replay.py",
     "agent-service/evals/rag_v2/m4_quality_gate.json",
 )
 _M3_REWRITE_SAFETY_REASONS = frozenset(
@@ -204,9 +218,7 @@ class TimedEmbeddingService:
         try:
             vectors = await embed_query_batch(self._inner, texts)
             if vectors is None:
-                return await asyncio.gather(
-                    *(self._inner.embed_query(text) for text in texts)
-                )
+                return await asyncio.gather(*(self._inner.embed_query(text) for text in texts))
             return vectors
         finally:
             self.query_calls += len(texts)
@@ -410,9 +422,7 @@ async def evaluate_case(
     case_metadata = case.get("metadata") or {}
     semantic_rule_coverage = _semantic_rule_coverage(case)
     if "structuredCandidateExternalIds" in case_metadata:
-        structured_ids = {
-            str(item) for item in (case_metadata.get("structuredCandidateExternalIds") or [])
-        }
+        structured_ids = {str(item) for item in (case_metadata.get("structuredCandidateExternalIds") or [])}
     else:
         structured_ids = set(judgments)
     rescue = structured_miss_metrics(
@@ -523,18 +533,20 @@ async def evaluate_case(
             "queryEmbeddingCalls": embedding["queryEmbeddingCalls"],
             "documentEmbeddingCalls": embedding["documentEmbeddingCalls"],
             "embeddedTexts": embedding["embeddedTexts"],
-            "rewriteRequests": int(getattr(runtime, "query_rewriter", None) is not None),
-            "rerankerRequests": int(
-                m4_enabled and bool(discovery_metadata.get("rerankerEnabled"))
+            # Logical invocations are distinct from provider network requests.
+            "rewriteRequests": int(
+                discovery_metadata.get(
+                    "queryRewriteLogicalInvocations",
+                    int(getattr(runtime, "query_rewriter", None) is not None),
+                )
             ),
+            "rerankerRequests": int(m4_enabled and bool(discovery_metadata.get("rerankerEnabled"))),
             "providerUsage": embedding["providerUsage"],
             **({"rewriteProviderUsage": rewrite_usage} if m3_enabled else {}),
             **(
                 {
                     "rerankerProviderUsage": reranker_usage,
-                    "rerankerFallback": bool(
-                        discovery_metadata.get("rerankerFallback", False)
-                    ),
+                    "rerankerFallback": bool(discovery_metadata.get("rerankerFallback", False)),
                 }
                 if m4_enabled
                 else {}
@@ -583,9 +595,7 @@ def _semantic_rule_coverage(case: Mapping[str, Any]) -> str | None:
     if case.get("scenario") != "semantic_alias_composition":
         return None
     query = str(case.get("query") or "")
-    preference_tags = {
-        str(tag) for tag in (case.get("preferenceTags") or []) if isinstance(tag, str)
-    }
+    preference_tags = {str(tag) for tag in (case.get("preferenceTags") or []) if isinstance(tag, str)}
     recognized = set(canonical_tags(query)) & preference_tags
     return "ruleCovered" if recognized else "outOfDictionary"
 
@@ -666,9 +676,7 @@ def _reranker_case_usage(
                 value = metadata[name]
                 break
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise ValueError(
-                f"M4 retrieval metadata {'/'.join(names)} must be a non-negative integer."
-            )
+            raise ValueError(f"M4 retrieval metadata {'/'.join(names)} must be a non-negative integer.")
         return value
 
     estimated_cost = metadata.get("rerankerEstimatedCostUsd", 0.0)
@@ -727,6 +735,7 @@ def _retrieval_trace(
         "globalMerchants": count(0, "globalMerchants"),
         "fusionCandidates": count(returned_count, "fusionCandidates"),
         "fusionPoolCandidates": count(returned_count, "fusionPoolCandidates"),
+        "finalCandidates": count(returned_count, "finalCandidates"),
         "structuredOnlyMerchants": count(0, "structuredOnlyMerchants"),
         "qdrantOnlyMerchants": count(0, "qdrantOnlyMerchants"),
         "overlapMerchants": count(0, "overlapMerchants"),
@@ -751,26 +760,22 @@ def _retrieval_trace(
         "globalQueryVariantPartialFailureIds": list(
             metadata.get("globalQueryVariantPartialFailureIds") or []
         ),
-        "globalQueryVariantTimedOutIds": list(
-            metadata.get("globalQueryVariantTimedOutIds") or []
-        ),
-        "globalQueryVariantFailedIds": list(
-            metadata.get("globalQueryVariantFailedIds") or []
-        ),
+        "globalQueryVariantTimedOutIds": list(metadata.get("globalQueryVariantTimedOutIds") or []),
+        "globalQueryVariantFailedIds": list(metadata.get("globalQueryVariantFailedIds") or []),
         "queryRewriteEnabled": bool(metadata.get("queryRewriteEnabled")),
+        "queryRewriteProvider": metadata.get("queryRewriteProvider"),
+        "queryRewriteEffectiveProvider": metadata.get("queryRewriteEffectiveProvider"),
+        "queryRewriteExecutionMode": metadata.get("queryRewriteExecutionMode"),
+        "queryRewriteNetworkRequests": count(0, "queryRewriteNetworkRequests"),
+        "queryRewriteInputTokens": count(0, "queryRewriteInputTokens"),
+        "queryRewriteOutputTokens": count(0, "queryRewriteOutputTokens"),
         "queryRewriteFallback": bool(metadata.get("queryRewriteFallback")),
         "queryRewriteFallbackReason": metadata.get("queryRewriteFallbackReason"),
-        "preRerankCandidateExternalIds": list(
-            metadata.get("preRerankCandidateExternalIds") or []
-        ),
+        "preRerankCandidateExternalIds": list(metadata.get("preRerankCandidateExternalIds") or []),
         "preRerankPoolFingerprint": metadata.get("preRerankPoolFingerprint"),
-        "rerankerInputExternalIds": list(
-            metadata.get("rerankerInputExternalIds") or []
-        ),
+        "rerankerInputExternalIds": list(metadata.get("rerankerInputExternalIds") or []),
         "rerankerInputFingerprint": metadata.get("rerankerInputFingerprint"),
-        "rerankerInputDocumentIds": dict(
-            metadata.get("rerankerInputDocumentIds") or {}
-        ),
+        "rerankerInputDocumentIds": dict(metadata.get("rerankerInputDocumentIds") or {}),
         "rerankerEnabled": bool(metadata.get("rerankerEnabled")),
         "rerankerProvider": metadata.get("rerankerProvider"),
         "rerankerModel": metadata.get("rerankerModel"),
@@ -782,9 +787,7 @@ def _retrieval_trace(
         "rerankerTokens": count(0, "rerankerTokens"),
         "rerankerEstimatedCostUsd": metadata.get("rerankerEstimatedCostUsd", 0.0),
         "rerankerRetryCount": count(0, "rerankerRetryCount", "rerankerRetries"),
-        "rerankerFailureCount": count(
-            0, "rerankerFailureCount", "rerankerFailures"
-        ),
+        "rerankerFailureCount": count(0, "rerankerFailureCount", "rerankerFailures"),
         "rerankerFallback": bool(metadata.get("rerankerFallback")),
         "rerankerFallbackReason": metadata.get("rerankerFallbackReason"),
         "rerankerCacheHit": bool(metadata.get("rerankerCacheHit")),
@@ -800,10 +803,7 @@ def _m2_retrieval_safety_issues(results: list[dict[str, Any]]) -> dict[str, int]
         "globalSparseRejectedPoints",
     )
     return {
-        field: sum(
-            int((result.get("retrievalTrace") or {}).get(field) or 0)
-            for result in results
-        )
+        field: sum(int((result.get("retrievalTrace") or {}).get(field) or 0) for result in results)
         for field in fields
     }
 
@@ -814,9 +814,7 @@ def _raise_m3_case_runtime_failure(result: Mapping[str, Any]) -> None:
     trace = result.get("retrievalTrace") or {}
     if trace.get("queryRewriteFallback"):
         reason = trace.get("queryRewriteFallbackReason") or "unknown"
-        raise ValueError(
-            f"M3 case {result.get('id')} used query rewrite fallback ({reason}); aborting."
-        )
+        raise ValueError(f"M3 case {result.get('id')} used query rewrite fallback ({reason}); aborting.")
     failed_variants = sorted(
         {
             str(variant_id)
@@ -830,8 +828,7 @@ def _raise_m3_case_runtime_failure(result: Mapping[str, Any]) -> None:
     )
     if failed_variants:
         raise ValueError(
-            f"M3 case {result.get('id')} had incomplete query variants: "
-            + ", ".join(failed_variants)
+            f"M3 case {result.get('id')} had incomplete query variants: " + ", ".join(failed_variants)
         )
 
 
@@ -863,29 +860,54 @@ def _raise_m4_case_runtime_failure(
         expected = expected_case.get("metadata") or {}
         if (
             pool_ids != expected.get("preRerankCandidateExternalIds")
-            or trace.get("preRerankPoolFingerprint")
-            != expected.get("preRerankPoolFingerprint")
+            or trace.get("preRerankPoolFingerprint") != expected.get("preRerankPoolFingerprint")
             or input_fingerprint != expected.get("rerankerInputFingerprint")
         ):
-            raise ValueError(
-                f"M4 case {case_id} did not replay its frozen pre-rerank pool/input."
-            )
+            raise ValueError(f"M4 case {case_id} did not replay its frozen pre-rerank pool/input.")
+        expected_replay = replay_metadata_for_case(expected_case)
+        if result.get("m4Replay") != expected_replay:
+            raise ValueError(f"M4 case {case_id} did not replay its frozen artifact exactly.")
+        if (
+            trace.get("queryRewriteEffectiveProvider") != "frozen-replay"
+            or int(trace.get("queryRewriteNetworkRequests") or 0) != 0
+            or trace.get("queryRewriteFallback")
+        ):
+            raise ValueError(f"M4 case {case_id} performed or failed online rewrite replay.")
+        requests = result.get("requests") or {}
+        rewrite_usage = requests.get("rewriteProviderUsage") or {}
+        embedding_usage = requests.get("providerUsage") or {}
+        if (
+            int(requests.get("rewriteRequests") or 0) != 0
+            or int(rewrite_usage.get("network_requests") or 0) != 0
+            or int(rewrite_usage.get("total_tokens") or 0) != 0
+            or float(rewrite_usage.get("estimated_cost_usd") or 0.0) != 0.0
+            or int(embedding_usage.get("network_requests") or 0) != 0
+            or int(requests.get("embeddingRequests") or 0) != 0
+        ):
+            raise ValueError(f"M4 case {case_id} formal isolation made an embedding/rewrite request.")
+    else:
+        validate_frozen_case_artifact(
+            result.get("m4ReplayCapture"),
+            expected_case_id=case_id,
+        )
     if trace.get("rerankerFallback"):
         reason = trace.get("rerankerFallbackReason") or "unknown"
         raise ValueError(f"M4 case {case_id} used reranker fallback ({reason}); aborting.")
-    if int(trace.get("rerankerRetryCount") or 0) != 0 or int(
-        trace.get("rerankerFailureCount") or 0
-    ) != 0:
+    if int(trace.get("rerankerRetryCount") or 0) != 0 or int(trace.get("rerankerFailureCount") or 0) != 0:
         raise ValueError(f"M4 case {case_id} observed a reranker retry or failure.")
+    expected_final_count = min(10, len(pool_ids))
+    if (
+        result.get("returnedCount") != expected_final_count
+        or trace.get("finalCandidates") != expected_final_count
+    ):
+        raise ValueError(f"M4 case {case_id} did not return its exact frozen Top-K.")
     if learned_treatment and (
         trace.get("rerankerEnabled") is not True
         or trace.get("rerankerStatus") != "applied"
         or int(trace.get("rerankerCandidates") or 0) != len(pool_ids)
         or int(trace.get("rerankerNetworkRequests") or 0) != 1
     ):
-        raise ValueError(
-            f"M4 case {case_id} requires exactly one successful learned reranker batch."
-        )
+        raise ValueError(f"M4 case {case_id} requires exactly one successful learned reranker batch.")
 
 
 async def run(args: argparse.Namespace) -> tuple[dict, bool]:
@@ -901,14 +923,12 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
     runtime_environment = _runtime_environment_snapshot()
     schema_version = int(suite.get("schemaVersion") or 0)
     m4_run = bool(getattr(args, "m4_capture", False) or schema_version == 5)
-    m3_run = not m4_run and bool(
-        getattr(args, "m3_capture_arm", None) or schema_version == 4
-    )
+    m3_run = not m4_run and bool(getattr(args, "m3_capture_arm", None) or schema_version == 4)
     rewrite_run = m3_run or m4_run
-    m2_run = not rewrite_run and (schema_version == 3 or (
-        int(suite.get("schemaVersion") or 0) == 2
-        and args.global_retrieval_mode == "global-hybrid"
-    ))
+    m2_run = not rewrite_run and (
+        schema_version == 3
+        or (int(suite.get("schemaVersion") or 0) == 2 and args.global_retrieval_mode == "global-hybrid")
+    )
     initial_scoped_source = (
         _m4_scoped_source_snapshot(repository)
         if m4_run
@@ -1016,21 +1036,20 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             cases = cases[: args.limit_cases]
         allow_unjudged_capture = bool(
             capture_only
-            and (
-                getattr(args, "m3_capture_arm", None) == "treatment"
-                or getattr(args, "m4_capture", False)
-            )
+            and (getattr(args, "m3_capture_arm", None) == "treatment" or getattr(args, "m4_capture", False))
         )
         warmup_results = []
         for warmup_case in cases[: args.warmup_cases]:
-            warmup_results.append(await evaluate_case(
-                runtime,
-                warmup_case,
-                suite,
-                candidate_limit=args.candidate_limit,
-                capture_only=capture_only,
-                allow_unjudged=allow_unjudged_capture,
-            ))
+            warmup_results.append(
+                await evaluate_case(
+                    runtime,
+                    warmup_case,
+                    suite,
+                    candidate_limit=args.candidate_limit,
+                    capture_only=capture_only,
+                    allow_unjudged=allow_unjudged_capture,
+                )
+            )
         warmup_rewrite_cost = _rewrite_cost_from_results(warmup_results)
         warmup_reranker_cost = _reranker_cost_from_results(warmup_results)
         runtime.embedding_service.clear_query_cache()
@@ -1042,6 +1061,10 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
         if reranker is not None:
             reranker.clear_cache()
             reranker.reset()
+        candidate_discovery = getattr(runtime, "candidate_discovery", None)
+        reset_capture = getattr(candidate_discovery, "reset_capture", None)
+        if reset_capture is not None:
+            reset_capture()
 
         results = []
         for index, case in enumerate(cases, start=1):
@@ -1053,6 +1076,25 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 capture_only=capture_only,
                 allow_unjudged=allow_unjudged_capture,
             )
+            if m4_run:
+                constraints = UserConstraints.model_validate(case["constraints"])
+                if capture_only:
+                    if not isinstance(runtime.query_rewriter, RecordingQueryRewriter) or not isinstance(
+                        runtime.candidate_discovery,
+                        RecordingGlobalHybridCandidateDiscovery,
+                    ):
+                        raise ValueError("M4 capture runtime recorders are not installed.")
+                    rewrite_artifact = runtime.query_rewriter.artifact_for_case(
+                        case_id=str(case["id"]),
+                        constraints=constraints,
+                    )
+                    result["m4ReplayCapture"] = runtime.candidate_discovery.artifact_for_case(
+                        case_id=str(case["id"]),
+                        constraints=constraints,
+                        rewrite_artifact=rewrite_artifact,
+                    )
+                else:
+                    result["m4Replay"] = replay_metadata_for_case(case)
             results.append(result)
             if rewrite_run:
                 _raise_m3_case_runtime_failure(result)
@@ -1104,11 +1146,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 "thresholds": {},
             }
         else:
-            summary = (
-                _summarize_m4_results(results)
-                if m4_run
-                else summarize_results(results)
-            )
+            summary = _summarize_m4_results(results) if m4_run else summarize_results(results)
             baseline = _load_baseline(args.baseline_report, split=args.split)
             quality_gate = evaluate_gate(
                 summary,
@@ -1159,8 +1197,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
         retrieval_safety_issues = _m2_retrieval_safety_issues(results)
         retrieval_safety_rejection_count = sum(retrieval_safety_issues.values())
         rewrite_fallback_count = sum(
-            bool((result.get("retrievalTrace") or {}).get("queryRewriteFallback"))
-            for result in results
+            bool((result.get("retrievalTrace") or {}).get("queryRewriteFallback")) for result in results
         )
         rewrite_safety_rejection_count = sum(
             (result.get("retrievalTrace") or {}).get("queryRewriteFallbackReason")
@@ -1168,16 +1205,13 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             for result in results
         )
         reranker_fallback_count = sum(
-            bool((result.get("retrievalTrace") or {}).get("rerankerFallback"))
-            for result in results
+            bool((result.get("retrievalTrace") or {}).get("rerankerFallback")) for result in results
         )
         reranker_retry_count = sum(
-            int((result.get("retrievalTrace") or {}).get("rerankerRetryCount") or 0)
-            for result in results
+            int((result.get("retrievalTrace") or {}).get("rerankerRetryCount") or 0) for result in results
         )
         reranker_failure_count = sum(
-            int((result.get("retrievalTrace") or {}).get("rerankerFailureCount") or 0)
-            for result in results
+            int((result.get("retrievalTrace") or {}).get("rerankerFailureCount") or 0) for result in results
         )
         if args.embedding_provider != "hash" and fallback_count:
             quality_gate["failures"].append(
@@ -1202,18 +1236,14 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             )
             quality_gate["passed"] = False
         if rewrite_run and rewrite_fallback_count:
-            quality_gate["failures"].append(
-                f"M3 observed {rewrite_fallback_count} query rewrite fallbacks."
-            )
+            quality_gate["failures"].append(f"M3 observed {rewrite_fallback_count} query rewrite fallbacks.")
             quality_gate["passed"] = False
         if rewrite_run and rewrite_safety_rejection_count:
             quality_gate["failures"].append(
                 f"M3 observed {rewrite_safety_rejection_count} rewrite safety rejections."
             )
             quality_gate["passed"] = False
-        if m4_run and (
-            reranker_fallback_count or reranker_retry_count or reranker_failure_count
-        ):
+        if m4_run and (reranker_fallback_count or reranker_retry_count or reranker_failure_count):
             quality_gate["failures"].append(
                 "M4 observed reranker fallback/retry/failure counts: "
                 f"{reranker_fallback_count}/{reranker_retry_count}/{reranker_failure_count}."
@@ -1249,13 +1279,9 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             if m3_run
             else _m2_experiment_fingerprint(resolved_config)
         )
-        rewrite_fingerprint = (
-            rewrite_config_fingerprint(resolved_config) if rewrite_run else None
-        )
+        rewrite_fingerprint = rewrite_config_fingerprint(resolved_config) if rewrite_run else None
         prompt_fingerprint = (
-            (resolved_config.get("queryRewrite") or {}).get("promptFingerprint")
-            if rewrite_run
-            else None
+            (resolved_config.get("queryRewrite") or {}).get("promptFingerprint") if rewrite_run else None
         )
         scored_rewrite_cost = _rewrite_cost_from_results(results)
         rewrite_provider_cost = {
@@ -1274,11 +1300,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             "scoredEstimatedCostUsd": float(scored_reranker_cost),
             "warmupEstimatedCostUsd": float(warmup_reranker_cost),
             "estimatedCostUsd": float(scored_reranker_cost + warmup_reranker_cost),
-            "hardCostCapUsd": float(
-                (resolved_config.get("reranker") or {}).get(
-                    "maxProviderCostUsd", 0.0
-                )
-            ),
+            "hardCostCapUsd": float((resolved_config.get("reranker") or {}).get("maxProviderCostUsd", 0.0)),
         }
         git_snapshot = _git_snapshot(repository)
         candidate_universe = None
@@ -1327,18 +1349,32 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 if m3_run and capture_only
                 else ("m2-candidate-universe-capture" if capture_only else "evaluation")
             ),
+            **(
+                {
+                    "performanceScope": M4_PERFORMANCE_SCOPE,
+                    "onlineEndToEndLatencyClaimAllowed": False,
+                }
+                if m4_run
+                else {}
+            ),
             "suite": suite_report,
             "run": {
                 "git": git_snapshot,
                 "scopedSource": scoped_source,
                 "runtimeEnvironment": runtime_environment,
+                **(
+                    {
+                        "performanceScope": M4_PERFORMANCE_SCOPE,
+                        "onlineEndToEndLatencyClaimAllowed": False,
+                    }
+                    if m4_run
+                    else {}
+                ),
                 "configFingerprint": config_fingerprint,
                 **(
                     {
                         "m4ExperimentFingerprint": experiment_fingerprint,
-                        "rerankerConfigFingerprint": reranker_config_fingerprint(
-                            resolved_config
-                        ),
+                        "rerankerConfigFingerprint": reranker_config_fingerprint(resolved_config),
                         "rewriteConfigFingerprint": rewrite_fingerprint,
                         "promptFingerprint": prompt_fingerprint,
                         "rewriteProviderCost": rewrite_provider_cost,
@@ -1640,18 +1676,14 @@ async def _build_runtime(
             "preflight": preflight,
         }
         if int(suite.get("schemaVersion") or 0) in {3, 4, 5}:
-            expected_manifest = suite["judgmentContract"].get(
-                "captureIndexManifestFingerprint"
-            )
+            expected_manifest = suite["judgmentContract"].get("captureIndexManifestFingerprint")
             if index_report["manifestFingerprint"] != expected_manifest:
                 raise ValueError(
-                    "Bounded Eval index manifest differs from the one used to capture its "
-                    "candidate universe."
+                    "Bounded Eval index manifest differs from the one used to capture its candidate universe."
                 )
             if suite["judgmentContract"].get("captureQdrantServer") != current_qdrant_server:
                 raise ValueError(
-                    "Qdrant Server metadata differs from candidate capture; recapture "
-                    "the bounded Dev suite."
+                    "Qdrant Server metadata differs from candidate capture; recapture the bounded Dev suite."
                 )
     except BaseException:
         if _index_action(args) in {"build", "resume"}:
@@ -1679,13 +1711,21 @@ async def _build_runtime(
         )
 
     try:
-        query_rewriter = _query_rewriter(args, resolved_config)
+        query_rewriter = _query_rewriter(args, resolved_config, suite=suite)
         reranker = _reranker(args, resolved_config)
         shop_service = GeneratedNycShopToolService(
             data_directory,
             max_candidates=args.discovery_pool_size,
         )
-        if args.global_retrieval_enabled:
+        formal_m4_replay = int(suite.get("schemaVersion") or 0) == 5
+        runtime_rag_service: Any = rag
+        if formal_m4_replay:
+            candidate_discovery = FrozenCandidateDiscovery(
+                suite["cases"],
+                reranker=reranker,
+            )
+            runtime_rag_service = FrozenRagService(suite["cases"])
+        elif args.global_retrieval_enabled:
             scope = GlobalRetrievalScope(
                 collection_name=args.collection,
                 data_version=suite["dataVersion"],
@@ -1699,7 +1739,12 @@ async def _build_runtime(
                 scope,
                 document_limit=args.global_document_limit,
             )
-            candidate_discovery = GlobalHybridCandidateDiscovery(
+            discovery_class = (
+                RecordingGlobalHybridCandidateDiscovery
+                if getattr(args, "m4_capture", False)
+                else GlobalHybridCandidateDiscovery
+            )
+            candidate_discovery = discovery_class(
                 shop_service,
                 rag,
                 global_retriever,
@@ -1715,25 +1760,23 @@ async def _build_runtime(
                 reranker=reranker,
                 rerank_text_builder=MerchantRerankTextBuilder(
                     max_characters=int(
-                        (resolved_config.get("reranker") or {}).get(
-                            "inputBuilder", {}
-                        ).get("maxDocumentCharacters", 1_600)
+                        (resolved_config.get("reranker") or {})
+                        .get("inputBuilder", {})
+                        .get("maxDocumentCharacters", 1_600)
                     ),
                     max_evidence=int(
-                        (resolved_config.get("reranker") or {}).get(
-                            "inputBuilder", {}
-                        ).get("maxEvidenceExcerpts", 2)
+                        (resolved_config.get("reranker") or {})
+                        .get("inputBuilder", {})
+                        .get("maxEvidenceExcerpts", 2)
                     ),
                     max_evidence_characters=int(
-                        (resolved_config.get("reranker") or {}).get(
-                            "inputBuilder", {}
-                        ).get("maxEvidenceCharacters", 500)
+                        (resolved_config.get("reranker") or {})
+                        .get("inputBuilder", {})
+                        .get("maxEvidenceCharacters", 500)
                     ),
                 ),
                 reranker_candidate_limit=int(
-                    (resolved_config.get("reranker") or {}).get(
-                        "candidateLimit", args.fusion_pool_limit
-                    )
+                    (resolved_config.get("reranker") or {}).get("candidateLimit", args.fusion_pool_limit)
                 ),
             )
         else:
@@ -1750,7 +1793,7 @@ async def _build_runtime(
 
     return SimpleNamespace(
         shop_service=shop_service,
-        rag_service=rag,
+        rag_service=runtime_rag_service,
         candidate_discovery=candidate_discovery,
         embedding_service=embedding,
         query_rewriter=query_rewriter,
@@ -1760,10 +1803,7 @@ async def _build_runtime(
             or getattr(args, "m4_capture", False)
             or int(suite.get("schemaVersion") or 0) in {4, 5}
         ),
-        m4_enabled=bool(
-            getattr(args, "m4_capture", False)
-            or int(suite.get("schemaVersion") or 0) == 5
-        ),
+        m4_enabled=bool(getattr(args, "m4_capture", False) or int(suite.get("schemaVersion") or 0) == 5),
         rewrite_input_price_usd_per_million_tokens=float(
             (resolved_config.get("queryRewrite") or {}).get(
                 "inputPriceUsdPerMillionTokens",
@@ -2313,10 +2353,16 @@ def _embedding_service(args: argparse.Namespace, config: dict) -> EmbeddingServi
 def _query_rewriter(
     args: argparse.Namespace,
     config: dict[str, Any],
+    *,
+    suite: Mapping[str, Any] | None = None,
 ) -> QueryRewriteProvider | None:
     rewrite = config.get("queryRewrite") or {}
     if rewrite.get("enabled") is not True:
         return None
+    if rewrite.get("executionMode") == "frozen-replay":
+        if suite is None or int(suite.get("schemaVersion") or 0) != 5:
+            raise ValueError("M4 frozen rewrite replay requires a schema-v5 suite.")
+        return FrozenQueryRewriter(list(suite.get("cases") or []))
     settings = _eval_settings()
     provider = str(rewrite["provider"])
     dedicated_key = settings.query_rewrite_api_key.get_secret_value()
@@ -2329,7 +2375,7 @@ def _query_rewriter(
     fallback = DisabledQueryRewriter(prompt_version=str(rewrite["promptVersion"]))
     runtime = rewrite["runtime"]
     base_url, _ = _query_rewrite_provider_values(args)
-    return OpenAICompatibleQueryRewriter(
+    provider_rewriter = OpenAICompatibleQueryRewriter(
         provider=provider,
         base_url=base_url,
         api_key=api_key,
@@ -2344,6 +2390,9 @@ def _query_rewriter(
         max_input_characters=int(runtime["maxInputCharacters"]),
         max_output_tokens=int(runtime["maxOutputTokens"]),
     )
+    if getattr(args, "m4_capture", False):
+        return RecordingQueryRewriter(provider_rewriter)
+    return provider_rewriter
 
 
 def _reranker(
@@ -2357,17 +2406,14 @@ def _reranker(
         raise ValueError("M4 Eval currently supports only the qwen learned reranker.")
     settings = _eval_settings()
     api_key = (
-        settings.reranker_api_key.get_secret_value()
-        or settings.qwen_embedding_api_key.get_secret_value()
+        settings.reranker_api_key.get_secret_value() or settings.qwen_embedding_api_key.get_secret_value()
     )
     if not api_key.strip():
         raise ValueError("M4 qwen reranking requires a configured reranker/DashScope API key.")
     base_url, _ = _reranker_provider_values(args)
     runtime = reranker["runtime"]
     instruction = _resolved_reranker_instruction(args)
-    if hashlib.sha256(instruction.encode("utf-8")).hexdigest() != reranker.get(
-        "instructionSha256"
-    ):
+    if hashlib.sha256(instruction.encode("utf-8")).hexdigest() != reranker.get("instructionSha256"):
         raise ValueError("M4 runtime instruction differs from resolved reranker config.")
     return HttpCrossEncoderReranker(
         provider="qwen",
@@ -2384,9 +2430,7 @@ def _reranker(
         cache_ttl_seconds=float(runtime["cacheTtlSeconds"]),
         circuit_failure_threshold=int(runtime["circuitFailureThreshold"]),
         circuit_recovery_seconds=float(runtime["circuitCooldownSeconds"]),
-        input_cost_per_million_tokens=float(
-            reranker["inputPriceUsdPerMillionTokens"]
-        ),
+        input_cost_per_million_tokens=float(reranker["inputPriceUsdPerMillionTokens"]),
     )
 
 
@@ -2441,33 +2485,19 @@ def _resolved_query_rewrite_config(
             "inputPriceUsdPerMillionTokens": 0.0,
             "outputPriceUsdPerMillionTokens": 0.0,
             "pricingSnapshotDate": M3_PRICING_SNAPSHOT_DATE,
-            "maxProviderCostUsd": float(
-                getattr(args, "query_rewrite_max_provider_cost_usd", 0.1)
-            ),
+            "maxProviderCostUsd": float(getattr(args, "query_rewrite_max_provider_cost_usd", 0.1)),
             "runtime": {
-                "timeoutSeconds": float(
-                    getattr(args, "query_rewrite_timeout_seconds", 8.0)
-                ),
-                "maxConcurrency": int(
-                    getattr(args, "query_rewrite_max_concurrency", 2)
-                ),
+                "timeoutSeconds": float(getattr(args, "query_rewrite_timeout_seconds", 8.0)),
+                "maxConcurrency": int(getattr(args, "query_rewrite_max_concurrency", 2)),
                 "cacheSize": int(getattr(args, "query_rewrite_cache_size", 512)),
-                "cacheTtlSeconds": float(
-                    getattr(args, "query_rewrite_cache_ttl_seconds", 900.0)
-                ),
-                "maxInputCharacters": int(
-                    getattr(args, "query_rewrite_max_input_characters", 2_000)
-                ),
-                "maxOutputTokens": int(
-                    getattr(args, "query_rewrite_max_output_tokens", 300)
-                ),
+                "cacheTtlSeconds": float(getattr(args, "query_rewrite_cache_ttl_seconds", 900.0)),
+                "maxInputCharacters": int(getattr(args, "query_rewrite_max_input_characters", 2_000)),
+                "maxOutputTokens": int(getattr(args, "query_rewrite_max_output_tokens", 300)),
             },
         }
 
     base_url, model = _query_rewrite_provider_values(args)
-    prompt_version = str(
-        getattr(args, "query_rewrite_prompt_version", PROMPT_VERSION)
-    ).strip()
+    prompt_version = str(getattr(args, "query_rewrite_prompt_version", PROMPT_VERSION)).strip()
     prompt_source = repository / "agent-service/app/rag/query_rewriter.py"
     prompt_fingerprint = _fingerprint(
         {
@@ -2490,26 +2520,14 @@ def _resolved_query_rewrite_config(
             getattr(args, "query_rewrite_output_price_usd_per_million_tokens", 0.0)
         ),
         "pricingSnapshotDate": M3_PRICING_SNAPSHOT_DATE,
-        "maxProviderCostUsd": float(
-            getattr(args, "query_rewrite_max_provider_cost_usd", 0.1)
-        ),
+        "maxProviderCostUsd": float(getattr(args, "query_rewrite_max_provider_cost_usd", 0.1)),
         "runtime": {
-            "timeoutSeconds": float(
-                getattr(args, "query_rewrite_timeout_seconds", 8.0)
-            ),
-            "maxConcurrency": int(
-                getattr(args, "query_rewrite_max_concurrency", 2)
-            ),
+            "timeoutSeconds": float(getattr(args, "query_rewrite_timeout_seconds", 8.0)),
+            "maxConcurrency": int(getattr(args, "query_rewrite_max_concurrency", 2)),
             "cacheSize": int(getattr(args, "query_rewrite_cache_size", 512)),
-            "cacheTtlSeconds": float(
-                getattr(args, "query_rewrite_cache_ttl_seconds", 900.0)
-            ),
-            "maxInputCharacters": int(
-                getattr(args, "query_rewrite_max_input_characters", 2_000)
-            ),
-            "maxOutputTokens": int(
-                getattr(args, "query_rewrite_max_output_tokens", 300)
-            ),
+            "cacheTtlSeconds": float(getattr(args, "query_rewrite_cache_ttl_seconds", 900.0)),
+            "maxInputCharacters": int(getattr(args, "query_rewrite_max_input_characters", 2_000)),
+            "maxOutputTokens": int(getattr(args, "query_rewrite_max_output_tokens", 300)),
         },
     }
 
@@ -2535,9 +2553,7 @@ def _reranker_provider_values(args: argparse.Namespace) -> tuple[str, str]:
                 "M4 qwen reranking requires --reranker-base-url or a configured "
                 "Qwen embedding URL ending in /compatible-mode/v1."
             )
-    model = str(
-        getattr(args, "reranker_model", "") or settings.reranker_model or "qwen3-rerank"
-    )
+    model = str(getattr(args, "reranker_model", "") or settings.reranker_model or "qwen3-rerank")
     return base_url.rstrip("/"), model
 
 
@@ -2555,9 +2571,7 @@ def _resolved_reranker_config(
     ).strip()
     if not instruction_version:
         raise ValueError("M4 reranker instruction version cannot be blank.")
-    input_version = str(
-        getattr(args, "reranker_input_version", "merchant-rerank-text-v1")
-    )
+    input_version = str(getattr(args, "reranker_input_version", "merchant-rerank-text-v1"))
     max_characters = int(
         getattr(
             args,
@@ -2577,9 +2591,7 @@ def _resolved_reranker_config(
     )
     builder_contract = {
         "inputVersion": input_version,
-        "sourceSha256": _file_sha256(
-            repository / "agent-service/app/rag/reranker.py"
-        ),
+        "sourceSha256": _file_sha256(repository / "agent-service/app/rag/reranker.py"),
         "maxDocumentCharacters": max_characters,
         "maxEvidenceExcerpts": max_evidence,
         "maxEvidenceCharacters": max_evidence_characters,
@@ -2589,8 +2601,7 @@ def _resolved_reranker_config(
         "provider": provider,
         "model": model,
         "version": str(
-            getattr(args, "reranker_version", "")
-            or (model if enabled else DEFAULT_RERANKER_VERSION)
+            getattr(args, "reranker_version", "") or (model if enabled else DEFAULT_RERANKER_VERSION)
         ),
         "endpointFingerprint": _endpoint_fingerprint(base_url) if enabled else None,
         "instructionVersion": instruction_version,
@@ -2607,9 +2618,7 @@ def _resolved_reranker_config(
             )
         ),
         "pricingSnapshotDate": M3_PRICING_SNAPSHOT_DATE,
-        "maxProviderCostUsd": float(
-            getattr(args, "reranker_max_provider_cost_usd", 0.5)
-        ),
+        "maxProviderCostUsd": float(getattr(args, "reranker_max_provider_cost_usd", 0.5)),
         "runtime": {
             "timeoutSeconds": float(
                 getattr(args, "reranker_timeout_seconds", settings.reranker_timeout_seconds)
@@ -2617,12 +2626,8 @@ def _resolved_reranker_config(
             "maxConcurrency": int(
                 getattr(args, "reranker_max_concurrency", settings.reranker_max_concurrency)
             ),
-            "maxRetries": int(
-                getattr(args, "reranker_max_retries", settings.reranker_max_retries)
-            ),
-            "cacheSize": int(
-                getattr(args, "reranker_cache_size", settings.reranker_cache_size)
-            ),
+            "maxRetries": int(getattr(args, "reranker_max_retries", settings.reranker_max_retries)),
+            "cacheSize": int(getattr(args, "reranker_cache_size", settings.reranker_cache_size)),
             "cacheTtlSeconds": float(
                 getattr(
                     args,
@@ -2650,9 +2655,7 @@ def _resolved_reranker_config(
 
 def _resolved_reranker_instruction(args: argparse.Namespace) -> str:
     settings = _eval_settings()
-    instruction = str(
-        getattr(args, "reranker_instruct", "") or settings.reranker_instruct
-    ).strip()
+    instruction = str(getattr(args, "reranker_instruct", "") or settings.reranker_instruct).strip()
     if not instruction:
         raise ValueError("M4 reranker instruction cannot be blank.")
     return instruction
@@ -2661,18 +2664,28 @@ def _resolved_reranker_instruction(args: argparse.Namespace) -> str:
 def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
     _apply_embedding_profile(args)
     repository = Path(__file__).resolve().parents[3]
-    m4_context = bool(
-        getattr(args, "m4_capture", False)
-        or int(suite.get("schemaVersion") or 0) == 5
-    )
+    m4_context = bool(getattr(args, "m4_capture", False) or int(suite.get("schemaVersion") or 0) == 5)
     m3_context = bool(
-        getattr(args, "m3_capture_arm", None)
-        or int(suite.get("schemaVersion") or 0) in {4, 5}
-        or m4_context
+        getattr(args, "m3_capture_arm", None) or int(suite.get("schemaVersion") or 0) in {4, 5} or m4_context
     )
-    query_rewrite_config = (
-        _resolved_query_rewrite_config(args, repository) if m3_context else None
-    )
+    query_rewrite_config = _resolved_query_rewrite_config(args, repository) if m3_context else None
+    if m4_context and query_rewrite_config is not None:
+        judgment_contract = suite.get("judgmentContract") or {}
+        query_rewrite_config.update(
+            {
+                "executionMode": ("live-capture" if getattr(args, "m4_capture", False) else "frozen-replay"),
+                "captureProvider": query_rewrite_config["provider"],
+                "captureModel": query_rewrite_config["model"],
+                "replayVersion": M4_REPLAY_VERSION,
+                "replayImplementationSha256": m4_replay_implementation_sha256(),
+                "replayArtifactContractSha256": (
+                    None
+                    if getattr(args, "m4_capture", False)
+                    else judgment_contract.get("replayArtifactContractSha256")
+                ),
+                "performanceScope": M4_PERFORMANCE_SCOPE,
+            }
+        )
     selected = _selected_profile(args)
     if args.embedding_provider == "hash":
         model = args.embedding_model or "deterministic-token-sha256"
@@ -2794,16 +2807,10 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
             {
                 "queryRewriteEnabled": query_rewrite_config["enabled"],
                 "queryRewritePromptVersion": (
-                    query_rewrite_config["promptVersion"]
-                    if query_rewrite_config["enabled"]
-                    else None
+                    query_rewrite_config["promptVersion"] if query_rewrite_config["enabled"] else None
                 ),
-                "queryRewritePromptFingerprint": query_rewrite_config[
-                    "promptFingerprint"
-                ],
-                "queryRewriteConfigFingerprint": rewrite_config_fingerprint(
-                    resolved
-                ),
+                "queryRewritePromptFingerprint": query_rewrite_config["promptFingerprint"],
+                "queryRewriteConfigFingerprint": rewrite_config_fingerprint(resolved),
             }
         )
     if m4_context:
@@ -2817,9 +2824,7 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
                 "rerankerModelVersion": reranker_config["version"],
                 "rerankerConfigFingerprint": reranker_config_fingerprint(resolved),
                 "rerankerInputVersion": reranker_config["inputVersion"],
-                "rerankerInputBuilderFingerprint": reranker_config[
-                    "inputBuilderFingerprint"
-                ],
+                "rerankerInputBuilderFingerprint": reranker_config["inputBuilderFingerprint"],
             }
         )
     if selected is not None and selected.provider != "hash":
@@ -2914,11 +2919,7 @@ def _stage_availability(
             if reranker_enabled
             else {
                 "available": False,
-                "reason": (
-                    "heuristic M4 control"
-                    if m4_configured
-                    else "no learned reranker in baseline"
-                ),
+                "reason": ("heuristic M4 control" if m4_configured else "no learned reranker in baseline"),
             }
         ),
         "providerUsage": {
@@ -2962,8 +2963,7 @@ def _stage_availability(
                 }
         if rewrite_enabled:
             rewrite_samples = sum(
-                (item.get("latencyMs") or {}).get("queryRewrite") is not None
-                for item in results
+                (item.get("latencyMs") or {}).get("queryRewrite") is not None for item in results
             )
             availability["rewrite"]["samples"] = rewrite_samples
             if rewrite_samples == 0:
@@ -3267,9 +3267,13 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         raise ValueError("--global-merchant-limit must be between candidate limit and 200.")
     if args.global_document_limit < args.global_merchant_limit:
         raise ValueError("--global-document-limit must be at least global merchant limit.")
-    if not args.candidate_limit <= args.fusion_pool_limit <= min(
-        args.global_merchant_limit,
-        100,
+    if (
+        not args.candidate_limit
+        <= args.fusion_pool_limit
+        <= min(
+            args.global_merchant_limit,
+            100,
+        )
     ):
         raise ValueError(
             "--fusion-pool-limit must be between candidate limit and the lower of "
@@ -3354,18 +3358,14 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         ):
             value = getattr(args, name)
             if value is None or not math.isfinite(value) or value <= 0:
-                raise ValueError(
-                    "Enabled M3 rewrite requires explicit positive input/output token prices."
-                )
+                raise ValueError("Enabled M3 rewrite requires explicit positive input/output token prices.")
         cap = args.query_rewrite_max_provider_cost_usd
         if not math.isfinite(cap) or not 0 < cap <= 0.1:
             raise ValueError("M3 rewrite provider cost cap must be in (0, 0.10] USD.")
         if not args.query_rewrite_prompt_version.strip():
             raise ValueError("M3 rewrite prompt version cannot be blank.")
     if args.reranker_provider not in {"heuristic-multi-signal", "qwen"}:
-        raise ValueError(
-            "M4 reranker provider must be 'heuristic-multi-signal' or 'qwen'."
-        )
+        raise ValueError("M4 reranker provider must be 'heuristic-multi-signal' or 'qwen'.")
     if getattr(args, "m4_capture", False) and args.reranker_provider != "heuristic-multi-signal":
         raise ValueError("M4 pre-rerank capture must use the provider-free heuristic control.")
     if args.reranker_provider == "qwen":
@@ -3436,9 +3436,7 @@ def _validate_m2_run_configuration(
             "report": args.output,
             "summary": args.summary_output,
         }
-        resolved_outputs = [
-            path.resolve() for path in capture_outputs.values() if path is not None
-        ]
+        resolved_outputs = [path.resolve() for path in capture_outputs.values() if path is not None]
         if len(resolved_outputs) != len(set(resolved_outputs)):
             raise ValueError("M2 capture output, summary, and candidate-universe paths must be distinct.")
         for label, path in capture_outputs.items():
@@ -3486,9 +3484,7 @@ def _validate_m2_run_configuration(
             "M2 Eval/retrieval source changed after candidate capture; recapture and rebuild "
             "the bounded Dev suite."
         )
-    if contract.get("captureRuntimeEnvironment") != (
-        runtime_environment or _runtime_environment_snapshot()
-    ):
+    if contract.get("captureRuntimeEnvironment") != (runtime_environment or _runtime_environment_snapshot()):
         raise ValueError(
             "M2 Python/qdrant-client environment differs from candidate capture; recapture "
             "and rebuild the bounded Dev suite."
@@ -3553,9 +3549,7 @@ def _validate_m3_run_configuration(
             raise ValueError("--m3-capture-arm requires the frozen schema-v3 M2 Dev suite.")
         expected_treatment = capture_arm == "treatment"
         if treatment is not expected_treatment:
-            raise ValueError(
-                "M3 control capture must disable rewrite and treatment capture must enable it."
-            )
+            raise ValueError("M3 control capture must disable rewrite and treatment capture must enable it.")
         return True
 
     contract = suite["judgmentContract"]
@@ -3632,20 +3626,35 @@ def _validate_m4_run_configuration(
         raise ValueError("M4 requires a clean Git source identity.")
 
     experiment = m4_experiment_fingerprint(resolved_config)
-    rewrite_fingerprint = rewrite_config_fingerprint(resolved_config)
     rewrite = resolved_config["queryRewrite"]
     if capture_only:
+        if (
+            rewrite.get("executionMode") != "live-capture"
+            or rewrite.get("captureProvider") != rewrite.get("provider")
+            or rewrite.get("captureModel") != rewrite.get("model")
+            or rewrite.get("replayVersion") != M4_REPLAY_VERSION
+            or rewrite.get("replayImplementationSha256") != m4_replay_implementation_sha256()
+            or rewrite.get("performanceScope") != M4_PERFORMANCE_SCOPE
+        ):
+            raise ValueError("M4 capture has an invalid replay implementation identity.")
         return True
     contract = suite["judgmentContract"]
     if experiment != contract["experimentFingerprint"]:
         raise ValueError("M4 runtime differs outside the isolated reranker configuration.")
-    if rewrite_fingerprint != contract["rewriteConfigFingerprint"]:
-        raise ValueError("M4 query rewrite differs from candidate capture.")
     if (
         rewrite["promptVersion"] != contract["rewritePromptVersion"]
         or rewrite["promptFingerprint"] != contract["rewritePromptFingerprint"]
+        or rewrite.get("captureProvider") != contract["rewriteCaptureProvider"]
+        or rewrite.get("captureModel") != contract["rewriteCaptureModel"]
+        or rewrite.get("executionMode") != "frozen-replay"
+        or rewrite.get("replayVersion") != contract["replayVersion"]
+        or rewrite.get("replayImplementationSha256") != contract["replayImplementationSha256"]
+        or rewrite.get("replayArtifactContractSha256") != contract["replayArtifactContractSha256"]
+        or rewrite.get("performanceScope") != contract["performanceScope"]
     ):
-        raise ValueError("M4 rewrite prompt differs from candidate capture.")
+        raise ValueError("M4 frozen replay identity differs from candidate capture.")
+    if frozen_replay_contract_sha256(suite["cases"]) != contract["replayArtifactContractSha256"]:
+        raise ValueError("M4 suite frozen replay artifact contract is invalid.")
     if scoped_source["sha256"] != contract["captureScopedSourceSha256"]:
         raise ValueError("M4 scoped source changed after candidate capture.")
     if runtime_environment != contract["captureRuntimeEnvironment"]:
@@ -3936,30 +3945,20 @@ def _validate_m2_judgment_contract(
     for case in suite["cases"]:
         metadata = case.get("metadata") or {}
         if "structuredCandidateExternalIds" not in metadata:
-            raise ValueError(
-                f"M2 case {case['id']} is missing its captured structured branch."
-            )
+            raise ValueError(f"M2 case {case['id']} is missing its captured structured branch.")
         if not isinstance(metadata["structuredCandidateExternalIds"], list):
-            raise ValueError(
-                f"M2 case {case['id']} structured branch external IDs must be a list."
-            )
+            raise ValueError(f"M2 case {case['id']} structured branch external IDs must be a list.")
         if not isinstance(metadata.get("treatmentReturnedExternalIds"), list):
-            raise ValueError(
-                f"M2 case {case['id']} treatment external IDs must be a list."
-            )
+            raise ValueError(f"M2 case {case['id']} treatment external IDs must be a list.")
         structured = list(metadata["structuredCandidateExternalIds"])
         treatment = list(metadata["treatmentReturnedExternalIds"])
         universe_case = universe_by_case[str(case["id"])]
         if not isinstance(universe_case.get("structuredBranchExternalIds"), list):
-            raise ValueError(
-                f"M2 candidate universe {case['id']} is missing its captured structured branch."
-            )
+            raise ValueError(f"M2 candidate universe {case['id']} is missing its captured structured branch.")
         fixture_structured = list(universe_case["structuredBranchExternalIds"])
         fixture_treatment = list(universe_case["returnedExternalIds"])
         if structured != fixture_structured:
-            raise ValueError(
-                f"M2 case {case['id']} differs from its captured structured branch."
-            )
+            raise ValueError(f"M2 case {case['id']} differs from its captured structured branch.")
         if treatment != fixture_treatment:
             raise ValueError(f"M2 case {case['id']} differs from its captured treatment output.")
         if (
@@ -3970,13 +3969,11 @@ def _validate_m2_judgment_contract(
         ):
             raise ValueError(f"M2 case {case['id']} has duplicate candidate-universe IDs.")
         source_judgment_ids = {
-            str(item["externalId"])
-            for item in source_by_case[str(case["id"])]["judgments"]
+            str(item["externalId"]) for item in source_by_case[str(case["id"])]["judgments"]
         }
         if not set(structured) <= source_judgment_ids:
             raise ValueError(
-                f"M2 case {case['id']} structured branch is outside the committed "
-                "M1 Dev judgments."
+                f"M2 case {case['id']} structured branch is outside the committed M1 Dev judgments."
             )
         judged = {str(item["externalId"]): item for item in case["judgments"]}
         expected_qdrant_only = sorted(set(treatment) - set(structured))
@@ -3990,9 +3987,7 @@ def _validate_m2_judgment_contract(
         }
         for field, expected in expected_metadata_counts.items():
             if metadata.get(field) != expected:
-                raise ValueError(
-                    f"M2 case {case['id']} has an invalid {field}."
-                )
+                raise ValueError(f"M2 case {case['id']} has an invalid {field}.")
         if metadata.get("qdrantOnlyJudgmentExternalIds") != expected_qdrant_only:
             raise ValueError(f"M2 case {case['id']} has inconsistent Qdrant-only judgments.")
         if len(judged) > len(structured) + int(contract["candidateLimit"]):
@@ -4020,9 +4015,7 @@ def _validate_m2_judgment_contract(
         "binaryRelevantStructuredMissPairs": relevant_miss_pairs,
     }
     if int(fixture.get("structuredCandidatePairCount", -1)) != structured_pairs:
-        raise ValueError(
-            "M2 candidate-universe structuredCandidatePairCount is inconsistent."
-        )
+        raise ValueError("M2 candidate-universe structuredCandidatePairCount is inconsistent.")
     for field, expected in expected_counts.items():
         if int(contract.get(field) or 0) != expected:
             raise ValueError(f"M2 judgment contract {field} is inconsistent.")
@@ -4064,10 +4057,7 @@ def _validate_m3_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
         raise ValueError("M3 judgment contract is not derived from frozen M2 Dev.")
 
     fixture_name = contract.get("candidateUniverseFixture")
-    if (
-        fixture_name != M3_CANDIDATE_UNIVERSE_FILENAME
-        or Path(str(fixture_name)).name != fixture_name
-    ):
+    if fixture_name != M3_CANDIDATE_UNIVERSE_FILENAME or Path(str(fixture_name)).name != fixture_name:
         raise ValueError("M3 suite references an invalid candidate-universe fixture.")
     fixture_path = directory / fixture_name
     if not fixture_path.is_file():
@@ -4094,18 +4084,12 @@ def _validate_m3_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
         "scopedSourceSha256": contract.get("captureScopedSourceSha256"),
         "sourceGitSha": contract.get("captureSourceGitSha"),
         "runtimeEnvironment": contract.get("captureRuntimeEnvironment"),
-        "runtimeEnvironmentFingerprint": contract.get(
-            "captureRuntimeEnvironmentFingerprint"
-        ),
+        "runtimeEnvironmentFingerprint": contract.get("captureRuntimeEnvironmentFingerprint"),
         "qdrantServer": contract.get("captureQdrantServer"),
         "qdrantServerFingerprint": contract.get("captureQdrantServerFingerprint"),
         "embeddingIdentity": contract.get("embeddingIdentity"),
-        "controlRewriteConfigFingerprint": contract.get(
-            "controlRewriteConfigFingerprint"
-        ),
-        "treatmentRewriteConfigFingerprint": contract.get(
-            "treatmentRewriteConfigFingerprint"
-        ),
+        "controlRewriteConfigFingerprint": contract.get("controlRewriteConfigFingerprint"),
+        "treatmentRewriteConfigFingerprint": contract.get("treatmentRewriteConfigFingerprint"),
         "treatmentPromptVersion": contract.get("treatmentPromptVersion"),
         "treatmentPromptFingerprint": contract.get("treatmentPromptFingerprint"),
         "selectionLeakageWarning": M3_SELECTION_LEAKAGE_WARNING,
@@ -4116,9 +4100,10 @@ def _validate_m3_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
 
     universe_cases = fixture.get("cases")
     expected_ids = [str(case["id"]) for case in suite["cases"]]
-    if not isinstance(universe_cases, list) or [
-        str(case.get("id")) for case in universe_cases
-    ] != expected_ids:
+    if (
+        not isinstance(universe_cases, list)
+        or [str(case.get("id")) for case in universe_cases] != expected_ids
+    ):
         raise ValueError("M3 candidate-universe case order/IDs differ from the suite.")
     universe_by_id = {str(case["id"]): case for case in universe_cases}
     counts = {"structured": 0, "control": 0, "treatment": 0, "bounded": 0}
@@ -4141,17 +4126,13 @@ def _validate_m3_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
                 or any(not isinstance(item, str) or not item for item in value)
                 or len(value) != len(set(value))
             ):
-                raise ValueError(
-                    f"M3 candidate universe {current_case_id} has invalid {field}."
-                )
+                raise ValueError(f"M3 candidate universe {current_case_id} has invalid {field}.")
             return value
 
         structured = external_ids("structuredBranchExternalIds")
         control = external_ids("m2ControlReturnedExternalIds")
         treatment = external_ids("m3TreatmentReturnedExternalIds")
-        if len(control) > int(contract["candidateLimit"]) or len(treatment) > int(
-            contract["candidateLimit"]
-        ):
+        if len(control) > int(contract["candidateLimit"]) or len(treatment) > int(contract["candidateLimit"]):
             raise ValueError(f"M3 candidate universe {case_id} exceeds its Top-K bound.")
         judged = {str(item["externalId"]): item for item in case.get("judgments") or []}
         bounded_ids = set(structured) | set(control) | set(treatment)
@@ -4204,15 +4185,15 @@ def _validate_m4_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
         or contract.get("m1PolicyHoldoutUsed") is not False
         or contract.get("m1PolicyHoldoutForbidden") is not True
         or contract.get("selectionLeakageWarning") != M4_SELECTION_LEAKAGE_WARNING
+        or contract.get("performanceScope") != M4_PERFORMANCE_SCOPE
+        or contract.get("replayVersion") != M4_REPLAY_VERSION
+        or contract.get("replayImplementationSha256") != m4_replay_implementation_sha256()
         or int(contract.get("candidateLimit") or 0) != 30
         or int(contract.get("finalCandidateLimit") or 0) != 10
     ):
         raise ValueError("M4 suite has an invalid complete-pool judgment contract.")
     fixture_name = contract.get("candidateUniverseFixture")
-    if (
-        fixture_name != M4_CANDIDATE_UNIVERSE_FILENAME
-        or Path(str(fixture_name)).name != fixture_name
-    ):
+    if fixture_name != M4_CANDIDATE_UNIVERSE_FILENAME or Path(str(fixture_name)).name != fixture_name:
         raise ValueError("M4 suite references an invalid candidate-universe fixture.")
     fixture_path = directory / fixture_name
     if not fixture_path.is_file():
@@ -4222,8 +4203,8 @@ def _validate_m4_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
     if (
         fixture.get("fixtureSha256") != fixture_sha
         or contract.get("candidateUniverseFixtureSha256") != fixture_sha
-        or contract.get("candidatePoolContractSha256")
-        != fixture.get("candidatePoolContractSha256")
+        or contract.get("candidatePoolContractSha256") != fixture.get("candidatePoolContractSha256")
+        or contract.get("replayArtifactContractSha256") != fixture.get("replayArtifactContractSha256")
     ):
         raise ValueError("M4 candidate-universe fixture differs from its suite contract.")
     fixture_cases = fixture.get("cases")
@@ -4257,9 +4238,43 @@ def _validate_m4_judgment_contract(directory: Path, suite: dict[str, Any]) -> No
         }
         if any(metadata.get(field) != value for field, value in expected_metadata.items()):
             raise ValueError(f"M4 case {case_id} metadata differs from candidate capture.")
+        artifact = validate_frozen_case_artifact(
+            metadata.get("frozenM4ReplayArtifact"),
+            expected_case_id=case_id,
+            expected_constraints=UserConstraints.model_validate(case["constraints"]),
+        )
+        if artifact != frozen.get("frozenM4ReplayArtifact"):
+            raise ValueError(f"M4 case {case_id} replay artifact differs from capture.")
+        full_pool = CandidateSet.model_validate(artifact["preRerankCandidateSet"])
+        full_evidence = EvidencePack.model_validate(artifact["evidencePack"])
+        full_integrity, _ = integrity_metrics(
+            candidates=full_pool.candidates,
+            evidence=full_evidence,
+            hard_constraints=case["hardConstraints"],
+            suite=suite,
+            forbidden_document_ids=set(case.get("forbiddenDocumentIds") or []),
+        )
+        evidence_failures = {
+            field: full_integrity[field]
+            for field in (
+                "citationOwnershipMismatchCount",
+                "citationExternalIdMismatchCount",
+                "citationSourceMismatchCount",
+                "securityLeakageCount",
+                "versionMismatchCount",
+            )
+            if full_integrity[field] != 0
+        }
+        if full_integrity["evidenceCoverage"] != 1.0 or evidence_failures:
+            raise ValueError(
+                f"M4 case {case_id} full-pool evidence contract is invalid: "
+                f"coverage={full_integrity['evidenceCoverage']}, failures={evidence_failures}."
+            )
         pair_count += len(pool_ids)
     if pair_count != contract.get("preRerankCandidatePairs"):
         raise ValueError("M4 complete-pool judgment count is inconsistent.")
+    if frozen_replay_contract_sha256(suite["cases"]) != contract.get("replayArtifactContractSha256"):
+        raise ValueError("M4 frozen replay artifact contract SHA is invalid.")
 
 
 def _load_baseline(path: Path | None, *, split: str) -> dict | None:
@@ -4534,9 +4549,7 @@ def _same_scoped_source_snapshot(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
 ) -> bool:
-    return before.get("sha256") == after.get("sha256") and before.get(
-        "fileSha256"
-    ) == after.get("fileSha256")
+    return before.get("sha256") == after.get("sha256") and before.get("fileSha256") == after.get("fileSha256")
 
 
 def _runtime_environment_snapshot() -> dict[str, str]:
@@ -4605,13 +4618,14 @@ def _evaluation_manifest(
     candidate_universe: dict[str, Any] | None,
 ) -> dict[str, Any]:
     judgment_contract = suite.get("judgmentContract")
-    m4_run = int(suite.get("schemaVersion") or 0) == 5 or isinstance(
-        resolved_config.get("reranker"), dict
+    m4_run = int(suite.get("schemaVersion") or 0) == 5 or isinstance(resolved_config.get("reranker"), dict)
+    m3_run = not m4_run and (
+        int(suite.get("schemaVersion") or 0) == 4
+        or isinstance(
+            resolved_config.get("queryRewrite"),
+            dict,
+        )
     )
-    m3_run = not m4_run and (int(suite.get("schemaVersion") or 0) == 4 or isinstance(
-        resolved_config.get("queryRewrite"),
-        dict,
-    ))
     manifest = {
         "version": (
             "rag-v2-eval-manifest-v4"
@@ -4652,12 +4666,11 @@ def _evaluation_manifest(
                 "rewriteConfigFingerprint": rewrite_config_fingerprint(resolved_config),
                 "rerankerProvider": features.get("rerankerProvider"),
                 "rerankerEnabled": features.get("rerankerEnabled"),
-                "rerankerConfigFingerprint": reranker_config_fingerprint(
-                    resolved_config
-                ),
-                "candidatePoolContractSha256": contract.get(
-                    "candidatePoolContractSha256"
-                ),
+                "rerankerConfigFingerprint": reranker_config_fingerprint(resolved_config),
+                "candidatePoolContractSha256": contract.get("candidatePoolContractSha256"),
+                "replayArtifactContractSha256": contract.get("replayArtifactContractSha256"),
+                "replayImplementationSha256": contract.get("replayImplementationSha256"),
+                "performanceScope": contract.get("performanceScope"),
             }
         )
     elif m3_run:
@@ -4670,9 +4683,7 @@ def _evaluation_manifest(
                 "queryRewriteProvider": features.get("queryRewriteProvider"),
                 "queryRewriteEnabled": features.get("queryRewriteEnabled"),
                 "promptFingerprint": rewrite.get("promptFingerprint"),
-                "rewriteConfigFingerprint": rewrite_config_fingerprint(
-                    resolved_config
-                ),
+                "rewriteConfigFingerprint": rewrite_config_fingerprint(resolved_config),
             }
         )
     else:
@@ -4696,11 +4707,9 @@ def _candidate_capture_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
 def _rewrite_cost_from_results(results: list[dict[str, Any]]) -> float:
     cost = 0.0
     for result in results:
-        value = (
-            ((result.get("requests") or {}).get("rewriteProviderUsage") or {}).get(
-                "estimated_cost_usd",
-                0.0,
-            )
+        value = ((result.get("requests") or {}).get("rewriteProviderUsage") or {}).get(
+            "estimated_cost_usd",
+            0.0,
         )
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("M3 rewrite cost must be numeric.")
@@ -4714,10 +4723,8 @@ def _rewrite_cost_from_results(results: list[dict[str, Any]]) -> float:
 def _reranker_cost_from_results(results: list[dict[str, Any]]) -> float:
     cost = 0.0
     for result in results:
-        value = (
-            ((result.get("requests") or {}).get("rerankerProviderUsage") or {}).get(
-                "estimated_cost_usd", 0.0
-            )
+        value = ((result.get("requests") or {}).get("rerankerProviderUsage") or {}).get(
+            "estimated_cost_usd", 0.0
         )
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("M4 reranker cost must be numeric.")
@@ -4742,46 +4749,27 @@ def _summarize_m4_results(results: list[dict[str, Any]]) -> dict[str, Any]:
                 for row in results
             ),
             "rerankerProviderTokens": sum(
-                int(
-                    ((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get(
-                        "total_tokens", 0
-                    )
-                )
+                int(((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get("total_tokens", 0))
                 for row in results
             ),
             "rerankerProviderRetries": sum(
-                int(
-                    ((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get(
-                        "retry_count", 0
-                    )
-                )
+                int(((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get("retry_count", 0))
                 for row in results
             ),
             "rerankerProviderFailures": sum(
-                int(
-                    ((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get(
-                        "failure_count", 0
-                    )
-                )
+                int(((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get("failure_count", 0))
                 for row in results
             ),
             "rerankerCacheHits": sum(
-                int(
-                    ((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get(
-                        "cache_hits", 0
-                    )
-                )
+                int(((row.get("requests") or {}).get("rerankerProviderUsage") or {}).get("cache_hits", 0))
                 for row in results
             ),
             "rerankerFallbacks": sum(
-                bool((row.get("requests") or {}).get("rerankerFallback", False))
-                for row in results
+                bool((row.get("requests") or {}).get("rerankerFallback", False)) for row in results
             ),
         }
     )
-    summary.setdefault("costUsd", {})["reranker"] = _reranker_cost_from_results(
-        results
-    )
+    summary.setdefault("costUsd", {})["reranker"] = _reranker_cost_from_results(results)
     return summary
 
 
@@ -4793,9 +4781,7 @@ def _require_rewrite_cost_within_cap(
     if not math.isfinite(estimated_cost_usd) or estimated_cost_usd < 0:
         raise ValueError("M3 rewrite provider produced an invalid cost estimate.")
     if estimated_cost_usd > cap + 1e-9:
-        raise ValueError(
-            f"M3 rewrite provider cost ${estimated_cost_usd:.6f} exceeded hard cap ${cap:.6f}."
-        )
+        raise ValueError(f"M3 rewrite provider cost ${estimated_cost_usd:.6f} exceeded hard cap ${cap:.6f}.")
 
 
 def _require_reranker_cost_within_cap(
@@ -4806,9 +4792,7 @@ def _require_reranker_cost_within_cap(
     if not math.isfinite(estimated_cost_usd) or estimated_cost_usd < 0:
         raise ValueError("M4 reranker produced an invalid cost estimate.")
     if estimated_cost_usd > cap + 1e-9:
-        raise ValueError(
-            f"M4 reranker cost ${estimated_cost_usd:.6f} exceeded hard cap ${cap:.6f}."
-        )
+        raise ValueError(f"M4 reranker cost ${estimated_cost_usd:.6f} exceeded hard cap ${cap:.6f}.")
 
 
 def _fingerprint(value: Any) -> str:

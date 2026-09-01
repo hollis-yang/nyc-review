@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from evals.rag_v2.build_m3_cases import rewrite_config_fingerprint
 from evals.rag_v2.build_m4_cases import (
     M4_JUDGMENT_POLICY_VERSION,
     M4_SELECTION_LEAKAGE_WARNING,
@@ -18,6 +19,10 @@ from evals.rag_v2.build_m4_cases import (
     reranker_config_fingerprint,
 )
 from evals.rag_v2.contract import sha256_json
+from evals.rag_v2.m4_replay import (
+    M4_PERFORMANCE_SCOPE,
+    M4_REPLAY_VERSION,
+)
 from evals.rag_v2.metrics import rounded, summarize_results
 
 POLICY_VERSION = "rag-v2-m4-reranker-control-treatment-v1"
@@ -66,16 +71,12 @@ def compare(
     failures: list[str] = []
     deltas: dict[str, float] = {}
     for path, minimum in (comparison_gate.get("minDeltas") or {}).items():
-        delta = _finite_number_path(treatment_summary, path) - _finite_number_path(
-            control_summary, path
-        )
+        delta = _finite_number_path(treatment_summary, path) - _finite_number_path(control_summary, path)
         deltas[path] = delta
         if delta < _finite_gate_number(minimum, path=path):
             failures.append(f"{path} delta={delta:.6f} is below {minimum}")
     for path, maximum_drop in (comparison_gate.get("maxDrops") or {}).items():
-        drop = _finite_number_path(control_summary, path) - _finite_number_path(
-            treatment_summary, path
-        )
+        drop = _finite_number_path(control_summary, path) - _finite_number_path(treatment_summary, path)
         deltas.setdefault(path, -drop)
         if drop > _finite_gate_number(maximum_drop, path=path):
             failures.append(f"{path} dropped {drop:.6f}; maximum is {maximum_drop}")
@@ -104,21 +105,13 @@ def compare(
         raise ValueError("M4 paired bootstrap must use the frozen ndcgAt5 metric.")
     paired_deltas = [
         float(treatment_row["metrics"][metric]) - float(control_row["metrics"][metric])
-        for control_row, treatment_row in zip(
-            control["results"], treatment["results"], strict=True
-        )
+        for control_row, treatment_row in zip(control["results"], treatment["results"], strict=True)
     ]
     bootstrap = paired_bootstrap_mean_ci(
         paired_deltas,
-        confidence=_finite_probability(
-            bootstrap_config.get("confidence"), label="M4 bootstrap confidence"
-        ),
-        resamples=_positive_integer(
-            bootstrap_config.get("resamples"), label="M4 bootstrap resamples"
-        ),
-        seed=_nonnegative_integer(
-            bootstrap_config.get("seed"), label="M4 bootstrap seed"
-        ),
+        confidence=_finite_probability(bootstrap_config.get("confidence"), label="M4 bootstrap confidence"),
+        resamples=_positive_integer(bootstrap_config.get("resamples"), label="M4 bootstrap resamples"),
+        seed=_nonnegative_integer(bootstrap_config.get("seed"), label="M4 bootstrap seed"),
     )
     minimum_delta = _finite_gate_number(
         bootstrap_config.get("minimumObservedDelta"), path="pairedBootstrap.minimumObservedDelta"
@@ -132,10 +125,7 @@ def compare(
             f"{bootstrap['observedMeanDelta']:.6f} is below {minimum_delta}"
         )
     if bootstrap["lower"] < minimum_lower:
-        failures.append(
-            "paired bootstrap nDCG@5 CI lower="
-            f"{bootstrap['lower']:.6f} is below {minimum_lower}"
-        )
+        failures.append(f"paired bootstrap nDCG@5 CI lower={bootstrap['lower']:.6f} is below {minimum_lower}")
 
     costs = {
         "control": control["run"]["rerankerProviderCost"],
@@ -146,8 +136,7 @@ def compare(
         raise ValueError("M4 heuristic control must report zero reranker provider cost.")
     if costs["treatment"]["hardCostCapUsd"] > max_cost:
         failures.append(
-            "treatment reranker hard cost cap="
-            f"{costs['treatment']['hardCostCapUsd']:.6f} exceeds {max_cost}"
+            f"treatment reranker hard cost cap={costs['treatment']['hardCostCapUsd']:.6f} exceeds {max_cost}"
         )
     if costs["treatment"]["estimatedCostUsd"] > max_cost:
         failures.append(
@@ -178,12 +167,12 @@ def compare(
         "schemaVersion": 1,
         "policyVersion": POLICY_VERSION,
         "generatedAt": datetime.now(UTC).isoformat(),
+        "performanceScope": M4_PERFORMANCE_SCOPE,
+        "onlineEndToEndLatencyClaimAllowed": False,
         "passed": not failures,
         "failures": failures,
         "promotionStatus": (
-            "quality-accepted-under-latency-waiver"
-            if not failures
-            else "quality-gate-failed"
+            "quality-accepted-under-latency-waiver" if not failures else "quality-gate-failed"
         ),
         "suite": {
             key: control["suite"][key]
@@ -209,15 +198,15 @@ def compare(
             "experimentFingerprint": control["run"]["m4ExperimentFingerprint"],
             "controlConfigFingerprint": control["run"]["configFingerprint"],
             "treatmentConfigFingerprint": treatment["run"]["configFingerprint"],
-            "controlRerankerConfigFingerprint": control["run"][
-                "rerankerConfigFingerprint"
-            ],
-            "treatmentRerankerConfigFingerprint": treatment["run"][
-                "rerankerConfigFingerprint"
-            ],
+            "controlRerankerConfigFingerprint": control["run"]["rerankerConfigFingerprint"],
+            "treatmentRerankerConfigFingerprint": treatment["run"]["rerankerConfigFingerprint"],
             "candidatePoolContractSha256": control["suite"]["judgmentContract"][
                 "candidatePoolContractSha256"
             ],
+            "replayArtifactContractSha256": control["suite"]["judgmentContract"][
+                "replayArtifactContractSha256"
+            ],
+            "replayImplementationSha256": control["suite"]["judgmentContract"]["replayImplementationSha256"],
             "indexManifestFingerprint": control["index"]["manifestFingerprint"],
         },
         "deltas": deltas,
@@ -225,7 +214,10 @@ def compare(
         "requestDeltas": request_deltas,
         "costs": costs,
         "latencyObservation": latency_observation,
-        "control": {"reranker": "heuristic-multi-signal", "summary": control_summary},
+        "control": {
+            "reranker": "frozen-m3-heuristic-output-replay",
+            "summary": control_summary,
+        },
         "treatment": {
             "reranker": _reranker_provider(treatment["run"]["resolvedConfig"]),
             "summary": treatment_summary,
@@ -250,8 +242,7 @@ def paired_bootstrap_mean_ci(
     randomizer = random.Random(seed)
     count = len(deltas)
     means = sorted(
-        sum(deltas[randomizer.randrange(count)] for _ in range(count)) / count
-        for _ in range(resamples)
+        sum(deltas[randomizer.randrange(count)] for _ in range(count)) / count for _ in range(resamples)
     )
     alpha = (1.0 - confidence) / 2.0
     return {
@@ -278,9 +269,7 @@ def _load_report(path: Path, *, arm: str) -> dict[str, Any]:
     suite = report.get("suite") or {}
     run = report.get("run") or {}
     results = report.get("results")
-    if int(report.get("schemaVersion") or 0) != 5 or int(
-        suite.get("schemaVersion") or 0
-    ) != 5:
+    if int(report.get("schemaVersion") or 0) != 5 or int(suite.get("schemaVersion") or 0) != 5:
         raise ValueError(f"M4 report must use schemaVersion=5: {path}")
     if (
         suite.get("suite") != M4_SUITE_NAME
@@ -288,6 +277,13 @@ def _load_report(path: Path, *, arm: str) -> dict[str, Any]:
         or not suite.get("judgmentContractSha256")
     ):
         raise ValueError("M4 comparison accepts only the frozen schema-v5 Dev contract.")
+    if (
+        report.get("performanceScope") != M4_PERFORMANCE_SCOPE
+        or report.get("onlineEndToEndLatencyClaimAllowed") is not False
+        or run.get("performanceScope") != M4_PERFORMANCE_SCOPE
+        or run.get("onlineEndToEndLatencyClaimAllowed") is not False
+    ):
+        raise ValueError("M4 report misstates its frozen replay performance scope.")
     case_count = suite.get("caseCount")
     _require_exact_integer(case_count, label="M4 suite caseCount")
     if run.get("partial") is not False:
@@ -323,6 +319,14 @@ def _load_report(path: Path, *, arm: str) -> dict[str, Any]:
         run,
         scored_cost=recomputed["costUsd"]["reranker"],
     )
+    rewrite_cost = run.get("rewriteProviderCost") or {}
+    for field in (
+        "scoredEstimatedCostUsd",
+        "warmupEstimatedCostUsd",
+        "estimatedCostUsd",
+    ):
+        if float(rewrite_cost.get(field, -1.0)) != 0.0:
+            raise ValueError("M4 formal frozen rewrite cost must be zero.")
     return report
 
 
@@ -354,6 +358,8 @@ def _validate_report_bindings(report: dict[str, Any], *, arm: str) -> None:
         or contract.get("m1PolicyHoldoutForbidden") is not True
         or contract.get("unjudgedReturnedPolicy") != "fail-closed"
         or contract.get("selectionLeakageWarning") != M4_SELECTION_LEAKAGE_WARNING
+        or contract.get("performanceScope") != M4_PERFORMANCE_SCOPE
+        or contract.get("replayVersion") != M4_REPLAY_VERSION
     ):
         raise ValueError("M4 report violates its schema-v5 Dev judgment contract.")
     if experiment != contract.get("experimentFingerprint"):
@@ -362,14 +368,11 @@ def _validate_report_bindings(report: dict[str, Any], *, arm: str) -> None:
         "scopedSourceSha256": contract["captureScopedSourceSha256"],
         "sourceGitSha": contract["captureSourceGitSha"],
         "runtimeEnvironment": contract["captureRuntimeEnvironment"],
-        "runtimeEnvironmentFingerprint": contract[
-            "captureRuntimeEnvironmentFingerprint"
-        ],
+        "runtimeEnvironmentFingerprint": contract["captureRuntimeEnvironmentFingerprint"],
         "qdrantServer": contract["captureQdrantServer"],
         "qdrantServerFingerprint": contract["captureQdrantServerFingerprint"],
         "indexManifestFingerprint": contract["captureIndexManifestFingerprint"],
         "embeddingIdentity": contract["embeddingIdentity"],
-        "rewriteConfigFingerprint": contract["rewriteConfigFingerprint"],
         "rewritePromptFingerprint": contract["rewritePromptFingerprint"],
     }
     source = run.get("scopedSource") or {}
@@ -383,15 +386,24 @@ def _validate_report_bindings(report: dict[str, Any], *, arm: str) -> None:
         "runtimeEnvironmentFingerprint": sha256_json(runtime),
         "qdrantServer": qdrant,
         "qdrantServerFingerprint": sha256_json(qdrant),
-        "indexManifestFingerprint": (report.get("index") or {}).get(
-            "manifestFingerprint"
-        ),
+        "indexManifestFingerprint": (report.get("index") or {}).get("manifestFingerprint"),
         "embeddingIdentity": (config.get("embedding") or {}).get("identity"),
-        "rewriteConfigFingerprint": run.get("rewriteConfigFingerprint"),
         "rewritePromptFingerprint": run.get("promptFingerprint"),
     }
     if observed_capture != expected_capture:
         raise ValueError("M4 report source/runtime/index/rewrite identity differs from capture.")
+    rewrite = config.get("queryRewrite") or {}
+    if (
+        rewrite.get("executionMode") != "frozen-replay"
+        or rewrite.get("captureProvider") != contract.get("rewriteCaptureProvider")
+        or rewrite.get("captureModel") != contract.get("rewriteCaptureModel")
+        or rewrite.get("replayVersion") != contract.get("replayVersion")
+        or rewrite.get("replayImplementationSha256") != contract.get("replayImplementationSha256")
+        or rewrite.get("replayArtifactContractSha256") != contract.get("replayArtifactContractSha256")
+        or rewrite.get("performanceScope") != M4_PERFORMANCE_SCOPE
+        or run.get("rewriteConfigFingerprint") != rewrite_config_fingerprint(config)
+    ):
+        raise ValueError("M4 report frozen replay config is invalid.")
     if (
         not isinstance(source.get("fileSha256"), dict)
         or source.get("sha256") != sha256_json(source["fileSha256"])
@@ -408,10 +420,11 @@ def _validate_report_bindings(report: dict[str, Any], *, arm: str) -> None:
         "suiteContractSha256": suite["suiteContractSha256"],
         "caseSha256": suite["caseSha256"],
         "judgmentContractSha256": suite["judgmentContractSha256"],
-        "candidateUniverseFixtureSha256": contract[
-            "candidateUniverseFixtureSha256"
-        ],
+        "candidateUniverseFixtureSha256": contract["candidateUniverseFixtureSha256"],
         "candidatePoolContractSha256": contract["candidatePoolContractSha256"],
+        "replayArtifactContractSha256": contract["replayArtifactContractSha256"],
+        "replayImplementationSha256": contract["replayImplementationSha256"],
+        "performanceScope": M4_PERFORMANCE_SCOPE,
         "configFingerprint": run["configFingerprint"],
         "m4ExperimentFingerprint": experiment,
         "rerankerConfigFingerprint": reranker_fingerprint,
@@ -426,6 +439,7 @@ def _validate_report_bindings(report: dict[str, Any], *, arm: str) -> None:
 def _validate_result_pool_bindings(report: dict[str, Any], *, arm: str) -> None:
     contract = report["suite"]["judgmentContract"]
     rows = []
+    replay_rows = []
     for result in report["results"]:
         case_id = str(result["id"])
         pool_ids, pool_fingerprint, input_fingerprint = extract_pre_rerank_contract(
@@ -434,23 +448,81 @@ def _validate_result_pool_bindings(report: dict[str, Any], *, arm: str) -> None:
         )
         if len(pool_ids) > int(contract["candidateLimit"]):
             raise ValueError(f"M4 {arm} case {case_id} exceeds the frozen pre-rerank bound.")
-        returned = [
-            str(item.get("externalId")) for item in result.get("orderedCandidates") or []
-        ]
-        if len(returned) > int(contract["finalCandidateLimit"]):
-            raise ValueError(f"M4 {arm} case {case_id} exceeds the final Top-10 bound.")
+        returned = [str(item.get("externalId")) for item in result.get("orderedCandidates") or []]
+        expected_returned = min(int(contract["finalCandidateLimit"]), len(pool_ids))
+        trace = result.get("retrievalTrace") or {}
+        if (
+            len(returned) != expected_returned
+            or result.get("returnedCount") != expected_returned
+            or trace.get("finalCandidates") != expected_returned
+        ):
+            raise ValueError(f"M4 {arm} case {case_id} did not return its exact frozen Top-K.")
         if not set(returned) <= set(pool_ids):
             raise ValueError(f"M4 {arm} case {case_id} returned a merchant outside the frozen pool.")
         requests = result.get("requests") or {}
+        rewrite_usage = requests.get("rewriteProviderUsage") or {}
+        embedding_usage = requests.get("providerUsage") or {}
+        if (
+            int(requests.get("rewriteRequests") or 0) != 0
+            or int(requests.get("embeddingRequests") or 0) != 0
+            or int(rewrite_usage.get("network_requests") or 0) != 0
+            or int(rewrite_usage.get("total_tokens") or 0) != 0
+            or float(rewrite_usage.get("estimated_cost_usd") or 0.0) != 0.0
+            or int(embedding_usage.get("network_requests") or 0) != 0
+        ):
+            raise ValueError("M4 formal replay may not call rewrite or embedding providers.")
+        if (
+            trace.get("queryRewriteExecutionMode") != "frozen-replay"
+            or trace.get("queryRewriteEffectiveProvider") != "frozen-replay"
+            or int(trace.get("queryRewriteNetworkRequests") or 0) != 0
+            or trace.get("queryRewriteFallback")
+        ):
+            raise ValueError("M4 result has an invalid frozen rewrite trace.")
+        replay = result.get("m4Replay")
+        if not isinstance(replay, dict) or (
+            replay.get("status") != "frozen-replay"
+            or replay.get("version") != M4_REPLAY_VERSION
+            or replay.get("performanceScope") != M4_PERFORMANCE_SCOPE
+            or replay.get("caseId") != case_id
+            or replay.get("effectiveProvider") != "frozen-replay"
+            or replay.get("effectiveModel") != "frozen-replay"
+            or replay.get("logicalInvocations") != 0
+            or replay.get("networkRequests") != 0
+            or replay.get("totalTokens") != 0
+            or replay.get("estimatedCostUsd") != 0.0
+            or replay.get("fallback") is not False
+        ):
+            raise ValueError("M4 result has an invalid frozen replay audit record.")
+        digest_fields = (
+            "constraintsSha256",
+            "ruleQuerySha256",
+            "semanticPlanSha256",
+            "rewriteCaptureEnvelopeSha256",
+            "candidatePoolSha256",
+            "rerankerInputSha256",
+            "evidencePackSha256",
+            "controlOrderSha256",
+            "artifactSha256",
+        )
+        if any(not isinstance(replay.get(field), str) or len(replay[field]) != 64 for field in digest_fields):
+            raise ValueError("M4 result replay audit contains an invalid digest.")
+        control_order = replay.get("controlFinalExternalIds")
+        if (
+            not isinstance(control_order, list)
+            or any(not isinstance(item, str) or not item for item in control_order)
+            or len(control_order) != len(set(control_order))
+            or sha256_json(control_order) != replay["controlOrderSha256"]
+        ):
+            raise ValueError("M4 result replay audit has an invalid control order.")
+        if arm == "control" and returned != control_order:
+            raise ValueError("M4 control must replay the captured M3 heuristic final order exactly.")
         reranker_requests = requests.get("rerankerRequests", 0)
         _require_exact_integer(reranker_requests, label=f"M4 {arm} rerankerRequests")
         usage = requests.get("rerankerProviderUsage") or {}
         if not isinstance(usage, dict):
             raise ValueError("M4 rerankerProviderUsage must be an object.")
         for field in _RERANKER_PROVIDER_USAGE_FIELDS:
-            _require_exact_integer(
-                usage.get(field, 0), label=f"M4 rerankerProviderUsage.{field}"
-            )
+            _require_exact_integer(usage.get(field, 0), label=f"M4 rerankerProviderUsage.{field}")
         _finite_nonnegative_float(
             usage.get("estimated_cost_usd"),
             label="M4 rerankerProviderUsage.estimated_cost_usd",
@@ -467,12 +539,9 @@ def _validate_result_pool_bindings(report: dict[str, Any], *, arm: str) -> None:
             or usage["retry_count"] != 0
             or usage["failure_count"] != 0
             or fallback
-            or int((result.get("retrievalTrace") or {}).get("rerankerCandidates") or 0)
-            != len(pool_ids)
+            or int((result.get("retrievalTrace") or {}).get("rerankerCandidates") or 0) != len(pool_ids)
         ):
-            raise ValueError(
-                "M4 learned treatment requires exactly one successful reranker batch per case."
-            )
+            raise ValueError("M4 learned treatment requires exactly one successful reranker batch per case.")
         rows.append(
             {
                 "id": case_id,
@@ -481,8 +550,24 @@ def _validate_result_pool_bindings(report: dict[str, Any], *, arm: str) -> None:
                 "rerankerInputFingerprint": input_fingerprint,
             }
         )
+        replay_rows.append(
+            {
+                "id": case_id,
+                "constraintsSha256": replay["constraintsSha256"],
+                "ruleQuerySha256": replay["ruleQuerySha256"],
+                "semanticPlanSha256": replay["semanticPlanSha256"],
+                "rewriteCaptureEnvelopeSha256": replay["rewriteCaptureEnvelopeSha256"],
+                "candidatePoolSha256": replay["candidatePoolSha256"],
+                "rerankerInputSha256": replay["rerankerInputSha256"],
+                "evidencePackSha256": replay["evidencePackSha256"],
+                "controlOrderSha256": replay["controlOrderSha256"],
+                "artifactSha256": replay["artifactSha256"],
+            }
+        )
     if sha256_json(rows) != contract.get("candidatePoolContractSha256"):
         raise ValueError(f"M4 {arm} report does not replay the frozen candidate/input pool.")
+    if sha256_json(replay_rows) != contract.get("replayArtifactContractSha256"):
+        raise ValueError(f"M4 {arm} report does not replay the frozen M4 artifacts.")
 
 
 def _validate_pair(
@@ -502,25 +587,19 @@ def _validate_pair(
     )
     if any(control["suite"].get(field) != treatment["suite"].get(field) for field in suite_fields):
         raise ValueError("M4 control/treatment reports use different frozen suites.")
-    if control["suite"].get("judgmentContract") != treatment["suite"].get(
-        "judgmentContract"
-    ):
+    if control["suite"].get("judgmentContract") != treatment["suite"].get("judgmentContract"):
         raise ValueError("M4 control/treatment reports use different judgment contracts.")
-    if [str(item["id"]) for item in control["results"]] != [
-        str(item["id"]) for item in treatment["results"]
-    ]:
+    if [str(item["id"]) for item in control["results"]] != [str(item["id"]) for item in treatment["results"]]:
         raise ValueError("M4 control/treatment result order or IDs differ.")
     for report in (control, treatment):
-        observed_gate = ((report.get("run") or {}).get("policyArtifacts") or {}).get(
-            "qualityGateSha256"
-        )
+        observed_gate = ((report.get("run") or {}).get("policyArtifacts") or {}).get("qualityGateSha256")
         if observed_gate != gate_sha256:
             raise ValueError("M4 report is not bound to the committed quality gate.")
     control_run = control["run"]
     treatment_run = treatment["run"]
-    if m4_experiment_fingerprint(
-        control_run["resolvedConfig"]
-    ) != m4_experiment_fingerprint(treatment_run["resolvedConfig"]):
+    if m4_experiment_fingerprint(control_run["resolvedConfig"]) != m4_experiment_fingerprint(
+        treatment_run["resolvedConfig"]
+    ):
         raise ValueError("M4 arms differ outside the isolated reranker configuration.")
     if control_run["m4ExperimentFingerprint"] != treatment_run["m4ExperimentFingerprint"]:
         raise ValueError("M4 arms use different experiment fingerprints.")
@@ -534,15 +613,17 @@ def _validate_pair(
     if control["index"] != treatment["index"]:
         raise ValueError("M4 arms did not reuse the exact same frozen index.")
     control_contracts = [
-        extract_pre_rerank_contract(row, case_id=str(row["id"]))
-        for row in control["results"]
+        extract_pre_rerank_contract(row, case_id=str(row["id"])) for row in control["results"]
     ]
     treatment_contracts = [
-        extract_pre_rerank_contract(row, case_id=str(row["id"]))
-        for row in treatment["results"]
+        extract_pre_rerank_contract(row, case_id=str(row["id"])) for row in treatment["results"]
     ]
     if control_contracts != treatment_contracts:
         raise ValueError("M4 arms used different pre-rerank pools or reranker inputs.")
+    if [row.get("m4Replay") for row in control["results"]] != [
+        row.get("m4Replay") for row in treatment["results"]
+    ]:
+        raise ValueError("M4 arms used different frozen candidate/evidence artifacts.")
 
 
 def _summarize_m4_results(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -576,18 +657,11 @@ def _summarize_m4_results(results: list[dict[str, Any]]) -> dict[str, Any]:
                 int((row["requests"].get("rerankerProviderUsage") or {}).get("cache_hits", 0))
                 for row in results
             ),
-            "rerankerFallbacks": sum(
-                bool(row["requests"].get("rerankerFallback", False)) for row in results
-            ),
+            "rerankerFallbacks": sum(bool(row["requests"].get("rerankerFallback", False)) for row in results),
         }
     )
     summary.setdefault("costUsd", {})["reranker"] = sum(
-        float(
-            (row["requests"].get("rerankerProviderUsage") or {})[
-                "estimated_cost_usd"
-            ]
-        )
-        for row in results
+        float((row["requests"].get("rerankerProviderUsage") or {})["estimated_cost_usd"]) for row in results
     )
     return summary
 
@@ -678,13 +752,16 @@ def _reranker_provider(config: dict[str, Any]) -> str:
 
 def _summaries_match(expected: Any, observed: Any) -> bool:
     if isinstance(expected, dict):
-        return isinstance(observed, dict) and expected.keys() == observed.keys() and all(
-            _summaries_match(value, observed[key]) for key, value in expected.items()
+        return (
+            isinstance(observed, dict)
+            and expected.keys() == observed.keys()
+            and all(_summaries_match(value, observed[key]) for key, value in expected.items())
         )
     if isinstance(expected, list):
-        return isinstance(observed, list) and len(expected) == len(observed) and all(
-            _summaries_match(left, right)
-            for left, right in zip(expected, observed, strict=True)
+        return (
+            isinstance(observed, list)
+            and len(expected) == len(observed)
+            and all(_summaries_match(left, right) for left, right in zip(expected, observed, strict=True))
         )
     if isinstance(expected, bool):
         return isinstance(observed, bool) and expected == observed

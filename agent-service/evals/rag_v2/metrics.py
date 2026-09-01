@@ -296,9 +296,7 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         }
     )
     by_semantic_rule_coverage = {
-        coverage: _summarize_group(
-            [item for item in results if item.get("semanticRuleCoverage") == coverage]
-        )
+        coverage: _summarize_group([item for item in results if item.get("semanticRuleCoverage") == coverage])
         for coverage in semantic_rule_coverage
     }
     integrity = {
@@ -329,11 +327,7 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "overall": overall,
         "byLanguage": by_language,
         "byScenario": by_scenario,
-        **(
-            {"bySemanticRuleCoverage": by_semantic_rule_coverage}
-            if by_semantic_rule_coverage
-            else {}
-        ),
+        **({"bySemanticRuleCoverage": by_semantic_rule_coverage} if by_semantic_rule_coverage else {}),
         "integrity": integrity,
         "structuredMissRescue": _summarize_structured_misses(results),
         "latencyMs": _summarize_latencies(results),
@@ -374,8 +368,7 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         summary["requestCounts"].update(
             {
                 output: sum(
-                    (item["requests"].get("rewriteProviderUsage") or {}).get(source, 0)
-                    for item in results
+                    (item["requests"].get("rewriteProviderUsage") or {}).get(source, 0) for item in results
                 )
                 for output, source in usage_fields.items()
             }
@@ -416,7 +409,11 @@ def rounded(value: Any, digits: int = 6) -> Any:
     if isinstance(value, float):
         return round(value, digits)
     if isinstance(value, dict):
-        return {key: rounded(item, digits) for key, item in value.items()}
+        # M4 capture envelopes are already canonical and self-hashed. Mutating
+        # their audit traces after hashing would make the persisted report invalid.
+        return {
+            key: item if key == "m4ReplayCapture" else rounded(item, digits) for key, item in value.items()
+        }
     if isinstance(value, list):
         return [rounded(item, digits) for item in value]
     return value

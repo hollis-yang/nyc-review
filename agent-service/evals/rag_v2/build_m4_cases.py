@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from app.domain.models import CandidateSet, EvidencePack, UserConstraints
+from app.rag.query_rewriter import QueryRewritePlan
 from evals.rag_v2.build_cases import (
     LABEL_POLICY_VERSION,
     _judgments,
@@ -20,6 +22,14 @@ from evals.rag_v2.build_m3_cases import (
     rewrite_config_fingerprint,
 )
 from evals.rag_v2.contract import SUITE_CONTRACT_FIELDS, sha256_json
+from evals.rag_v2.m4_replay import (
+    M4_PERFORMANCE_SCOPE,
+    M4_REPLAY_VERSION,
+    frozen_replay_contract_sha256,
+    m4_replay_implementation_sha256,
+    validate_frozen_case_artifact,
+)
+from evals.rag_v2.metrics import integrity_metrics
 
 M4_SUITE_NAME = "rag-v2-m4-cross-encoder-rerank-dev-v1"
 M4_GENERATOR_VERSION = "rag-v2-m4-frozen-pre-rerank-pool-v1"
@@ -58,8 +68,14 @@ M4_CANDIDATE_UNIVERSE_CONTRACT_FIELDS = (
     "qdrantServerFingerprint",
     "embeddingIdentity",
     "rewriteConfigFingerprint",
+    "rewriteCaptureProvider",
+    "rewriteCaptureModel",
     "rewritePromptVersion",
     "rewritePromptFingerprint",
+    "performanceScope",
+    "replayVersion",
+    "replayImplementationSha256",
+    "replayArtifactContractSha256",
     "selectionLeakageWarning",
     "caseCount",
     "preRerankCandidatePairCount",
@@ -120,16 +136,24 @@ def m4_suite_contract_sha256(suite: dict[str, Any]) -> str:
 
 
 def m4_candidate_universe_sha256(fixture: dict[str, Any]) -> str:
-    missing = [
-        field for field in M4_CANDIDATE_UNIVERSE_CONTRACT_FIELDS if field not in fixture
-    ]
+    missing = [field for field in M4_CANDIDATE_UNIVERSE_CONTRACT_FIELDS if field not in fixture]
     if missing:
-        raise ValueError(
-            "M4 candidate-universe contract is missing fields: " + ", ".join(missing)
-        )
-    return sha256_json(
-        {field: fixture[field] for field in M4_CANDIDATE_UNIVERSE_CONTRACT_FIELDS}
-    )
+        raise ValueError("M4 candidate-universe contract is missing fields: " + ", ".join(missing))
+    return sha256_json({field: fixture[field] for field in M4_CANDIDATE_UNIVERSE_CONTRACT_FIELDS})
+
+
+def m4_candidate_pool_contract_rows(
+    cases: list[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": str(case["id"]),
+            "preRerankCandidateExternalIds": list(case["preRerankCandidateExternalIds"]),
+            "preRerankPoolFingerprint": case["preRerankPoolFingerprint"],
+            "rerankerInputFingerprint": case["rerankerInputFingerprint"],
+        }
+        for case in cases
+    ]
 
 
 def m4_experiment_fingerprint(config: dict[str, Any]) -> str:
@@ -138,9 +162,13 @@ def m4_experiment_fingerprint(config: dict[str, Any]) -> str:
     value = json.loads(json.dumps(config))
     value.pop("experimentControlFingerprint", None)
     value.pop("reranker", None)
+    rewrite = value.get("queryRewrite") or {}
+    rewrite.pop("executionMode", None)
+    rewrite.pop("replayArtifactContractSha256", None)
     features = value.get("features") or {}
     for key in _RERANKER_FEATURE_KEYS:
         features.pop(key, None)
+    features.pop("queryRewriteConfigFingerprint", None)
     return sha256_json(value)
 
 
@@ -216,20 +244,37 @@ def capture_m4_candidate_universe(
     capture = _validate_capture_report(capture_report, source_suite=source_suite)
     cases: list[dict[str, Any]] = []
     pair_count = 0
+    source_by_id = {str(case["id"]): case for case in source_suite["cases"]}
     for result in capture["results"]:
         case_id = str(result["id"])
+        source_case = source_by_id[case_id]
+        constraints = UserConstraints.model_validate(source_case["constraints"])
+        replay_artifact = validate_frozen_case_artifact(
+            result.get("m4ReplayCapture"),
+            expected_case_id=case_id,
+            expected_constraints=constraints,
+        )
         pool_ids, pool_fingerprint, input_fingerprint = extract_pre_rerank_contract(
             result,
             case_id=case_id,
         )
         if len(pool_ids) > candidate_limit:
             raise ValueError(f"M4 capture {case_id} exceeds the frozen Top-30 bound.")
+        artifact_pool = CandidateSet.model_validate(replay_artifact["preRerankCandidateSet"])
+        artifact_pool_ids = [item.external_id for item in artifact_pool.candidates]
+        if (
+            artifact_pool_ids != pool_ids
+            or replay_artifact["preRerankMetadata"]["preRerankPoolFingerprint"] != pool_fingerprint
+            or replay_artifact["preRerankMetadata"]["rerankerInputFingerprint"] != input_fingerprint
+        ):
+            raise ValueError(f"M4 capture {case_id} report differs from its frozen replay boundary.")
         cases.append(
             {
                 "id": case_id,
                 "preRerankCandidateExternalIds": pool_ids,
                 "preRerankPoolFingerprint": pool_fingerprint,
                 "rerankerInputFingerprint": input_fingerprint,
+                "frozenM4ReplayArtifact": replay_artifact,
             }
         )
         pair_count += len(pool_ids)
@@ -239,6 +284,15 @@ def capture_m4_candidate_universe(
     runtime = run["runtimeEnvironment"]
     qdrant_server = capture["index"]["qdrantServer"]
     rewrite = config["queryRewrite"]
+    replay_cases = [
+        {
+            "id": case["id"],
+            "constraints": source_by_id[str(case["id"])]["constraints"],
+            "metadata": {"frozenM4ReplayArtifact": case["frozenM4ReplayArtifact"]},
+        }
+        for case in cases
+    ]
+    replay_contract_sha = frozen_replay_contract_sha256(replay_cases)
     fixture = {
         "schemaVersion": 1,
         "suite": M4_CANDIDATE_UNIVERSE_NAME,
@@ -265,12 +319,18 @@ def capture_m4_candidate_universe(
         "qdrantServerFingerprint": sha256_json(qdrant_server),
         "embeddingIdentity": config["embedding"]["identity"],
         "rewriteConfigFingerprint": run["rewriteConfigFingerprint"],
+        "rewriteCaptureProvider": rewrite["provider"],
+        "rewriteCaptureModel": rewrite["model"],
         "rewritePromptVersion": rewrite["promptVersion"],
         "rewritePromptFingerprint": run["promptFingerprint"],
+        "performanceScope": M4_PERFORMANCE_SCOPE,
+        "replayVersion": M4_REPLAY_VERSION,
+        "replayImplementationSha256": m4_replay_implementation_sha256(),
+        "replayArtifactContractSha256": replay_contract_sha,
         "selectionLeakageWarning": M4_SELECTION_LEAKAGE_WARNING,
         "caseCount": len(cases),
         "preRerankCandidatePairCount": pair_count,
-        "candidatePoolContractSha256": sha256_json(cases),
+        "candidatePoolContractSha256": sha256_json(m4_candidate_pool_contract_rows(cases)),
         "cases": cases,
     }
     fixture["fixtureSha256"] = m4_candidate_universe_sha256(fixture)
@@ -345,8 +405,7 @@ def build_m4_dev_suite(
     active = {
         str(shop["externalId"]): shop
         for shop in shops
-        if shop.get("externalId")
-        and shop.get("businessStatus", "OPERATIONAL") == "OPERATIONAL"
+        if shop.get("externalId") and shop.get("businessStatus", "OPERATIONAL") == "OPERATIONAL"
     }
     hours_by_shop: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for row in hours:
@@ -364,9 +423,7 @@ def build_m4_dev_suite(
         pool_ids = list(universe_case["preRerankCandidateExternalIds"])
         missing = sorted(set(pool_ids) - active.keys())
         if missing:
-            raise ValueError(
-                f"M4 pre-rerank pool for {case_id} references unknown merchants: {missing[:3]}"
-            )
+            raise ValueError(f"M4 pre-rerank pool for {case_id} references unknown merchants: {missing[:3]}")
         labeled = _judgments(
             [active[external_id] for external_id in pool_ids],
             tuple(source_case["preferenceTags"]),
@@ -383,6 +440,43 @@ def build_m4_dev_suite(
                 for document_id in security_by_shop.get(int(judgment["shopId"]), set())
             }
         )
+        replay_artifact = validate_frozen_case_artifact(
+            universe_case["frozenM4ReplayArtifact"],
+            expected_case_id=case_id,
+            expected_constraints=UserConstraints.model_validate(source_case["constraints"]),
+        )
+        frozen_pool = CandidateSet.model_validate(replay_artifact["preRerankCandidateSet"])
+        frozen_evidence = EvidencePack.model_validate(replay_artifact["evidencePack"])
+        for candidate in frozen_pool.candidates:
+            corpus_shop = active[str(candidate.external_id)]
+            if (
+                int(corpus_shop["id"]) != candidate.shop_id
+                or candidate.data_version != source_suite["dataVersion"]
+            ):
+                raise ValueError(f"M4 frozen candidate identity/version mismatch for {case_id}.")
+        frozen_integrity, _ = integrity_metrics(
+            candidates=frozen_pool.candidates,
+            evidence=frozen_evidence,
+            hard_constraints=source_case["hardConstraints"],
+            suite=source_suite,
+            forbidden_document_ids=set(forbidden),
+        )
+        evidence_failures = {
+            field: frozen_integrity[field]
+            for field in (
+                "citationOwnershipMismatchCount",
+                "citationExternalIdMismatchCount",
+                "citationSourceMismatchCount",
+                "securityLeakageCount",
+                "versionMismatchCount",
+            )
+            if frozen_integrity[field] != 0
+        }
+        if frozen_integrity["evidenceCoverage"] != 1.0 or evidence_failures:
+            raise ValueError(
+                f"M4 frozen full-pool evidence contract failed for {case_id}: "
+                f"coverage={frozen_integrity['evidenceCoverage']}, failures={evidence_failures}."
+            )
         case = json.loads(json.dumps(source_case))
         case["judgments"] = labeled
         case["forbiddenDocumentIds"] = forbidden
@@ -395,6 +489,7 @@ def build_m4_dev_suite(
             "preRerankCandidateExternalIds": pool_ids,
             "preRerankPoolFingerprint": universe_case["preRerankPoolFingerprint"],
             "rerankerInputFingerprint": universe_case["rerankerInputFingerprint"],
+            "frozenM4ReplayArtifact": universe_case["frozenM4ReplayArtifact"],
             "boundedJudgmentCount": len(labeled),
         }
         cases.append(case)
@@ -414,17 +509,15 @@ def build_m4_dev_suite(
             "adjudicationStatus": "deterministic-complete-pool-not-human-adjudicated",
             "cases": cases,
             "caseCount": len(cases),
-            "languageCounts": dict(
-                sorted(Counter(case["language"] for case in cases).items())
-            ),
-            "scenarioCounts": dict(
-                sorted(Counter(case["scenario"] for case in cases).items())
-            ),
+            "languageCounts": dict(sorted(Counter(case["language"] for case in cases).items())),
+            "scenarioCounts": dict(sorted(Counter(case["scenario"] for case in cases).items())),
             "evaluationDesign": {
                 **source_suite["evaluationDesign"],
                 "holdout": "m4-dev-only-new-hidden-holdout-required-for-promotion",
                 "candidateJudgments": "complete-shared-pre-rerank-top-30-pool",
                 "armCandidatePoolPolicy": "identical-frozen-replay",
+                "performanceScope": M4_PERFORMANCE_SCOPE,
+                "onlineEndToEndLatencyClaimAllowed": False,
                 "selectionLeakageWarning": M4_SELECTION_LEAKAGE_WARNING,
                 "m1PolicyHoldoutUsed": False,
             },
@@ -440,52 +533,37 @@ def build_m4_dev_suite(
                 "sourceSuiteSchemaVersion": 4,
                 "sourceSuiteCaseSha256": source_suite["caseSha256"],
                 "sourceSuiteContractSha256": source_suite["suiteContractSha256"],
-                "sourceJudgmentContractSha256": sha256_json(
-                    source_suite["judgmentContract"]
-                ),
+                "sourceJudgmentContractSha256": sha256_json(source_suite["judgmentContract"]),
                 "candidateUniverseFixture": M4_CANDIDATE_UNIVERSE_FILENAME,
                 "candidateUniverseFixtureSha256": candidate_universe["fixtureSha256"],
-                "candidatePoolContractSha256": candidate_universe[
-                    "candidatePoolContractSha256"
-                ],
+                "candidatePoolContractSha256": candidate_universe["candidatePoolContractSha256"],
+                "performanceScope": candidate_universe["performanceScope"],
+                "replayVersion": candidate_universe["replayVersion"],
+                "replayImplementationSha256": candidate_universe["replayImplementationSha256"],
+                "replayArtifactContractSha256": candidate_universe["replayArtifactContractSha256"],
                 "candidateLimit": candidate_universe["candidateLimit"],
                 "finalCandidateLimit": candidate_universe["finalCandidateLimit"],
                 "experimentFingerprint": candidate_universe["experimentFingerprint"],
-                "captureConfigFingerprint": candidate_universe[
-                    "captureConfigFingerprint"
-                ],
-                "captureResultFingerprint": candidate_universe[
-                    "captureResultFingerprint"
-                ],
-                "captureRerankerConfigFingerprint": candidate_universe[
-                    "captureRerankerConfigFingerprint"
-                ],
-                "captureIndexManifestFingerprint": candidate_universe[
-                    "indexManifestFingerprint"
-                ],
+                "captureConfigFingerprint": candidate_universe["captureConfigFingerprint"],
+                "captureResultFingerprint": candidate_universe["captureResultFingerprint"],
+                "captureRerankerConfigFingerprint": candidate_universe["captureRerankerConfigFingerprint"],
+                "captureIndexManifestFingerprint": candidate_universe["indexManifestFingerprint"],
                 "captureScopedSourceSha256": candidate_universe["scopedSourceSha256"],
                 "captureSourceGitSha": candidate_universe["sourceGitSha"],
                 "captureRuntimeEnvironment": candidate_universe["runtimeEnvironment"],
-                "captureRuntimeEnvironmentFingerprint": candidate_universe[
-                    "runtimeEnvironmentFingerprint"
-                ],
+                "captureRuntimeEnvironmentFingerprint": candidate_universe["runtimeEnvironmentFingerprint"],
                 "captureQdrantServer": candidate_universe["qdrantServer"],
-                "captureQdrantServerFingerprint": candidate_universe[
-                    "qdrantServerFingerprint"
-                ],
+                "captureQdrantServerFingerprint": candidate_universe["qdrantServerFingerprint"],
                 "embeddingIdentity": candidate_universe["embeddingIdentity"],
-                "rewriteConfigFingerprint": candidate_universe[
-                    "rewriteConfigFingerprint"
-                ],
+                "rewriteConfigFingerprint": candidate_universe["rewriteConfigFingerprint"],
+                "rewriteCaptureProvider": candidate_universe["rewriteCaptureProvider"],
+                "rewriteCaptureModel": candidate_universe["rewriteCaptureModel"],
                 "rewritePromptVersion": candidate_universe["rewritePromptVersion"],
-                "rewritePromptFingerprint": candidate_universe[
-                    "rewritePromptFingerprint"
-                ],
+                "rewritePromptFingerprint": candidate_universe["rewritePromptFingerprint"],
                 "preRerankCandidatePairs": pool_pairs,
                 "binaryRelevantCandidatePairs": relevant_pairs,
                 "fullCorpusMerchantCount": full_corpus_merchants,
-                "fullCartesianPairsAvoided": len(cases) * full_corpus_merchants
-                - pool_pairs,
+                "fullCartesianPairsAvoided": len(cases) * full_corpus_merchants - pool_pairs,
             },
         }
     )
@@ -513,9 +591,7 @@ def write_m4_artifacts(
     output_directory.mkdir(parents=True, exist_ok=True)
     payloads = {
         "suite": (json.dumps(suite, indent=2, ensure_ascii=False) + "\n").encode(),
-        "candidateUniverse": (
-            json.dumps(candidate_universe, indent=2, ensure_ascii=False) + "\n"
-        ).encode(),
+        "candidateUniverse": (json.dumps(candidate_universe, indent=2, ensure_ascii=False) + "\n").encode(),
         "adversarialDocuments": adversarial_source.read_bytes(),
     }
     opened: list[Path] = []
@@ -580,10 +656,28 @@ def _validate_capture_report(
         raise ValueError("M4 capture reranker config fingerprint is invalid.")
     _validate_enabled_m3_rewrite(run)
     _validate_source_runtime_index(report)
+    rewrite = config["queryRewrite"]
+    source_by_id = {str(case["id"]): case for case in source_suite["cases"]}
     for result in results:
-        pool_ids, _, _ = extract_pre_rerank_contract(result, case_id=str(result["id"]))
+        case_id = str(result["id"])
+        pool_ids, _, _ = extract_pre_rerank_contract(result, case_id=case_id)
         if len(pool_ids) > 30:
             raise ValueError(f"M4 capture {result['id']} exceeds Top-30.")
+        artifact = validate_frozen_case_artifact(
+            result.get("m4ReplayCapture"),
+            expected_case_id=case_id,
+            expected_constraints=UserConstraints.model_validate(source_by_id[case_id]["constraints"]),
+        )
+        plan = QueryRewritePlan.model_validate(artifact["rewritePlan"]["plan"])
+        if (
+            plan.trace.requested_provider != rewrite.get("provider")
+            or plan.trace.requested_model != rewrite.get("model")
+            or plan.trace.provider != rewrite.get("provider")
+            or plan.trace.model != rewrite.get("model")
+            or plan.trace.prompt_version != rewrite.get("promptVersion")
+            or plan.trace.fallback_used
+        ):
+            raise ValueError(f"M4 capture {case_id} rewrite provider/model/prompt identity is invalid.")
     normalized_run = {
         **run,
         "m4ExperimentFingerprint": experiment,
@@ -649,16 +743,11 @@ def _validate_candidate_universe(
     source_suite: dict[str, Any],
     fixture: dict[str, Any],
 ) -> None:
-    if (
-        fixture.get("schemaVersion") != 1
-        or fixture.get("suite") != M4_CANDIDATE_UNIVERSE_NAME
-    ):
+    if fixture.get("schemaVersion") != 1 or fixture.get("suite") != M4_CANDIDATE_UNIVERSE_NAME:
         raise ValueError("M4 candidate universe uses an unsupported schema.")
     if fixture.get("fixtureSha256") != m4_candidate_universe_sha256(fixture):
         raise ValueError("M4 candidate-universe fixture SHA is invalid.")
-    manifest = json.loads(
-        (data_directory / "import_manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((data_directory / "import_manifest.json").read_text(encoding="utf-8"))
     expected = {
         "split": "dev",
         "sourceSuite": source_suite["suite"],
@@ -672,6 +761,8 @@ def _validate_candidate_universe(
         "finalCandidateLimit": 10,
         "caseCount": source_suite["caseCount"],
         "selectionLeakageWarning": M4_SELECTION_LEAKAGE_WARNING,
+        "performanceScope": M4_PERFORMANCE_SCOPE,
+        "replayVersion": M4_REPLAY_VERSION,
     }
     if any(fixture.get(field) != value for field, value in expected.items()):
         raise ValueError("M4 candidate universe differs from its source suite or corpus.")
@@ -688,12 +779,17 @@ def _validate_candidate_universe(
         "rewriteConfigFingerprint",
         "rewritePromptFingerprint",
         "candidatePoolContractSha256",
+        "replayImplementationSha256",
+        "replayArtifactContractSha256",
     )
     if any(not _is_sha256(fixture.get(field)) for field in digest_fields):
         raise ValueError("M4 candidate universe contains an invalid fingerprint.")
-    if fixture["runtimeEnvironmentFingerprint"] != sha256_json(
-        fixture["runtimeEnvironment"]
+    if any(
+        not isinstance(fixture.get(field), str) or not fixture[field].strip()
+        for field in ("rewriteCaptureProvider", "rewriteCaptureModel")
     ):
+        raise ValueError("M4 candidate universe has no captured rewrite identity.")
+    if fixture["runtimeEnvironmentFingerprint"] != sha256_json(fixture["runtimeEnvironment"]):
         raise ValueError("M4 runtime fingerprint is invalid.")
     if fixture["qdrantServerFingerprint"] != sha256_json(fixture["qdrantServer"]):
         raise ValueError("M4 Qdrant fingerprint is invalid.")
@@ -705,6 +801,8 @@ def _validate_candidate_universe(
     if not isinstance(cases, list) or [str(case.get("id")) for case in cases] != expected_ids:
         raise ValueError("M4 candidate-universe case order/IDs differ from M3 Dev.")
     pair_count = 0
+    source_by_id = {str(case["id"]): case for case in source_suite["cases"]}
+    replay_cases: list[dict[str, Any]] = []
     for case in cases:
         case_id = str(case["id"])
         ids = _validated_external_ids(
@@ -718,9 +816,28 @@ def _validate_candidate_universe(
             raise ValueError(f"M4 candidate universe {case_id} pool fingerprint is invalid.")
         if not _is_sha256(case.get("rerankerInputFingerprint")):
             raise ValueError(f"M4 candidate universe {case_id} input fingerprint is invalid.")
+        artifact = validate_frozen_case_artifact(
+            case.get("frozenM4ReplayArtifact"),
+            expected_case_id=case_id,
+            expected_constraints=UserConstraints.model_validate(source_by_id[case_id]["constraints"]),
+        )
+        artifact_pool = CandidateSet.model_validate(artifact["preRerankCandidateSet"])
+        if [item.external_id for item in artifact_pool.candidates] != ids:
+            raise ValueError(f"M4 candidate universe {case_id} artifact pool differs from contract.")
+        replay_cases.append(
+            {
+                "id": case_id,
+                "constraints": source_by_id[case_id]["constraints"],
+                "metadata": {"frozenM4ReplayArtifact": artifact},
+            }
+        )
         pair_count += len(ids)
-    if fixture.get("candidatePoolContractSha256") != sha256_json(cases):
+    if fixture.get("candidatePoolContractSha256") != sha256_json(m4_candidate_pool_contract_rows(cases)):
         raise ValueError("M4 candidate-pool contract SHA is invalid.")
+    if fixture.get("replayArtifactContractSha256") != frozen_replay_contract_sha256(replay_cases):
+        raise ValueError("M4 frozen replay artifact contract SHA is invalid.")
+    if fixture.get("replayImplementationSha256") != m4_replay_implementation_sha256():
+        raise ValueError("M4 replay implementation changed after candidate capture.")
     _require_exact_integer(
         fixture.get("preRerankCandidatePairCount"),
         label="M4 preRerankCandidatePairCount",
@@ -762,9 +879,7 @@ def _first_present(
 def _validated_external_ids(value: Any, *, label: str, allow_empty: bool) -> list[str]:
     if not isinstance(value, list) or (not allow_empty and not value):
         raise ValueError(f"{label} external IDs must be a non-empty list.")
-    if any(
-        not isinstance(item, str) or not item or item.strip() != item for item in value
-    ):
+    if any(not isinstance(item, str) or not item or item.strip() != item for item in value):
         raise ValueError(f"{label} contains an invalid external ID.")
     if len(value) != len(set(value)):
         raise ValueError(f"{label} contains duplicate external IDs.")

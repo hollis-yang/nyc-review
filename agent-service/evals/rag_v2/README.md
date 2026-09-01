@@ -9,7 +9,7 @@ structured candidate search
 → evidence retrieval
 ```
 
-M0 冻结了 Hash/64 基线；M1 在不改变 Query Rewrite、候选范围和 reranking 的前提下，只比较真实 Embedding；M2 用显式 feature flag 隔离 candidate-filtered control 与 global-hybrid treatment；M3 再隔离受约束的 LLM Multi-Query。Cross-Encoder 仍未实现，CLI 会继续拒绝非 disabled 的 learned reranker 配置。
+M0 冻结了 Hash/64 基线；M1 只比较真实 Embedding；M2 隔离全局候选召回；M3 隔离受约束的 LLM Multi-Query；M4 在共享的冻结候选与证据边界上比较 heuristic 和 Cross-Encoder 重排序。
 
 ## 冻结数据契约
 
@@ -335,7 +335,9 @@ uv run python -m evals.rag_v2.compare_m3 \
 
 ## M4：共享候选池的 Cross-Encoder 重排序
 
-M4 只比较 M3 heuristic 排序和 learned reranker，不改变 M3 Query Rewrite、Dense/Sparse 检索或 merchant-level RRF。协议先执行一次不调用 reranker Provider 的 capture，冻结每条 query 的完整 pre-rerank Top-30、pool SHA 和确定性 reranker-input SHA；schema-v5 suite 对完整 Top-30 做 judgment。随后 control/treatment 必须逐条重放相同 pool 和输入，任何漂移、未标注候选、fallback、retry 或 failure 都会 fail closed。
+M4 只比较冻结的 M3 heuristic 最终顺序和 learned reranker。唯一一次 capture 运行完整 M3 pipeline，但不调用 reranker Provider；它按 case 冻结完整 QueryRewritePlan、Top-30 `CandidateSet`、reranker query、每个 merchant 的 exact text/provenance、完整候选池 `EvidencePack`，以及 M3 heuristic 最终 Top-10。schema-v5 suite 对完整 Top-30 做 judgment，并以 component SHA、artifact envelope SHA 和 replay-contract SHA 绑定上述边界。
+
+正式 control/treatment 不再重跑 Query Rewrite、Embedding、Qdrant、aggregation 或 fusion：control 直接重放 capture 的 M3 heuristic 最终顺序，treatment 只向 Qwen 提交同一 frozen reranker batch，最终 evidence 从 frozen `EvidencePack` 按结果商户取子集。两臂的 rewrite/embedding logical calls、network requests、tokens 和 cost 必须全为 0；case ID、完整 `UserConstraints`、rule-query、候选、输入、evidence、control order 或任一 SHA 漂移都会 fail closed。Qdrant 仍会启动并进行只读 index/server identity 检查，但不参与 formal case execution。
 
 以下命令从 `agent-service/` 执行；API Key 和 endpoint 继续从本地 `.env` 读取：
 
@@ -372,7 +374,7 @@ m4_common_args=(
 )
 
 # 1. 唯一一次 pre-rerank capture；不调用 learned reranker。
-uv run python -m evals.rag_v2.run_eval \
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   "${m4_common_args[@]}" \
   --cases evals/rag_v2/m3/cases.m3.dev.json \
   --m4-capture \
@@ -385,15 +387,15 @@ uv run python -m evals.rag_v2.build_m4_cases \
   --capture-report .local/m4-capture.json \
   --output-directory .local/m4-suite
 
-# 3. Provider-free heuristic control。
-uv run python -m evals.rag_v2.run_eval \
+# 3. Provider-free control：精确重放 capture 的 M3 heuristic final order。
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   "${m4_common_args[@]}" \
   --cases .local/m4-suite/cases.m4.dev.json \
   --reranker-provider heuristic-multi-signal \
   --output .local/m4-control.json
 
 # 4. Qwen learned-reranker treatment；每条 query 最多一个 batch request。
-uv run python -m evals.rag_v2.run_eval \
+uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   "${m4_common_args[@]}" \
   --cases .local/m4-suite/cases.m4.dev.json \
   --reranker-provider qwen \
@@ -407,7 +409,7 @@ uv run python -m evals.rag_v2.compare_m4 \
   --output .local/m4-comparison.json
 ```
 
-主门槛是 `nDCG@5` 至少提升 0.5pp 且 paired bootstrap 95% CI 下界不小于 0；Recall@10 不得下降，Precision@5、MRR@10、nDCG@10、中文 nDCG@5、安全与完整性指标受独立约束。按已批准的 latency waiver，Total 和 Reranker P95 继续记录但不参与本地质量判定；这不会把 Dev 结果表述为 hidden-holdout 或生产晋级证据。
+主门槛是 `nDCG@5` 至少提升 0.5pp 且 paired bootstrap 95% CI 下界不小于 0；Recall@10 不得下降，Precision@5、MRR@10、nDCG@10、中文 nDCG@5、安全与完整性指标受独立约束。报告的 `performanceScope` 固定为 `reranker-isolation-with-frozen-candidates-and-evidence`。按已批准的 latency waiver，Total 和 Reranker P95 继续记录但不参与本地质量判定；其中 Total 只代表 frozen replay harness 加当前 reranker/evidence slicing 的耗时，禁止表述为 online end-to-end latency。该 Dev 结果也不是 hidden-holdout 或生产晋级证据。
 
 ## 指标和报告
 
