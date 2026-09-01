@@ -185,7 +185,7 @@ Holdout 同时保持 100% evidence coverage、0 security leakage、0 version mis
 
 M1 的 judgment 只完整覆盖 structured candidate pool。直接用它评测全局检索会把 Qdrant-only 商户错误地默认为 `relevance=0`。M2 因此采用可复现的两阶段协议：
 
-1. 用冻结的 M1 Dev query、Qwen winner index 和固定 treatment 配置，捕获每例最终 Top-K 商户；
+1. 用冻结的 M1 Dev query、Qwen winner index 和固定 treatment 配置，先融合最多 30 个商户，再通过与 control 相同的 heuristic multi-signal ranker 捕获每例最终 Top-K；
 2. Builder 只对“原 structured pool + 实际捕获的 treatment Top-K”并集按同一 attribute policy 标注；
 3. control 与 treatment 都使用生成的 schema-v3 suite。任何最终返回但不在有限并集内的商户都会 fail-closed，要求重新捕获和构建，不会自动判 0。
 
@@ -200,13 +200,14 @@ uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   --qdrant-location http://127.0.0.1:6333 \
   --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
   --index-action reuse \
+  --fusion-pool-limit 30 \
   --global-retrieval-mode global-hybrid \
   --global-retrieval-enabled \
   --candidate-universe-output .local/m2-candidate-universe.json \
   --output .local/m2-capture-report.json
 ```
 
-捕获必须是 80/80 完整运行、复用既有 M1 index，且不允许 branch fallback、incomplete hydration、identity conflict/mismatch、rejected payload 或 `--limit-cases`。随后在隔离目录生成 suite；命令会同时复制 adversarial fixture，并拒绝覆盖已有产物：
+捕获必须是 80/80 完整运行、复用既有 M1 index，且不允许 branch/ranking fallback、incomplete hydration、identity conflict/mismatch、rejected payload 或 `--limit-cases`。随后在隔离目录生成 suite；命令会同时复制 adversarial fixture，并拒绝覆盖已有产物：
 
 ```bash
 uv run python -m evals.rag_v2.build_m2_cases \
@@ -225,6 +226,7 @@ uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   --qdrant-location http://127.0.0.1:6333 \
   --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
   --index-action reuse \
+  --fusion-pool-limit 30 \
   --output .local/m2-control.json
 
 uv run --env-file ../.env python -m evals.rag_v2.run_eval \
@@ -235,6 +237,7 @@ uv run --env-file ../.env python -m evals.rag_v2.run_eval \
   --qdrant-location http://127.0.0.1:6333 \
   --collection nyc_review_content_v3_dashscope_qwen37_1024_v1 \
   --index-action reuse \
+  --fusion-pool-limit 30 \
   --global-retrieval-mode global-hybrid \
   --global-retrieval-enabled \
   --baseline-report .local/m2-control.json \

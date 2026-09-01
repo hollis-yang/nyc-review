@@ -1717,6 +1717,19 @@ def test_m2_global_mode_requires_an_explicit_matching_flag_and_seals_m1_test():
     config = _resolved_config(treatment, {"retrievalVersion": "p12-rag-v1"})
     assert config["features"]["globalRetrievalEnabled"] is True
     assert config["retrieval"]["mode"] == "global-hybrid"
+    assert config["retrieval"]["fusionPoolLimit"] == 30
+
+    too_small_pool = build_parser().parse_args(
+        ["--fusion-pool-limit", "9", "--candidate-limit", "10"]
+    )
+    with pytest.raises(ValueError, match="between candidate limit"):
+        _validate_feature_configuration(too_small_pool)
+
+    beyond_hydration = build_parser().parse_args(
+        ["--fusion-pool-limit", "61", "--global-merchant-limit", "60"]
+    )
+    with pytest.raises(ValueError, match="global merchant limit"):
+        _validate_feature_configuration(beyond_hydration)
 
     holdout = build_parser().parse_args(
         [
@@ -1905,6 +1918,8 @@ async def test_m2_eval_fails_closed_instead_of_scoring_unjudged_global_merchants
                     "structuredBranchExternalIds": ["structured:1"],
                     "globalDenseLatencyMs": 1.25,
                     "globalSparseLatencyMs": 0.75,
+                    "candidateRankingLatencyMs": 0.2,
+                    "candidateRankingFallback": False,
                     "candidateDiscoveryLatencyMs": {
                         "structured": 1.0,
                         "global": 2.0,
@@ -1951,6 +1966,23 @@ async def test_m2_eval_fails_closed_instead_of_scoring_unjudged_global_merchants
     assert captured["latencyMs"]["globalDenseRetrieval"] == 1.25
     assert captured["latencyMs"]["globalSparseRetrieval"] == 0.75
     assert captured["latencyMs"]["merchantAggregation"] == 0.5
+    assert captured["latencyMs"]["candidateRanking"] == 0.2
+    assert captured["retrievalTrace"]["candidateRankingFallback"] is False
+
+
+def test_m2_retrieval_trace_exposes_candidate_ranking_fallback():
+    trace = rag_v2_runner._retrieval_trace(
+        {
+            "globalRetrievalEnabled": True,
+            "candidateRankingFallback": True,
+            "candidateRankingFallbackReason": "candidate-ranking-error",
+        },
+        structured_count=1,
+        returned_count=1,
+    )
+
+    assert trace["candidateRankingFallback"] is True
+    assert trace["candidateRankingFallbackReason"] == "candidate-ranking-error"
 
 
 def test_m2_bounded_builder_labels_observed_qdrant_only_merchants(tmp_path):

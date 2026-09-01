@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     global_retrieval_enabled: bool = False
     global_retrieval_document_limit: int = Field(default=200, ge=1, le=1_000)
     global_retrieval_hydration_limit: int = Field(default=60, ge=1, le=100)
+    global_retrieval_fusion_pool_limit: int = Field(default=30, ge=1, le=100)
     global_retrieval_hydration_concurrency: int = Field(default=8, ge=1, le=32)
     global_retrieval_branch_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     global_retrieval_documents_per_merchant: int = Field(default=3, ge=1, le=10)
@@ -134,6 +135,17 @@ class Settings(BaseSettings):
             if self.global_retrieval_hydration_limit < self.max_candidates:
                 raise ValueError(
                     "Global retrieval requires hydration_limit >= max_candidates."
+                )
+            if self.global_retrieval_fusion_pool_limit < self.max_candidates:
+                raise ValueError(
+                    "Global retrieval requires fusion_pool_limit >= max_candidates."
+                )
+            if (
+                self.global_retrieval_fusion_pool_limit
+                > self.global_retrieval_hydration_limit
+            ):
+                raise ValueError(
+                    "Global retrieval requires fusion_pool_limit <= hydration_limit."
                 )
             if (
                 self.global_retrieval_documents_per_merchant

@@ -91,6 +91,7 @@ class GlobalHybridCandidateDiscovery:
         *,
         document_limit: int = 200,
         hydration_limit: int = 60,
+        fusion_pool_limit: int = 30,
         hydration_concurrency: int = 8,
         branch_timeout_seconds: float = 15.0,
         documents_per_merchant: int = 3,
@@ -101,6 +102,10 @@ class GlobalHybridCandidateDiscovery:
             raise ValueError("Global document limit must be positive.")
         if hydration_limit < 1 or hydration_limit > 100:
             raise ValueError("Hydration limit must be between 1 and 100.")
+        if fusion_pool_limit < 1 or fusion_pool_limit > hydration_limit:
+            raise ValueError(
+                "Fusion pool limit must be positive and no greater than hydration limit."
+            )
         if hydration_concurrency < 1:
             raise ValueError("Hydration concurrency must be positive.")
         if branch_timeout_seconds <= 0:
@@ -110,13 +115,14 @@ class GlobalHybridCandidateDiscovery:
         if rrf_k < 1 or brand_cap < 1:
             raise ValueError("Fusion bounds must be positive.")
         self._shops = shops
-        # Keep the RAG argument in the constructor so runtime/eval factories share
-        # one stable signature. M2 fallback deliberately never calls it: a global
-        # Qdrant outage must not be retried through candidate-filtered Qdrant.
+        # The same candidate ranker is applied after M2 fusion as in the legacy
+        # control. A global Qdrant outage still does not retry that ranker because
+        # it uses the same unavailable dependency.
         self._rag = rag
         self._global = global_retriever
         self._document_limit = document_limit
         self._hydration_limit = hydration_limit
+        self._fusion_pool_limit = fusion_pool_limit
         self._hydration_concurrency = hydration_concurrency
         self._branch_timeout_seconds = branch_timeout_seconds
         self._documents_per_merchant = documents_per_merchant
@@ -131,6 +137,8 @@ class GlobalHybridCandidateDiscovery:
     ) -> CandidateSet:
         if limit < 1:
             raise ValueError("Candidate limit must be positive.")
+        if limit > self._fusion_pool_limit:
+            raise ValueError("Candidate limit cannot exceed fusion pool limit.")
         started = time.perf_counter()
         scope = self._global.scope
         plan = build_retrieval_plan(
@@ -329,7 +337,7 @@ class GlobalHybridCandidateDiscovery:
                 filtered_structured,
                 aggregation,
                 filtered_global_by_id,
-                limit=limit,
+                limit=self._fusion_pool_limit,
                 rrf_k=self._rrf_k,
                 brand_cap=self._brand_cap,
             )
@@ -353,7 +361,7 @@ class GlobalHybridCandidateDiscovery:
                 ),
             )
         fusion_latency_ms = _elapsed_ms(fusion_started)
-        return self._candidate_set(
+        fusion_pool = self._candidate_set(
             constraints=constraints,
             structured_pool=safe_structured_pool,
             fusion=fusion,
@@ -370,6 +378,105 @@ class GlobalHybridCandidateDiscovery:
             total_latency_ms=_elapsed_ms(started),
             structured_external_ids=structured_external_ids,
         )
+        return await self._rank_fusion_pool(
+            constraints,
+            fusion_pool,
+            limit=limit,
+            discovery_started=started,
+        )
+
+    async def _rank_fusion_pool(
+        self,
+        constraints: UserConstraints,
+        fusion_pool: CandidateSet,
+        *,
+        limit: int,
+        discovery_started: float,
+    ) -> CandidateSet:
+        ranking_started = time.perf_counter()
+        try:
+            ranked = await rank_candidates(
+                self._rag,
+                constraints,
+                fusion_pool,
+                limit=limit,
+                strict=True,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if _is_authorization_failure(exc):
+                raise CandidateDiscoveryError(
+                    "Candidate ranking authorization failed."
+                ) from exc
+            ranking_latency_ms = _elapsed_ms(ranking_started)
+            fallback = fusion_pool.model_copy(
+                update={
+                    "candidates": fusion_pool.candidates[:limit],
+                    "warnings": list(
+                        dict.fromkeys(
+                            [
+                                *fusion_pool.warnings,
+                                "Candidate reranking was unavailable; using fused retrieval order.",
+                            ]
+                        )
+                    ),
+                }
+            )
+            return fallback.model_copy(
+                update={
+                    "retrieval_metadata": self._candidate_ranking_metadata(
+                        fusion_pool,
+                        fallback,
+                        ranking_latency_ms=ranking_latency_ms,
+                        total_latency_ms=_elapsed_ms(discovery_started),
+                        fallback_reason="candidate-ranking-error",
+                    )
+                }
+            )
+
+        ranking_latency_ms = _elapsed_ms(ranking_started)
+        return ranked.model_copy(
+            update={
+                "retrieval_metadata": self._candidate_ranking_metadata(
+                    fusion_pool,
+                    ranked,
+                    ranking_latency_ms=ranking_latency_ms,
+                    total_latency_ms=_elapsed_ms(discovery_started),
+                    fallback_reason=None,
+                )
+            }
+        )
+
+    @staticmethod
+    def _candidate_ranking_metadata(
+        fusion_pool: CandidateSet,
+        ranked: CandidateSet,
+        *,
+        ranking_latency_ms: float,
+        total_latency_ms: float,
+        fallback_reason: str | None,
+    ) -> dict[str, Any]:
+        base_metadata = dict(fusion_pool.retrieval_metadata)
+        stage_latency = dict(base_metadata.get("candidateDiscoveryLatencyMs") or {})
+        stage_latency.update(
+            {
+                "candidateRanking": round(ranking_latency_ms, 3),
+                "total": round(total_latency_ms, 3),
+            }
+        )
+        return {
+            **base_metadata,
+            **ranked.retrieval_metadata,
+            "globalRetrievalEnabled": True,
+            "candidateDiscoveryMode": "global-hybrid",
+            "candidateRankingLatencyMs": round(ranking_latency_ms, 3),
+            "candidateRankingFallback": fallback_reason is not None,
+            "candidateRankingFallbackReason": fallback_reason,
+            "candidateDiscoveryLatencyMs": stage_latency,
+            "candidatePool": len(fusion_pool.candidates),
+            "finalCandidates": len(ranked.candidates),
+        }
 
     def _structured_fallback(
         self,
@@ -461,6 +568,12 @@ class GlobalHybridCandidateDiscovery:
         structured_external_ids: list[str | None],
     ) -> CandidateSet:
         candidates = list(fusion.candidates)
+        desired_tags = set(constraints.desired_tags)
+        exact_candidate_ids = [
+            candidate.shop_id
+            for candidate in candidates
+            if desired_tags.issubset(candidate.tags)
+        ]
         relaxed = list(structured_pool.relaxed_constraints if structured_pool else ())
         warnings = list(structured_pool.warnings if structured_pool else ())
         if structured_pool is None:
@@ -488,6 +601,8 @@ class GlobalHybridCandidateDiscovery:
             "globalSparseDocuments": len(global_result.sparse.hits),
             "globalMerchants": fusion.stats.global_merchants,
             "fusionCandidates": fusion.stats.fusion_candidates,
+            "fusionPoolLimit": self._fusion_pool_limit,
+            "fusionPoolCandidates": len(candidates),
             "structuredOnlyMerchants": fusion.stats.structured_only_merchants,
             "qdrantOnlyMerchants": fusion.stats.qdrant_only_merchants,
             "overlapMerchants": fusion.stats.overlap_merchants,
@@ -499,6 +614,7 @@ class GlobalHybridCandidateDiscovery:
             "duplicateShopIdsSuppressed": fusion.stats.duplicate_shop_ids_suppressed,
             "duplicateMerchantsSuppressed": fusion.stats.duplicate_merchants_suppressed,
             "duplicateBrandsSuppressed": fusion.stats.duplicate_brands_suppressed,
+            "fusionDuplicateBrandsSuppressed": fusion.stats.duplicate_brands_suppressed,
             "identityConflicts": aggregation.identity_conflicts,
             "identityConflictShopIds": list(aggregation.identity_conflict_shop_ids),
             "identityMismatches": hard_filter_stats.get("externalIdentity", 0),
@@ -506,6 +622,9 @@ class GlobalHybridCandidateDiscovery:
             "hardConstraintFilteredByReason": hard_filter_stats,
             "structuredFallback": structured_outcome.error is not None,
             "globalFallback": False,
+            "candidateRankingFallback": False,
+            "candidateRankingFallbackReason": None,
+            "exactCandidateIds": exact_candidate_ids,
             **_global_trace_metadata(global_result),
             "globalEmbeddingLatencyMs": round(global_result.embedding_latency_ms, 3),
             "candidateDiscoveryLatencyMs": {
@@ -516,7 +635,7 @@ class GlobalHybridCandidateDiscovery:
                 "fusion": round(fusion_latency_ms, 3),
                 "total": round(total_latency_ms, 3),
             },
-            "candidatePool": fusion.stats.fusion_candidates,
+            "candidatePool": len(candidates),
             "finalCandidates": len(candidates),
         }
         return CandidateSet(
@@ -538,9 +657,14 @@ async def rank_candidates(
     candidate_pool: CandidateSet,
     *,
     limit: int,
+    strict: bool = False,
 ) -> CandidateSet:
     """Keep lightweight/custom RAG adapters compatible with the P12 contract."""
 
+    if strict:
+        strict_ranker = getattr(rag, "rank_candidates_strict", None)
+        if strict_ranker is not None:
+            return await strict_ranker(constraints, candidate_pool, limit=limit)
     ranker = getattr(rag, "rank_candidates", None)
     if ranker is not None:
         return await ranker(constraints, candidate_pool, limit=limit)

@@ -22,6 +22,7 @@ from app.rag.candidate_discovery import (
     GlobalHybridCandidateDiscovery,
     LegacyCandidateDiscovery,
 )
+from app.rag.embeddings import EmbeddingProviderError
 from app.rag.global_retrieval import (
     ChannelRetrievalResult,
     GlobalDocumentHit,
@@ -122,6 +123,7 @@ def _global_result(
 class _Rag:
     def __init__(self) -> None:
         self.rank_calls = 0
+        self.rank_inputs: list[CandidateSet] = []
 
     async def rank_candidates(
         self,
@@ -131,6 +133,7 @@ class _Rag:
         limit: int,
     ) -> CandidateSet:
         self.rank_calls += 1
+        self.rank_inputs.append(candidates)
         return candidates.model_copy(
             update={
                 "candidates": candidates.candidates[:limit],
@@ -224,6 +227,10 @@ def _discovery(
     global_retriever: _Global,
     **kwargs,
 ) -> GlobalHybridCandidateDiscovery:
+    kwargs.setdefault(
+        "fusion_pool_limit",
+        min(30, int(kwargs.get("hydration_limit", 60))),
+    )
     return GlobalHybridCandidateDiscovery(
         shops,
         rag,
@@ -258,7 +265,9 @@ async def test_legacy_discovery_preserves_search_then_rank_contract_exactly():
 
 
 def test_global_retrieval_settings_default_off_and_enforce_monotonic_bounds(tmp_path):
-    assert Settings().global_retrieval_enabled is False
+    defaults = Settings()
+    assert defaults.global_retrieval_enabled is False
+    assert defaults.global_retrieval_fusion_pool_limit == 30
 
     with pytest.raises(ValueError, match="requires rag_adapter=qdrant"):
         Settings(global_retrieval_enabled=True, rag_data_directory=tmp_path)
@@ -279,6 +288,26 @@ def test_global_retrieval_settings_default_off_and_enforce_monotonic_bounds(tmp_
             global_retrieval_document_limit=20,
             global_retrieval_hydration_limit=9,
         )
+    with pytest.raises(ValueError, match="fusion_pool_limit >= max_candidates"):
+        Settings(
+            global_retrieval_enabled=True,
+            rag_adapter="qdrant",
+            rag_data_directory=tmp_path,
+            max_candidates=10,
+            global_retrieval_document_limit=20,
+            global_retrieval_hydration_limit=20,
+            global_retrieval_fusion_pool_limit=9,
+        )
+    with pytest.raises(ValueError, match="fusion_pool_limit <= hydration_limit"):
+        Settings(
+            global_retrieval_enabled=True,
+            rag_adapter="qdrant",
+            rag_data_directory=tmp_path,
+            max_candidates=5,
+            global_retrieval_document_limit=20,
+            global_retrieval_hydration_limit=10,
+            global_retrieval_fusion_pool_limit=11,
+        )
     with pytest.raises(ValueError, match="documents_per_merchant <= document_limit"):
         Settings(
             global_retrieval_enabled=True,
@@ -287,11 +316,12 @@ def test_global_retrieval_settings_default_off_and_enforce_monotonic_bounds(tmp_
             max_candidates=1,
             global_retrieval_document_limit=2,
             global_retrieval_hydration_limit=1,
+            global_retrieval_fusion_pool_limit=1,
             global_retrieval_documents_per_merchant=3,
         )
 
 
-async def test_enabled_discovery_runs_two_branches_concurrently_without_legacy_rerank():
+async def test_enabled_discovery_runs_two_branches_then_shared_candidate_ranker():
     structured_started = asyncio.Event()
     global_started = asyncio.Event()
     pool = CandidateSet(candidates=[_candidate(1)])
@@ -314,7 +344,7 @@ async def test_enabled_discovery_runs_two_branches_concurrently_without_legacy_r
     assert [candidate.shop_id for candidate in result.candidates] == [2, 1]
     assert shops.search_calls == 1
     assert global_retriever.calls == 1
-    assert rag.rank_calls == 0
+    assert rag.rank_calls == 1
     assert shops.details_requests == [[2]]
     assert result.retrieval_metadata["candidateDiscoveryMode"] == "global-hybrid"
     assert result.retrieval_metadata["structuredBranchCandidates"] == 1
@@ -322,6 +352,8 @@ async def test_enabled_discovery_runs_two_branches_concurrently_without_legacy_r
     assert result.retrieval_metadata["structuredCandidates"] == 1
     assert result.retrieval_metadata["qdrantOnlyMerchants"] == 1
     assert result.retrieval_metadata["structuredFallback"] is False
+    assert result.retrieval_metadata["candidateRankingFallback"] is False
+    assert result.retrieval_metadata["candidateRankingLatencyMs"] >= 0
 
 
 async def test_enabled_discovery_makes_only_one_paid_query_embedding_call():
@@ -333,14 +365,8 @@ async def test_enabled_discovery_makes_only_one_paid_query_embedding_call():
             provider_calls += 1
             return await super().search_documents(*args, **kwargs)
 
-    class ProviderCountingRag(_Rag):
-        async def rank_candidates(self, *args, **kwargs) -> CandidateSet:
-            nonlocal provider_calls
-            provider_calls += 1
-            return await super().rank_candidates(*args, **kwargs)
-
     pool = CandidateSet(candidates=[_candidate(1)])
-    rag = ProviderCountingRag()
+    rag = _Rag()
     result = await _discovery(
         _Shops(pool, [_candidate(1), _candidate(2)]),
         rag,
@@ -349,7 +375,33 @@ async def test_enabled_discovery_makes_only_one_paid_query_embedding_call():
 
     assert len(result.candidates) == 2
     assert provider_calls == 1
-    assert rag.rank_calls == 0
+    assert rag.rank_calls == 1
+
+
+async def test_qdrant_only_full_tag_match_is_exact_for_shared_ranker():
+    rag = _Rag()
+    shops = _Shops(
+        CandidateSet(candidates=[_candidate(1, tags=["quiet"])]),
+        [
+            _candidate(1, tags=["quiet"]),
+            _candidate(2, tags=["quiet", "outdoor_seating"]),
+            _candidate(3, tags=["quiet"]),
+        ],
+    )
+
+    await _discovery(
+        shops,
+        rag,
+        _Global(_global_result([2, 3])),
+    ).discover(
+        UserConstraints(
+            query="quiet patio",
+            desired_tags=["quiet", "outdoor_seating"],
+        ),
+        limit=3,
+    )
+
+    assert rag.rank_inputs[0].retrieval_metadata["exactCandidateIds"] == [2]
 
 
 async def test_hydration_is_capped_and_hard_constraints_fail_closed():
@@ -651,18 +703,23 @@ async def test_hydration_authorization_failure_does_not_fallback_to_structured_r
 async def test_hydration_limit_bounds_batch_size_and_reports_unhydrated_merchants():
     ids = list(range(1, 31))
     shops = _Shops(CandidateSet(candidates=[]), [_candidate(shop_id) for shop_id in ids])
+    rag = _Rag()
     result = await _discovery(
         shops,
-        _Rag(),
+        rag,
         _Global(_global_result(ids)),
         document_limit=30,
         hydration_limit=10,
+        fusion_pool_limit=7,
     ).discover(UserConstraints(query="dinner"), limit=5)
 
     assert len(shops.details_requests) == 1
     assert len(shops.details_requests[0]) == 10
     assert result.retrieval_metadata["hydrationRequested"] == 10
     assert result.retrieval_metadata["missingHydratedCandidates"] == 20
+    assert len(rag.rank_inputs[0].candidates) == 7
+    assert result.retrieval_metadata["fusionPoolLimit"] == 7
+    assert result.retrieval_metadata["fusionPoolCandidates"] == 7
 
 
 async def test_individual_hydration_fallback_has_bounded_concurrency():
@@ -718,7 +775,7 @@ async def test_global_failure_returns_structured_order_without_retrying_qdrant_r
     assert fallback.retrieval_metadata["globalFallback"] is True
 
 
-async def test_structured_failure_uses_global_without_candidate_filtered_rerank():
+async def test_structured_failure_uses_global_then_shared_candidate_ranker():
     global_only_rag = _Rag()
 
     global_only = await _discovery(
@@ -731,9 +788,57 @@ async def test_structured_failure_uses_global_without_candidate_filtered_rerank(
         _Global(_global_result([2])),
     ).discover(UserConstraints(query="dinner"), limit=1)
 
-    assert global_only_rag.rank_calls == 0
+    assert global_only_rag.rank_calls == 1
     assert [candidate.shop_id for candidate in global_only.candidates] == [2]
     assert global_only.retrieval_metadata["structuredFallback"] is True
+
+
+async def test_candidate_ranking_failure_falls_back_to_fused_order_and_is_traced():
+    class ExplodingRag(_Rag):
+        async def rank_candidates(self, *args, **kwargs) -> CandidateSet:
+            self.rank_calls += 1
+            raise RuntimeError("candidate ranking unavailable")
+
+    rag = ExplodingRag()
+    result = await _discovery(
+        _Shops(
+            CandidateSet(candidates=[_candidate(1)]),
+            [_candidate(1), _candidate(2)],
+        ),
+        rag,
+        _Global(_global_result([2], [2])),
+    ).discover(UserConstraints(query="dinner"), limit=2)
+
+    assert rag.rank_calls == 1
+    assert [candidate.shop_id for candidate in result.candidates] == [2, 1]
+    assert result.retrieval_metadata["globalFallback"] is False
+    assert result.retrieval_metadata["candidateRankingFallback"] is True
+    assert (
+        result.retrieval_metadata["candidateRankingFallbackReason"]
+        == "candidate-ranking-error"
+    )
+    assert result.retrieval_metadata["candidateRankingLatencyMs"] >= 0
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+async def test_candidate_ranking_authorization_failure_is_fail_closed(status_code: int):
+    authorization_error = EmbeddingProviderError(
+        "embedding authorization failed",
+        provider="test",
+        retryable=False,
+        status_code=status_code,
+    )
+
+    class ForbiddenRag(_Rag):
+        async def rank_candidates_strict(self, *args, **kwargs) -> CandidateSet:
+            raise authorization_error
+
+    with pytest.raises(CandidateDiscoveryError, match="ranking authorization failed"):
+        await _discovery(
+            _Shops(CandidateSet(candidates=[_candidate(1)]), [_candidate(1)]),
+            ForbiddenRag(),
+            _Global(_global_result([1])),
+        ).discover(UserConstraints(query="dinner"), limit=1)
 
 
 async def test_caller_cancellation_cancels_both_discovery_branches():

@@ -191,7 +191,6 @@ def fuse_candidates(
         merchant_deduplicated.append(item)
 
     selected: list[ShopCandidate] = []
-    brand_overflow: list[ShopCandidate] = []
     brand_counts: dict[str, int] = {}
     duplicate_brands = 0
     for item in merchant_deduplicated:
@@ -199,18 +198,11 @@ def fuse_candidates(
         brand = normalized_merchant_name(candidate.name) or f"shop:{candidate.shop_id}"
         if brand_counts.get(brand, 0) >= brand_cap:
             duplicate_brands += 1
-            brand_overflow.append(candidate)
             continue
         brand_counts[brand] = brand_counts.get(brand, 0) + 1
         selected.append(candidate)
         if len(selected) >= limit:
             break
-
-    # Diversity is a preference, not a hard constraint. If enforcing the brand
-    # cap would under-fill the requested result count, restore the strongest
-    # suppressed merchants in their original fusion order.
-    if len(selected) < limit:
-        selected.extend(brand_overflow[: limit - len(selected)])
 
     return CandidateFusionResult(
         candidates=tuple(selected),

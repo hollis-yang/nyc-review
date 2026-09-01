@@ -140,6 +140,7 @@ class AgentRuntime:
                     global_retriever,
                     document_limit=settings.global_retrieval_document_limit,
                     hydration_limit=settings.global_retrieval_hydration_limit,
+                    fusion_pool_limit=settings.global_retrieval_fusion_pool_limit,
                     hydration_concurrency=settings.global_retrieval_hydration_concurrency,
                     branch_timeout_seconds=settings.global_retrieval_branch_timeout_seconds,
                     documents_per_merchant=settings.global_retrieval_documents_per_merchant,

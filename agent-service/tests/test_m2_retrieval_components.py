@@ -787,7 +787,7 @@ def test_candidate_fusion_drops_missing_hydration_and_duplicate_external_merchan
         fuse_candidates([], merchants, {99: hydrated[10]}, limit=3)
 
 
-def test_candidate_fusion_backfills_brand_overflow_to_preserve_result_limit():
+def test_candidate_fusion_enforces_brand_cap_without_overflow_backfill():
     hits = [
         _hit(
             point_id=f"brand-{shop_id}",
@@ -813,5 +813,6 @@ def test_candidate_fusion_backfills_brand_overflow_to_preserve_result_limit():
         brand_cap=2,
     )
 
-    assert [candidate.shop_id for candidate in result.candidates] == [21, 22, 23]
+    assert [candidate.shop_id for candidate in result.candidates] == [21, 22]
     assert result.stats.duplicate_brands_suppressed == 1
+    assert result.stats.returned_candidates == 2

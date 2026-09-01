@@ -238,6 +238,7 @@ async def evaluate_case(
         ranking_ms = _timing_value(
             discovery_metadata,
             "candidateRanking",
+            "candidateRankingLatencyMs",
             "ranking",
             "rankingLatencyMs",
         )
@@ -496,6 +497,7 @@ def _retrieval_trace(
         "globalSparseRejectedPoints": count(0, "globalSparseRejectedPoints"),
         "globalMerchants": count(0, "globalMerchants"),
         "fusionCandidates": count(returned_count, "fusionCandidates"),
+        "fusionPoolCandidates": count(returned_count, "fusionPoolCandidates"),
         "structuredOnlyMerchants": count(0, "structuredOnlyMerchants"),
         "qdrantOnlyMerchants": count(0, "qdrantOnlyMerchants"),
         "overlapMerchants": count(0, "overlapMerchants"),
@@ -515,6 +517,8 @@ def _retrieval_trace(
         "structuredFallback": bool(metadata.get("structuredFallback")),
         "globalFallback": bool(metadata.get("globalFallback")),
         "globalFallbackReason": metadata.get("globalFallbackReason"),
+        "candidateRankingFallback": bool(metadata.get("candidateRankingFallback")),
+        "candidateRankingFallbackReason": metadata.get("candidateRankingFallbackReason"),
     }
 
 
@@ -694,7 +698,11 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
         retrieval_fallback_count = sum(
             bool((result.get("retrievalTrace") or {}).get(name))
             for result in results
-            for name in ("structuredFallback", "globalFallback")
+            for name in (
+                "structuredFallback",
+                "globalFallback",
+                "candidateRankingFallback",
+            )
         )
         retrieval_fallback_count += sum(
             (result.get("retrievalTrace") or {}).get(name) is False
@@ -714,7 +722,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             quality_gate["passed"] = False
         if (capture_only or int(suite.get("schemaVersion") or 0) == 3) and retrieval_fallback_count:
             quality_gate["failures"].append(
-                f"M2 observed {retrieval_fallback_count} structured/global branch fallbacks."
+                f"M2 observed {retrieval_fallback_count} retrieval/ranking fallbacks."
             )
             quality_gate["passed"] = False
         if (capture_only or int(suite.get("schemaVersion") or 0) == 3) and identity_conflict_count:
@@ -1119,6 +1127,7 @@ async def _build_runtime(
                 global_retriever,
                 document_limit=args.global_document_limit,
                 hydration_limit=args.global_merchant_limit,
+                fusion_pool_limit=args.fusion_pool_limit,
                 hydration_concurrency=args.global_hydration_concurrency,
                 branch_timeout_seconds=args.global_branch_timeout_seconds,
                 documents_per_merchant=args.global_documents_per_merchant,
@@ -1768,6 +1777,7 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
             "mode": args.global_retrieval_mode,
             "globalDocumentLimit": args.global_document_limit,
             "globalMerchantLimit": args.global_merchant_limit,
+            "fusionPoolLimit": args.fusion_pool_limit,
             "globalDocumentsPerMerchant": args.global_documents_per_merchant,
             "globalHydrationConcurrency": args.global_hydration_concurrency,
             "globalBranchTimeoutSeconds": args.global_branch_timeout_seconds,
@@ -2202,6 +2212,14 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         raise ValueError("--global-merchant-limit must be between candidate limit and 200.")
     if args.global_document_limit < args.global_merchant_limit:
         raise ValueError("--global-document-limit must be at least global merchant limit.")
+    if not args.candidate_limit <= args.fusion_pool_limit <= min(
+        args.global_merchant_limit,
+        100,
+    ):
+        raise ValueError(
+            "--fusion-pool-limit must be between candidate limit and the lower of "
+            "global merchant limit or 100."
+        )
     if not 1 <= args.global_documents_per_merchant <= 10:
         raise ValueError("--global-documents-per-merchant must be between 1 and 10.")
     if args.global_documents_per_merchant > args.global_document_limit:
@@ -3207,6 +3225,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--global-document-limit", type=int, default=200)
     parser.add_argument("--global-merchant-limit", type=int, default=60)
+    parser.add_argument("--fusion-pool-limit", type=int, default=30)
     parser.add_argument("--global-documents-per-merchant", type=int, default=3)
     parser.add_argument("--global-hydration-concurrency", type=int, default=8)
     parser.add_argument("--global-branch-timeout-seconds", type=float, default=15.0)
