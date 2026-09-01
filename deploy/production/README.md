@@ -9,6 +9,12 @@ Agent Service instance. MySQL, Redis, RabbitMQ, Qdrant, Spring, and Agent ports
 are never published on the host; Caddy is the only public entry point on ports
 80 and 443.
 
+During the RAG M1-Mx development window, production deliberately separates the
+application release from the Agent release. `IMAGE_TAG` advances Spring and Web,
+while `AGENT_IMAGE_TAG` remains pinned to the last production-verified pre-M1
+Agent image. This prevents unfinished embedding and index-layout changes from
+reaching the existing Qdrant collection.
+
 ## 1. Publish application images
 
 Push the production files to `main`. The `Publish production images` GitHub
@@ -72,9 +78,12 @@ openssl rand -hex 32
 ```
 
 Set `IMAGE_TAG` to the exact `sha-<full commit SHA>` produced by the successful
-workflow. For trusted HTTPS, point a DNS A record at the Lightsail static IPv4
-and set `APP_SITE_ADDRESS` to that hostname. Caddy then obtains and renews the
-certificate automatically. A temporary IP-only smoke test can use
+workflow. Keep `AGENT_IMAGE_TAG` at the production-verified pre-M1 release
+`sha-c2e712c9f5e55ac53a91024886df53ed806c371b`; this image was confirmed on the
+production host on 2026-08-31. The checker rejects every other Agent tag during
+the isolation window. For trusted HTTPS, point a DNS A record at the Lightsail
+static IPv4 and set `APP_SITE_ADDRESS` to that hostname. Caddy then obtains and
+renews the certificate automatically. A temporary IP-only smoke test can use
 `APP_SITE_ADDRESS=http://YOUR_STATIC_IPV4`.
 
 ## 4. Validate without exposing secrets
@@ -144,7 +153,16 @@ RabbitMQ management port.
 ## Updating
 
 After a later successful workflow, change only `IMAGE_TAG` to the new immutable
-SHA and run the checker, `pull`, and `up -d` again. Compose replaces application
-containers without rebuilding on the server. Do not run `docker compose down
--v`; `-v` removes the persistent database, broker, Qdrant, upload, certificate,
-and Agent-run volumes.
+SHA and run the checker, `pull`, and `up -d` again. Leave `AGENT_IMAGE_TAG`
+unchanged throughout M1-Mx development. Compose replaces Spring and Web without
+rebuilding on the server and keeps the old Agent image.
+
+An Agent rollout is a separate production change. Before changing
+`AGENT_IMAGE_TAG`, validate the selected embedding against a new versioned
+Qdrant collection, confirm server/client compatibility and memory capacity, and
+prepare an atomic rollback of both the Agent tag and its RAG configuration. Do
+not point a 1024-dimensional embedding at the existing 64-dimensional
+`nyc_review_content_v2` collection.
+
+Do not run `docker compose down -v`; `-v` removes the persistent database,
+broker, Qdrant, upload, certificate, and Agent-run volumes.

@@ -1,7 +1,24 @@
 # NYC Review 固定生产发布流程
 
 这份流程适用于当前单台 AWS Lightsail 生产环境。服务器只拉取 GHCR 镜像，
-不拉源码、不编译代码。代码镜像与数据库发布统一绑定到完整的 40 位 Git SHA。
+不拉源码、不编译代码。Spring/Web 镜像与数据库发布绑定到完整的 40 位 Git
+SHA；RAG 的 M1-Mx 开发期间，Agent 使用独立版本并固定在 M1 前最后一次生产
+验证成功的镜像。
+
+## 首次启用 Agent 版本隔离
+
+服务器的 `.env.production` 必须新增：
+
+```text
+AGENT_IMAGE_TAG=sha-c2e712c9f5e55ac53a91024886df53ed806c371b
+```
+
+该 pre-M1 镜像已于 2026-08-31 在生产服务器确认存在，并且是失败发布前
+`.env.production` 记录的版本。不要把失败的 `2e19906`、`5e8acfa` 或更新版本
+填入这里。之后的日常发布只更新 `IMAGE_TAG`，始终保留 `AGENT_IMAGE_TAG`
+不变。部署检查会在该值缺失、不是上述固定 SHA，或生产 RAG 不再是
+`Qdrant + nyc_review_content_v2 + hash/64d + p12-rag-v1` 时提前终止，且不会先
+执行数据库变更。
 
 ## 日常发布：只需要一个 SHA
 
@@ -19,9 +36,10 @@ git push origin main
 
 ### 2. 等待 GitHub Actions
 
-等待 Spring、Agent、Web 三个任务全部成功。三个任务显示的是同一个 commit，
-从任意一个任务复制完整的 40 位 commit SHA 即可。不要下载 `.dockerbuild`
-Artifacts，它们只是构建记录。
+等待 Spring、Agent、Web 三个构建任务全部成功。三个任务显示的是同一个 commit，
+从任意一个任务复制完整的 40 位 commit SHA 作为本次 `IMAGE_TAG` 即可；生产
+`AGENT_IMAGE_TAG` 仍保持固定。不要下载 `.dockerbuild` Artifacts，它们只是
+构建记录。
 
 ### 3. 在 Mac 执行一条命令
 
@@ -37,9 +55,12 @@ cd /Users/hollisyang/Desktop/hm-dianping
    数据库迁移文件必须已提交；
 2. 打包生产 Compose、部署脚本和数据库发布清单；
 3. 把被 Git 忽略但列入清单的 SQL/Redis 数据文件一起上传 Lightsail；
-4. 暂停入口并等待秒杀订单队列清空；
-5. 只执行服务器尚未记录过的数据库变更；
-6. 拉取 `sha-<完整SHA>` 的 Spring、Agent、Web 镜像并等待全部健康。
+4. 在任何停服或数据库变更前检查配置并预拉取新 SHA 的 Spring/Web 和固定
+   SHA 的 Agent 镜像；
+5. 暂停入口并等待秒杀订单队列清空；
+6. 只执行服务器尚未记录过的数据库变更；
+7. 启动新 Spring/Web 与固定 Agent，并等待全部健康；失败时恢复旧
+   `IMAGE_TAG` 并实际重建旧容器。
 
 清单明确列出的 `data/generated/...` 文件是上述提交要求的有意例外：它们继续
 从 Mac 本地打包，因此发布前仍需确认生成结果是本次准备上线的版本。
@@ -117,6 +138,14 @@ docker compose --env-file .env.production -f compose.production.yml \
 ```
 
 不要输出、截图或提交 `.env.production`。
+
+## 完成所有 RAG 优化后的 Agent 上线
+
+不要在日常发布中直接修改 `AGENT_IMAGE_TAG`。最终上线需要作为一次独立的 RAG
+迁移执行：为胜出的 1024 维 embedding 使用新的版本化 Qdrant collection，验证
+Qdrant Server/Client 版本与内存容量，完成索引预热和质量验收，并同时准备 Agent
+tag、collection 与 embedding 配置的原子回滚。现有 64 维
+`nyc_review_content_v2` 只作为旧方案回滚入口保留。
 
 ## 代码回滚与故障恢复
 

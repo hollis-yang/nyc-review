@@ -106,7 +106,7 @@ services:
 
   agent-service:
     <<: *service-defaults
-    image: "${AGENT_IMAGE:?AGENT_IMAGE is required}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    image: "${AGENT_IMAGE:?AGENT_IMAGE is required}:${AGENT_IMAGE_TAG:?AGENT_IMAGE_TAG is required}"
     pull_policy: always
     init: true
     environment:

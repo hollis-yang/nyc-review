@@ -398,6 +398,20 @@ Qwen 是唯一同时满足 Dev 双语 nDCG/MRR 各提升至少 0.5pp 的候选�
 
 结论：M1 的接口、Provider、成本保护、索引版本化、三模型实验和一次性 holdout 已完成，但生产晋级被门禁阻止。保留现有 active Embedding；Qwen 仅作为 M2 的实验候选。不得针对已经消费的 holdout 调参或重跑，后续应通过全局召回改善 Recall，并在新的 hidden holdout 上重新验收。
 
+### 6.10 M1-Mx 生产隔离（2026-08-31）
+
+M1 新代码不能通过在生产设置 `ALLOW_HASH_EMBEDDINGS=true` 来冒充旧方案：新旧
+Hash 算法虽相同，但索引 scope、point ID 和查询 filter 已变化，会在现有
+Collection 中再写入约 145,000 个新 points，旧 points 又不会被清理。当前生产
+Qdrant 的 768 MiB 内存限制与 900 秒启动窗口不足以把这次隐式迁移视为安全操作。
+
+因此生产 Compose 使用独立且必填的 `AGENT_IMAGE_TAG`，固定到已在服务器确认
+存在的 pre-M1 镜像 `sha-c2e712c9f5e55ac53a91024886df53ed806c371b`；日常
+`IMAGE_TAG` 只推进 Spring/Web。本地 M2-Mx 继续使用版本化的独立 Collection。
+最终 Agent 上线必须走显式 RAG 迁移：新 Collection、索引预热、容量与 Qdrant
+版本验证、质量门禁，以及 Agent tag 与 RAG 配置的原子回滚。不得将 1024 维
+向量写入现有 64 维 Collection。
+
 ## 7. M2：全局 Hybrid 候选召回
 
 ### 7.1 目标
@@ -468,6 +482,10 @@ agent-service/app/rag/candidate_fusion.py
 ```
 
 `QdrantRagService` 保留底层检索与 Evidence API，避免继续膨胀为包含所有策略的单体类。
+
+M2 必须置于默认关闭的 `NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_ENABLED` 开关后；
+本地 Eval 显式开启，生产 Compose 在最终 RAG 迁移前保持关闭。关闭时执行路径与
+输出契约必须退化为当前 Structured + candidate-scoped Qdrant 流程。
 
 ### 7.6 Trace 字段
 

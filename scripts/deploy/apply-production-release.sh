@@ -50,6 +50,13 @@ if [[ ! -x "$PROJECT_ROOT/scripts/deploy/update-production.sh" ]]; then
   echo "Production image updater is missing or not executable." >&2
   exit 1
 fi
+if [[ ! -x "$PROJECT_ROOT/scripts/deploy/check-production-config.sh" ]]; then
+  echo "Production configuration checker is missing or not executable." >&2
+  exit 1
+fi
+
+# Fail before stopping services or applying irreversible database changes.
+"$PROJECT_ROOT/scripts/deploy/check-production-config.sh" "$ENV_FILE"
 
 release_dir="$(mktemp -d /tmp/nyc-review-db-release.XXXXXX)"
 app_layer_stopped=0
@@ -166,6 +173,12 @@ if [[ ${#change_ids[@]} -eq 0 ]]; then
   echo "Database release manifest contains no changes." >&2
   exit 1
 fi
+
+echo "Pre-pulling target Spring/Web and pinned Agent images before database changes..."
+(
+  export IMAGE_TAG="sha-$raw_sha"
+  compose pull spring web agent-service
+)
 
 mysql_client <<'SQL'
 CREATE TABLE IF NOT EXISTS tb_production_change (

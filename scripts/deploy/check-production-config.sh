@@ -152,6 +152,12 @@ def parse_env(path: Path) -> dict[str, str]:
     return values
 
 env = parse_env(env_path)
+legacy_agent_tag = "sha-c2e712c9f5e55ac53a91024886df53ed806c371b"
+if env.get("AGENT_IMAGE_TAG") != legacy_agent_tag:
+    raise SystemExit(
+        "AGENT_IMAGE_TAG must remain pinned to the production-verified pre-M1 "
+        f"release {legacy_agent_tag} until the explicit RAG migration."
+    )
 if mode == "actual":
     required = [
         "APP_SITE_ADDRESS",
@@ -159,6 +165,7 @@ if mode == "actual":
         "AGENT_IMAGE",
         "WEB_IMAGE",
         "IMAGE_TAG",
+        "AGENT_IMAGE_TAG",
         "NYC_REVIEW_DATA_DIR",
         "MYSQL_ROOT_PASSWORD",
         "NYC_REVIEW_DB_PASSWORD",
@@ -182,9 +189,11 @@ if mode == "actual":
     if placeholders:
         raise SystemExit(f"Replace placeholders before deployment: {', '.join(sorted(placeholders))}")
 
-    if not re.fullmatch(r"sha-[0-9a-f]{40}", env["IMAGE_TAG"]):
-        raise SystemExit("IMAGE_TAG must be sha- followed by the full 40-character Git commit SHA.")
-
+    for tag_key in ("IMAGE_TAG", "AGENT_IMAGE_TAG"):
+        if not re.fullmatch(r"sha-[0-9a-f]{40}", env[tag_key]):
+            raise SystemExit(
+                f"{tag_key} must be sha- followed by the full 40-character Git commit SHA."
+            )
     secret_keys = [
         "MYSQL_ROOT_PASSWORD",
         "NYC_REVIEW_DB_PASSWORD",
@@ -228,5 +237,44 @@ if mode == "actual":
             + ", ".join(unreadable_data)
         )
 
-print("Production Compose validation passed: pull-only images, one Agent service, only 80/443 published.")
+image_contracts = {
+    "spring": ("SPRING_IMAGE", "IMAGE_TAG"),
+    "web": ("WEB_IMAGE", "IMAGE_TAG"),
+    "agent-service": ("AGENT_IMAGE", "AGENT_IMAGE_TAG"),
+}
+for service_name, (image_key, tag_key) in image_contracts.items():
+    expected_image = f'{env[image_key]}:{env[tag_key]}'
+    actual_image = services[service_name].get("image")
+    if actual_image != expected_image:
+        raise SystemExit(
+            f"{service_name} must use {tag_key}; expected {expected_image!r}, "
+            f"got {actual_image!r}."
+        )
+
+agent_environment = services["agent-service"].get("environment") or {}
+legacy_rag_contract = {
+    "NYC_REVIEW_AGENT_ENVIRONMENT": "production",
+    "NYC_REVIEW_AGENT_RAG_ADAPTER": "qdrant",
+    "NYC_REVIEW_AGENT_QDRANT_LOCATION": "http://qdrant:6333",
+    "NYC_REVIEW_AGENT_QDRANT_COLLECTION": "nyc_review_content_v2",
+    "NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY": "/data/nyc-real-p13-full",
+    "NYC_REVIEW_AGENT_EMBEDDING_PROVIDER": "hash",
+    "NYC_REVIEW_AGENT_EMBEDDING_DIMENSIONS": "64",
+    "NYC_REVIEW_AGENT_RETRIEVAL_VERSION": "p12-rag-v1",
+}
+legacy_mismatches = {
+    key: agent_environment.get(key)
+    for key, expected in legacy_rag_contract.items()
+    if str(agent_environment.get(key)) != expected
+}
+if legacy_mismatches:
+    raise SystemExit(
+        "The pinned legacy Agent requires the production hash/64d/p12-rag-v1 "
+        f"contract; mismatches: {legacy_mismatches}"
+    )
+
+print(
+    "Production Compose validation passed: pull-only images, pinned legacy Agent, "
+    "only 80/443 published."
+)
 PY
