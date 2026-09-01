@@ -106,6 +106,20 @@ def test_rag_v2_frozen_splits_have_stable_contract_and_no_intent_leakage():
     }
 
 
+@pytest.mark.skipif(
+    not all(
+        (DATA_DIRECTORY / filename).is_file()
+        for filename in (
+            "shops.json",
+            "shop_business_hours.json",
+            "shop_reviews.json",
+            "blogs.json",
+            "blog_comments.json",
+            "import_manifest.json",
+        )
+    ),
+    reason="requires the local nyc-real-p13-full corpus, which is intentionally excluded from Git",
+)
 def test_rag_v2_case_generation_is_reproducible():
     dev, test, fixtures = build_artifacts(DATA_DIRECTORY)
 
@@ -186,6 +200,20 @@ def test_eval_config_is_secret_free_and_future_stages_fail_fast(monkeypatch):
         _validate_feature_configuration(hash_args)
 
 
+@pytest.mark.skipif(
+    not all(
+        (DATA_DIRECTORY / filename).is_file()
+        for filename in (
+            "shops.json",
+            "shop_business_hours.json",
+            "shop_reviews.json",
+            "blogs.json",
+            "blog_comments.json",
+            "import_manifest.json",
+        )
+    ),
+    reason="requires the local nyc-real-p13-full corpus, which is intentionally excluded from Git",
+)
 async def test_rag_v2_judgments_cover_the_real_structured_candidate_pool():
     service = GeneratedNycShopToolService(DATA_DIRECTORY, max_candidates=100)
 

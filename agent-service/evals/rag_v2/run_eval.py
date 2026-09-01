@@ -89,26 +89,12 @@ class TimedEmbeddingService:
 
 def load_suite(path: Path, data_directory: Path, *, expected_split: str | None = None) -> tuple[dict, dict]:
     suite = json.loads(path.read_text(encoding="utf-8"))
-    validated_data_version, validated_dataset_sha, _ = _validate_data_directory(data_directory)
-    manifest = json.loads(
-        (data_directory / "import_manifest.json").read_text(encoding="utf-8")
-    )
     if int(suite.get("schemaVersion") or 0) != 2:
         raise ValueError("RAG v2 suite must use schemaVersion=2.")
     if expected_split and suite.get("split") != expected_split:
         raise ValueError(
             f"Eval suite split={suite.get('split')!r} does not match requested {expected_split!r}."
         )
-    for field in ("dataVersion", "datasetSha256"):
-        if suite.get(field) != manifest.get(field):
-            raise ValueError(
-                f"Eval suite {field}={suite.get(field)!r} does not match corpus "
-                f"{manifest.get(field)!r}. Regenerate the suite for this exact corpus."
-            )
-    if suite.get("dataVersion") != validated_data_version:
-        raise ValueError("Eval suite dataVersion does not match the validated corpus files.")
-    if suite.get("datasetSha256") != validated_dataset_sha:
-        raise ValueError("Eval suite datasetSha256 does not match the validated corpus files.")
     cases = suite.get("cases") or []
     if int(suite.get("caseCount") or 0) != len(cases):
         raise ValueError("Eval suite caseCount does not match its case list.")
@@ -123,6 +109,21 @@ def load_suite(path: Path, data_directory: Path, *, expected_split: str | None =
         )
     _validate_adversarial_fixture(path.parent, suite)
     _validate_cases(suite)
+
+    validated_data_version, validated_dataset_sha, _ = _validate_data_directory(data_directory)
+    if suite.get("dataVersion") != validated_data_version:
+        raise ValueError("Eval suite dataVersion does not match the validated corpus files.")
+    if suite.get("datasetSha256") != validated_dataset_sha:
+        raise ValueError("Eval suite datasetSha256 does not match the validated corpus files.")
+    manifest = json.loads(
+        (data_directory / "import_manifest.json").read_text(encoding="utf-8")
+    )
+    for field in ("dataVersion", "datasetSha256"):
+        if suite.get(field) != manifest.get(field):
+            raise ValueError(
+                f"Eval suite {field}={suite.get(field)!r} does not match corpus "
+                f"{manifest.get(field)!r}. Regenerate the suite for this exact corpus."
+            )
     return suite, manifest
 
 

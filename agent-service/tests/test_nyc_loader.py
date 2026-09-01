@@ -9,7 +9,6 @@ import pytest
 from app.rag.nyc_loader import load_generated_documents
 
 GENERATOR_PATH = Path(__file__).parents[2] / "scripts" / "mock-data-generator" / "generate.py"
-SNAPSHOT_PATH = Path(__file__).parents[2] / "data" / "sources" / "nyc-open-data-restaurants-2026-08-23.json"
 sys.path.insert(0, str(GENERATOR_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("agent_test_nyc_generator", GENERATOR_PATH)
 GENERATOR = importlib.util.module_from_spec(SPEC)
@@ -46,14 +45,43 @@ def test_generated_nyc_content_is_loadable_as_rag_documents():
 
 
 def test_hybrid_shop_provenance_is_written_to_rag_payloads(tmp_path):
+    snapshot_path = tmp_path / "nyc-open-data-restaurants.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "metadata": {
+                    "datasetId": "43nn-pn8j",
+                    "datasetName": "NYC restaurant fixture",
+                    "sourceUrl": "https://data.cityofnewyork.us/resource/43nn-pn8j.json",
+                    "fetchedAt": "2026-08-23T14:25:30Z",
+                },
+                "records": [
+                    {
+                        "externalId": "50000001",
+                        "name": "Fixture Cafe",
+                        "borough": "Manhattan",
+                        "address": "1 Test Street, Manhattan, NY 10001",
+                        "cuisine": "Cafe/Coffee/Tea",
+                        "latitude": 40.7501,
+                        "longitude": -73.9901,
+                        "latestGrade": "A",
+                        "latestInspectionDate": "2026-08-19",
+                        "sourceRecordDate": "2026-08-21",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "generated"
     GENERATOR.generate_dataset(
         "small",
         20260817,
-        tmp_path,
-        real_shops_path=SNAPSHOT_PATH,
+        output,
+        real_shops_path=snapshot_path,
     )
 
-    documents = load_generated_documents(tmp_path)
+    documents = load_generated_documents(output)
     public_documents = [
         document for document in documents if document.shop_source_type == "NYC_OPEN_DATA"
     ]
