@@ -5,6 +5,65 @@
   min-width: 0;
 }
 
+.routeFallback {
+  min-height: 100%;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: var(--color-bg-page);
+}
+
+.routeFallbackCard {
+  width: min(460px, 100%);
+  box-sizing: border-box;
+  padding: 36px 28px;
+  border: 1px solid rgba(47, 38, 34, 0.08);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+
+.routeFallbackCode {
+  margin-bottom: 8px;
+  color: var(--color-primary);
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.routeFallbackCard h1 {
+  margin: 0;
+  color: var(--color-text-dark);
+  font-size: 22px;
+}
+
+.routeFallbackCard p {
+  margin: 12px 0 24px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.routeFallbackAction {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  background: var(--color-primary-gradient);
+}
+
+.routeFallbackAction:focus-visible {
+  outline: 3px solid rgba(255, 102, 51, 0.25);
+  outline-offset: 3px;
+}
+
 @media (min-width: 1024px) {
   .shell {
     background: var(--color-bg-page);
@@ -13,6 +72,22 @@
   .withPrimaryNavigation {
     padding-left: var(--desktop-nav-compact-width);
     box-sizing: border-box;
+  }
+
+  .routeFallbackCard {
+    padding: 48px 44px;
+  }
+
+  .routeFallbackCode {
+    font-size: 64px;
+  }
+
+  .routeFallbackCard h1 {
+    font-size: 28px;
+  }
+
+  .routeFallbackCard p {
+    font-size: 16px;
   }
 }
 

@@ -40,27 +40,42 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<{ id: number; name: string; typeId?: number }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchRequestRef = useRef(0);
 
   const getTypeInfo = (typeId: number) => types.find(t => t.id === typeId);
 
   const handleSearchInput = (value: string) => {
     setSearchText(value);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchAbortRef.current?.abort();
+    const requestId = ++searchRequestRef.current;
     if (!value.trim()) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
     searchTimerRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
       try {
-        const res = await getShopsByName(value.trim());
+        const res = await getShopsByName(value.trim(), 1, controller.signal);
+        if (requestId !== searchRequestRef.current) return;
         const data = res.data ?? res;
         const list = Array.isArray(data) ? data.slice(0, 5) : [];
         setSuggestions(list);
         setShowSuggestions(true);
-      } catch { setSuggestions([]); }
+      } catch {
+        if (requestId === searchRequestRef.current) setSuggestions([]);
+      }
     }, 300);
   };
+
+  useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchAbortRef.current?.abort();
+    searchRequestRef.current += 1;
+  }, []);
 
   useEffect(() => {
     getShopTypes()

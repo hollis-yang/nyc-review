@@ -232,7 +232,9 @@
     "followed": "已关注",
     "unfollowed": "已取消关注",
     "commentSuccess": "评论成功",
+    "commentSuccessRefreshFailed": "评论已发布，但暂时无法刷新最新内容，请重新加载后查看。",
     "replySuccess": "回复成功",
+    "replySuccessRefreshFailed": "回复已发布，但暂时无法刷新最新内容，请重新加载后查看。",
     "likes": "{{n}}人点赞",
     "followingLiked": "你关注的 {{count}} 人点赞了：{{names}}",
     "translate": "翻译",
@@ -240,7 +242,9 @@
     "original": "原文",
     "confirm": "确定",
     "aiTranslate": "使用 AI 翻译",
-    "translatingAI": "AI 翻译中…"
+    "translatingAI": "AI 翻译中…",
+    "translationFailed": "翻译失败，请稍后重试。",
+    "translationLoginRequired": "请先登录再使用 AI 翻译。"
   },
   "blogEdit": {
     "cancel": "取消",
@@ -280,6 +284,7 @@
     "loadFailed": "加载失败",
     "categoriesLoadFailed": "分类暂时无法刷新",
     "located": "已定位",
+    "locationFailed": "无法获取位置，已返回纽约市中心。",
     "locateMe": "定位到我的位置",
     "myLocation": "📍 我的位置",
     "viewDetail": "查看详情 →",
@@ -300,8 +305,15 @@
     "demoRating": "模拟评分"
   },
   "shopDetail": {
+    "title": "商户详情",
     "loading": "加载中...",
     "notFound": "店铺不存在",
+    "loadFailed": "商户信息加载失败。",
+    "retry": "重试",
+    "vouchersLoading": "正在加载代金券...",
+    "vouchersLoadFailed": "代金券暂时无法加载。",
+    "reviewsLoading": "正在加载评价...",
+    "reviewsLoadFailed": "评价暂时无法加载。",
     "score": "{{n}}分",
     "comments": "{{n}}条",
     "navigate": "导航",
@@ -318,6 +330,8 @@
     "seckillSuccess": "抢购成功，订单id：{{id}}",
     "linkCopied": "链接已复制",
     "reviewSuccess": "评价发表成功",
+    "reviewSubmitFailed": "评价发表失败，请重试。",
+    "reviewRefreshFailed": "评价已发表，但最新列表刷新失败。",
     "aiTranslate": "使用 AI 翻译",
     "translatingAI": "AI 翻译中…",
     "hideTranslation": "收起翻译",
@@ -378,7 +392,18 @@
     "replyingTo": "回复 {{name}}",
     "reply": "回复",
     "replyPlaceholder": "写下回复...",
-    "replySuccess": "回复成功"
+    "replySuccess": "回复成功",
+    "replySuccessRefreshFailed": "回复已发布，但暂时无法刷新最新内容，请重新加载后查看。",
+    "loadFailed": "评价加载失败，请稍后重试。",
+    "retry": "重新加载",
+    "empty": "暂无评价",
+    "emptyHint": "来分享第一条体验吧。",
+    "moreFailed": "更多评价加载失败，已显示的内容仍为你保留。"
+  },
+  "routeFallback": {
+    "title": "页面不存在",
+    "description": "页面可能已移动，或当前地址有误。",
+    "home": "返回首页"
   },
   "contentSource": {
     "synthetic": "合成演示内容",
@@ -418,7 +443,8 @@
     "delete": "删除",
     "edit": "编辑",
     "close": "关闭",
-    "search": "搜索"
+    "search": "搜索",
+    "actionFailed": "操作未完成，请重试。"
   },
   "sign": {
     "success": "签到成功！",
@@ -481,6 +507,7 @@
     "translating": "AI 翻译中…",
     "translationSuccess": "已使用 AI 翻译为英文",
     "serviceUnavailable": "服务暂时不可用，请稍后重试。",
+    "streamReconnectFailed": "实时更新已中断，规划状态将自动刷新。",
     "run": "询问 Agent 团队",
     "running": "Agent 协作中…",
     "cancel": "取消运行",
@@ -527,6 +554,7 @@
     "actionCompleted": "已完成并记录审批操作",
     "actionRejected": "已拒绝，没有执行写操作",
     "actionFailed": "审批操作未能完成",
+    "approvalLoginRequired": "请先登录再确认执行，登录后会返回当前规划。",
     "recentPlans": "最近规划",
     "savedRuns": "已保存 {{count}} 次运行",
     "runStatus": {
@@ -549,6 +577,7 @@
     },
     "events": {
       "runCreated": "已根据你的需求创建任务。",
+      "runRecovered": "本次运行已恢复并安全继续。",
       "modelStarted": "主管正在提取结构化约束。",
       "modelCompleted": "结构化约束已准备完成。",
       "agentCompleted": "{{agent}}已完成任务。",

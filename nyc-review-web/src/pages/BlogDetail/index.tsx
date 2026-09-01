@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LeftOutline } from 'antd-mobile-icons';
 import { Toast, Dialog } from 'antd-mobile';
@@ -10,6 +10,7 @@ import { getMeOptional } from '../../api/user';
 import { isFollowed, follow } from '../../api/follow';
 import ImageSwiper from '../../components/ImageSwiper';
 import MerchantVisual from '../../components/MerchantVisual';
+import { useAuth } from '../../hooks/useAuth';
 import { normalizeBlogContent } from '../../utils/blogContent';
 import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './BlogDetail.module.css';
@@ -59,6 +60,7 @@ export default function BlogDetail() {
   const { id } = useParams<{ id: string }>();
   const { t, i18n } = useTranslation();
   const isChinese = i18n.resolvedLanguage === 'zh-CN';
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [blog, setBlog] = useState<BlogInfo | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
@@ -66,77 +68,201 @@ export default function BlogDetail() {
   const [comments, setComments] = useState<CommentInfo[]>([]);
   const [currentUser, setCurrentUser] = useState<{ id: number } | null>(null);
   const [followed, setFollowed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [followPending, setFollowPending] = useState(false);
+  const followLockRef = useRef<number | null>(null);
+  const [likePending, setLikePending] = useState(false);
+  const likeLockRef = useRef<number | null>(null);
+  const [error, setError] = useState<{ routeId: string; message: string } | null>(null);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const commentSubmitLockRef = useRef<number | null>(null);
   const [replyTo, setReplyTo] = useState<CommentInfo | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [replySubmitting, setReplySubmitting] = useState(false);
+  const replySubmitLockRef = useRef<number | null>(null);
   const [blogTL, setBlogTL] = useState<string | null>(null);
   const [blogTitleTL, setBlogTitleTL] = useState<string | null>(null);
   const [blogTLLoading, setBlogTLLoading] = useState(false);
+  const blogTranslationLockRef = useRef<number | null>(null);
   const [commentTL, setCommentTL] = useState<Record<number, string>>({});
+  const [commentTranslationBusy, setCommentTranslationBusy] = useState<Set<number>>(new Set());
+  const commentTranslationLocksRef = useRef(new Map<number, number>());
+  const routeGenerationRef = useRef(0);
+  const activeRouteIdRef = useRef<string | null>(id ?? null);
 
   useEffect(() => {
-    if (!id) return;
-    getBlogById(id)
-      .then((res) => {
-        const data = res.data ?? res;
-        data.images = data.images ? data.images.split(',') : [];
-        setBlog(data);
-        if (data.shopId) {
-          getShopById(data.shopId).then((r) => {
-            const s = r.data ?? r;
-            s.image = s.images ? s.images.split(',')[0] : '';
-            setShop(s);
-          }).catch(() => {});
+    const routeId = id;
+    const generation = ++routeGenerationRef.current;
+    activeRouteIdRef.current = routeId ?? null;
+    followLockRef.current = null;
+    likeLockRef.current = null;
+    commentSubmitLockRef.current = null;
+    replySubmitLockRef.current = null;
+    blogTranslationLockRef.current = null;
+    commentTranslationLocksRef.current.clear();
+
+    const timer = window.setTimeout(() => {
+      if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+      setBlog(null);
+      setShop(null);
+      setFollowingLikes([]);
+      setComments([]);
+      setCurrentUser(null);
+      setFollowed(false);
+      setFollowPending(false);
+      setLikePending(false);
+      setError(null);
+      setCommentText('');
+      setSubmitting(false);
+      setReplyTo(null);
+      setReplyText('');
+      setReplySubmitting(false);
+      setBlogTL(null);
+      setBlogTitleTL(null);
+      setBlogTLLoading(false);
+      setCommentTL({});
+      setCommentTranslationBusy(new Set());
+
+      if (!routeId) {
+        setError({ routeId: '', message: t('blogDetail.notFound') });
+        return;
+      }
+
+      void (async () => {
+        try {
+          const response = await getBlogById(routeId);
+          if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+          const raw = response.data ?? response;
+          const data: BlogInfo = {
+            ...raw,
+            images: raw.images ? raw.images.split(',') : [],
+          };
+          setBlog(data);
+
+          if (data.shopId) {
+            void getShopById(data.shopId)
+              .then((shopResponse) => {
+                if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+                const rawShop = shopResponse.data ?? shopResponse;
+                setShop({
+                  ...rawShop,
+                  image: rawShop.images ? rawShop.images.split(',')[0] : '',
+                });
+              })
+              .catch(() => {});
+          }
+
+          void getBlogComments(routeId)
+            .then((commentsResponse) => {
+              if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+                setComments(commentsResponse.data ?? commentsResponse);
+              }
+            })
+            .catch(() => {});
+
+          void getMeOptional()
+            .then(async (userResponse) => {
+              if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+              const user = userResponse.data ?? userResponse;
+              if (!user?.id) return;
+              setCurrentUser(user);
+              const [likesResult, followedResult] = await Promise.allSettled([
+                getFollowingBlogLikes(routeId),
+                user.id !== data.userId ? isFollowed(data.userId) : Promise.resolve(null),
+              ]);
+              if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+              if (likesResult.status === 'fulfilled') {
+                setFollowingLikes(likesResult.value.data ?? likesResult.value);
+              }
+              if (followedResult.status === 'fulfilled' && followedResult.value != null) {
+                setFollowed(followedResult.value.data ?? followedResult.value);
+              }
+            })
+            .catch(() => {});
+        } catch (loadError: unknown) {
+          if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+          const message = loadError instanceof Error ? loadError.message : String(loadError);
+          setError({ routeId, message: message || t('blogDetail.notFound') });
         }
-        getBlogComments(id).then((r) => setComments(r.data ?? r)).catch(() => {});
-        getMeOptional()
-          .then((r) => {
-            const u = r.data ?? r;
-            setCurrentUser(u);
-            getFollowingBlogLikes(id)
-              .then((likesResponse) => setFollowingLikes(likesResponse.data ?? likesResponse))
-              .catch(() => setFollowingLikes([]));
-            if (u.id !== data.userId) {
-              isFollowed(data.userId)
-                .then((r2) => setFollowed(r2.data ?? r2))
-                .catch(() => {});
-            }
-          })
-          .catch(() => {});
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(msg || t('blogDetail.notFound'));
-      });
+      })();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (routeGenerationRef.current === generation) routeGenerationRef.current += 1;
+    };
   }, [id, t]);
 
   const handleLike = async () => {
-    if (!blog) return;
+    if (!blog || !id) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (likeLockRef.current === generation) return;
+    likeLockRef.current = generation;
+    setLikePending(true);
     try {
-      await likeBlog(blog.id);
-      const res = await getBlogById(blog.id);
-      const data = res.data ?? res;
-      data.images = data.images ? data.images.split(',') : [];
-      setBlog(data);
-      if (currentUser) {
-        const followedLikesRes = await getFollowingBlogLikes(blog.id);
-        setFollowingLikes(followedLikesRes.data ?? followedLikesRes);
+      try {
+        await likeBlog(blog.id);
+      } catch {
+        if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+          Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+        }
+        return;
       }
-    } catch (err: unknown) {
-      Toast.show({ icon: 'fail', content: String(err) });
+      if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+      setBlog((current) => current && current.id === blog.id
+        ? {
+            ...current,
+            isLike: !current.isLike,
+            liked: Math.max(0, current.liked + (current.isLike ? -1 : 1)),
+          }
+        : current);
+      try {
+        const res = await getBlogById(blog.id);
+        if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
+        const data = res.data ?? res;
+        data.images = data.images ? data.images.split(',') : [];
+        setBlog(data);
+        if (currentUser) {
+          const followedLikesRes = await getFollowingBlogLikes(blog.id);
+          if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+            setFollowingLikes(followedLikesRes.data ?? followedLikesRes);
+          }
+        }
+      } catch {
+        // The toggle succeeded; retain the local result if refresh is unavailable.
+      }
+    } finally {
+      if (likeLockRef.current === generation) likeLockRef.current = null;
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setLikePending(false);
+      }
     }
   };
 
   const handleFollow = async () => {
-    if (!blog) return;
+    if (!blog || !id) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (followLockRef.current === generation) return;
+    followLockRef.current = generation;
+    setFollowPending(true);
+    const nextFollowed = !followed;
     try {
-      await follow(blog.userId, !followed);
-      Toast.show({ icon: 'success', content: followed ? t('blogDetail.unfollowed') : t('blogDetail.followed') });
-      setFollowed(!followed);
-    } catch (err: unknown) {
-      Toast.show({ icon: 'fail', content: String(err) });
+      await follow(blog.userId, nextFollowed);
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        Toast.show({ icon: 'success', content: nextFollowed ? t('blogDetail.followed') : t('blogDetail.unfollowed') });
+        setFollowed(nextFollowed);
+      }
+    } catch {
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+      }
+    } finally {
+      if (followLockRef.current === generation) followLockRef.current = null;
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setFollowPending(false);
+      }
     }
   };
 
@@ -159,60 +285,107 @@ export default function BlogDetail() {
     }
   };
 
+  const refreshComments = async (routeId: string, generation: number): Promise<boolean> => {
+    const res = await getBlogComments(routeId);
+    if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return false;
+    setComments(res.data ?? res);
+    const blogRes = await getBlogById(routeId);
+    if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return false;
+    const data = blogRes.data ?? blogRes;
+    if (data) {
+      data.images = data.images ? data.images.split(',') : [];
+      setBlog(data);
+    }
+    return true;
+  };
+
   const handleCommentSubmit = async () => {
-    if (!commentText.trim() || !id) return;
+    if (!commentText.trim() || !id || submitting) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (commentSubmitLockRef.current === generation) return;
+    commentSubmitLockRef.current = generation;
     setSubmitting(true);
     try {
-      await createBlogComment({ blogId: Number(id), content: commentText.trim() });
-      Toast.show({ icon: 'success', content: t('blogDetail.commentSuccess') });
+      await createBlogComment({ blogId: Number(routeId), content: commentText.trim() });
+      if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
       setCommentText('');
-      const res = await getBlogComments(id);
-      setComments(res.data ?? res);
-      const blogRes = await getBlogById(id);
-      const blogData = blogRes.data ?? blogRes;
-      if (blogData) {
-        blogData.images = blogData.images ? blogData.images.split(',') : [];
-        setBlog(blogData);
+      try {
+        if (await refreshComments(routeId, generation)) {
+          Toast.show({ icon: 'success', content: t('blogDetail.commentSuccess') });
+        }
+      } catch {
+        if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+          Toast.show({ icon: 'success', content: t('blogDetail.commentSuccessRefreshFailed') });
+        }
       }
-    } catch (err: unknown) {
-      Toast.show({ icon: 'fail', content: String(err) });
+    } catch {
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+      }
     } finally {
-      setSubmitting(false);
+      if (commentSubmitLockRef.current === generation) commentSubmitLockRef.current = null;
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setSubmitting(false);
+      }
     }
   };
 
   const handleInlineReply = async () => {
-    if (!replyText.trim() || !replyTo || !id) return;
+    if (!replyText.trim() || !replyTo || !id || replySubmitting) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (replySubmitLockRef.current === generation) return;
+    replySubmitLockRef.current = generation;
+    setReplySubmitting(true);
     try {
       const parentId = replyTo.parentId > 0 ? replyTo.parentId : replyTo.id;
       const answerId = replyTo.id;
       await createBlogComment({
-        blogId: Number(id),
+        blogId: Number(routeId),
         content: replyText.trim(),
         parentId,
         answerId,
       });
-      Toast.show({ icon: 'success', content: t('blogDetail.replySuccess') });
+      if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
       setReplyTo(null);
       setReplyText('');
-      const res = await getBlogComments(id);
-      setComments(res.data ?? res);
-      const blogRes = await getBlogById(id);
-      const blogData = blogRes.data ?? blogRes;
-      if (blogData) {
-        blogData.images = blogData.images ? blogData.images.split(',') : [];
-        setBlog(blogData);
+      try {
+        if (await refreshComments(routeId, generation)) {
+          Toast.show({ icon: 'success', content: t('blogDetail.replySuccess') });
+        }
+      } catch {
+        if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+          Toast.show({ icon: 'success', content: t('blogDetail.replySuccessRefreshFailed') });
+        }
       }
-    } catch (err: unknown) {
-      Toast.show({ icon: 'fail', content: String(err) });
+    } catch {
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+      }
+    } finally {
+      if (replySubmitLockRef.current === generation) replySubmitLockRef.current = null;
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setReplySubmitting(false);
+      }
     }
   };
 
   const handleTranslateBlog = async () => {
-    if (!blog || blogTL) { setBlogTL(null); setBlogTitleTL(null); return; }
+    if (!blog || !id) return;
+    if (blogTL) { setBlogTL(null); setBlogTitleTL(null); return; }
+    if (!isAuthenticated) {
+      Toast.show({ icon: 'fail', content: t('blogDetail.translationLoginRequired') });
+      return;
+    }
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (blogTranslationLockRef.current === generation) return;
+    blogTranslationLockRef.current = generation;
     setBlogTLLoading(true);
     try {
       const res = await translateBlog(blog.id, 'zh-CN');
+      if (routeGenerationRef.current !== generation || activeRouteIdRef.current !== routeId) return;
       const full = String(res.data ?? res);
       const parts = full.split('\n\n');
       if (parts.length >= 2) {
@@ -221,12 +394,65 @@ export default function BlogDetail() {
       } else {
         setBlogTL(full);
       }
-    } catch {}
-    finally { setBlogTLLoading(false); }
+    } catch {
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        Toast.show({ icon: 'fail', content: t('blogDetail.translationFailed') });
+      }
+    }
+    finally {
+      if (blogTranslationLockRef.current === generation) blogTranslationLockRef.current = null;
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setBlogTLLoading(false);
+      }
+    }
+  };
+
+  const handleTranslateComment = async (comment: CommentInfo) => {
+    if (commentTL[comment.id]) {
+      setCommentTL((current) => {
+        const next = { ...current };
+        delete next[comment.id];
+        return next;
+      });
+      return;
+    }
+    if (!id) return;
+    if (!isAuthenticated) {
+      Toast.show({ icon: 'fail', content: t('blogDetail.translationLoginRequired') });
+      return;
+    }
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (commentTranslationLocksRef.current.get(comment.id) === generation) return;
+    commentTranslationLocksRef.current.set(comment.id, generation);
+    setCommentTranslationBusy((current) => new Set(current).add(comment.id));
+    try {
+      const res = await translateComment(comment.id, 'zh-CN');
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setCommentTL((current) => ({ ...current, [comment.id]: String(res.data ?? res) }));
+      }
+    } catch {
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        Toast.show({ icon: 'fail', content: t('blogDetail.translationFailed') });
+      }
+    } finally {
+      if (commentTranslationLocksRef.current.get(comment.id) === generation) {
+        commentTranslationLocksRef.current.delete(comment.id);
+      }
+      if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+        setCommentTranslationBusy((current) => {
+          const next = new Set(current);
+          next.delete(comment.id);
+          return next;
+        });
+      }
+    }
   };
 
   const handleDelete = () => {
-    if (!blog) return;
+    if (!blog || !id) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
     Dialog.confirm({
       content: t('blogDetail.deleteNoteConfirm'),
       cancelText: t('blogDetail.cancel'),
@@ -234,10 +460,14 @@ export default function BlogDetail() {
       onConfirm: async () => {
         try {
           await deleteBlog(blog.id);
-          Toast.show({ icon: 'success', content: t('blogDetail.deleted') });
-          navigate(-1);
-        } catch (err: unknown) {
-          Toast.show({ icon: 'fail', content: String(err) });
+          if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+            Toast.show({ icon: 'success', content: t('blogDetail.deleted') });
+            navigate(-1);
+          }
+        } catch {
+          if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+            Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+          }
         }
       },
     });
@@ -245,7 +475,7 @@ export default function BlogDetail() {
 
   /* ---- 渲染 ---- */
 
-  if (error) {
+  if (error?.routeId === (id ?? '')) {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
@@ -255,12 +485,12 @@ export default function BlogDetail() {
           <div className={styles.title}>{t('blogDetail.title')}</div>
           <div className={styles.share} />
         </div>
-        <div className={styles.loadingFull}>{error}</div>
+        <div className={styles.loadingFull}>{error.message}</div>
       </div>
     );
   }
 
-  if (!blog) {
+  if (!blog || String(blog.id) !== id) {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
@@ -306,15 +536,6 @@ export default function BlogDetail() {
     list.reduce((s, c) => s + 1 + countTree(c.children), 0);
   const totalCommentCount = countTree(comments);
 
-  const refreshComments = async () => {
-    if (!id) return;
-    const res = await getBlogComments(id);
-    setComments(res.data ?? res);
-    const blogRes = await getBlogById(id);
-    const d = blogRes.data ?? blogRes;
-    if (d) { d.images = d.images ? d.images.split(',') : []; setBlog(d); }
-  };
-
   const renderComment = (c: CommentInfo, depth: number): JSX.Element => (
     <div key={c.id}>
       <div className={`${styles.commentItem} ${depth === 1 ? styles.commentNested : ''} ${depth > 1 ? styles.commentNestedDeep : ''}`}>
@@ -342,26 +563,26 @@ export default function BlogDetail() {
                   {t('blogDetail.reply')}
                 </span>
               )}
-                {isChinese && <span className={`${styles.replyBtn} ${styles.translationAction}`}
-                  onClick={async () => {
-                    if (commentTL[c.id]) {
-                      const next = { ...commentTL };
-                      delete next[c.id];
-                      setCommentTL(next);
-                      return;
-                    }
-                    try {
-                      const res = await translateComment(c.id, 'zh-CN');
-                      setCommentTL(prev => ({ ...prev, [c.id]: String(res.data ?? res) }));
-                    } catch {}
-                  }}>
-                  ✦ {t('blogDetail.aiTranslate')}
-                </span>}
+              {isChinese && (
+                <button
+                  type="button"
+                  className={`${styles.replyBtn} ${styles.translationAction}`}
+                  disabled={commentTranslationBusy.has(c.id)}
+                  onClick={() => void handleTranslateComment(c)}
+                >
+                  ✦ {commentTranslationBusy.has(c.id)
+                    ? t('blogDetail.translatingAI')
+                    : t('blogDetail.aiTranslate')}
+                </button>
+              )}
             </div>
             {currentUser && currentUser.id === c.userId && (
               <div
                 className={styles.deleteCommentButton}
                 onClick={() => {
+                  if (!id) return;
+                  const routeId = id;
+                  const generation = routeGenerationRef.current;
                   Dialog.confirm({
                     content: t('blogDetail.deleteCommentConfirm'),
                     cancelText: t('blogDetail.cancel'),
@@ -369,9 +590,11 @@ export default function BlogDetail() {
                     onConfirm: async () => {
                       try {
                         await deleteBlogComment(c.id);
-                        await refreshComments();
-                      } catch (err: unknown) {
-                        Toast.show({ icon: 'fail', content: String(err) });
+                        await refreshComments(routeId, generation);
+                      } catch {
+                        if (routeGenerationRef.current === generation && activeRouteIdRef.current === routeId) {
+                          Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+                        }
                       }
                     },
                   });
@@ -387,13 +610,28 @@ export default function BlogDetail() {
                 <input
                   type="text"
                   value={replyText}
+                  disabled={replySubmitting}
                   onChange={(e) => setReplyText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleInlineReply(); }}
                   placeholder={`${t('blogDetail.replyTo')} ${c.name}...`}
                   className={styles.inlineReplyInput}
                 />
-                <span className={styles.commentSubmit} onClick={handleInlineReply}>{t('blogDetail.send')}</span>
-                <span className={styles.cancelReply} onClick={() => setReplyTo(null)}>{t('blogDetail.cancel')}</span>
+                <button
+                  type="button"
+                  className={styles.commentSubmit}
+                  disabled={!replyText.trim() || replySubmitting}
+                  onClick={handleInlineReply}
+                >
+                  {replySubmitting ? t('shopDetail.submitting') : t('blogDetail.send')}
+                </button>
+                <button
+                  type="button"
+                  className={styles.cancelReply}
+                  disabled={replySubmitting}
+                  onClick={() => setReplyTo(null)}
+                >
+                  {t('blogDetail.cancel')}
+                </button>
               </div>
             </div>
           )}
@@ -450,9 +688,15 @@ export default function BlogDetail() {
             </div>
             <div className={styles.followArea}>
               {(!currentUser || currentUser.id !== blog.userId) && (
-                <div className={styles.followBtn} onClick={handleFollow}>
+                <button
+                  type="button"
+                  className={styles.followBtn}
+                  onClick={handleFollow}
+                  disabled={followPending}
+                  aria-busy={followPending}
+                >
                   {followed ? t('blogDetail.unfollow') : t('blogDetail.follow')}
-                </div>
+                </button>
               )}
             </div>
           </div>
@@ -504,18 +748,25 @@ export default function BlogDetail() {
               <span style={{ fontSize: 12, color: '#F63', fontWeight: 600 }}>
                 ★ {shop.score / 10}
               </span>
-              <div className={styles.shopAvg}>${shop.avgPrice}/person</div>
+              <div className={styles.shopAvg}>${shop.avgPrice}{t('shopCard.perPerson')}</div>
             </div>
           </div>
         )}
 
         {/* 点赞卡片 */}
         <div className={styles.zanBox}>
-          <div className={styles.likeIconWrapper} onClick={handleLike}>
+          <button
+            type="button"
+            className={styles.likeIconWrapper}
+            onClick={handleLike}
+            disabled={likePending}
+            aria-busy={likePending}
+            aria-label={t('shopDetail.like', { n: blog.liked })}
+          >
             <svg viewBox="0 0 1024 1024" width="22" height="22" fill={blog.isLike ? '#ff6633' : '#82848a'}>
               <path d="M160 944c0 8.8-7.2 16-16 16h-32c-26.5 0-48-21.5-48-48V528c0-26.5 21.5-48 48-48h32c8.8 0 16 7.2 16 16v448zM96 416c-53 0-96 43-96 96v416c0 53 43 96 96 96h96c17.7 0 32-14.3 32-32V448c0-17.7-14.3-32-32-32H96zM505.6 64c16.2 0 26.4 8.7 31 13.9 4.6 5.2 12.1 16.3 10.3 32.4l-23.5 203.4c-4.9 42.2 8.6 84.6 36.8 116.4 28.3 31.7 68.9 49.9 111.4 49.9h271.2c6.6 0 10.8 3.3 13.2 6.1s5 7.5 4 14l-48 303.4c-6.9 43.6-29.1 83.4-62.7 112C815.8 944.2 773 960 728.9 960h-317c-33.1 0-59.9-26.8-59.9-59.9v-455c0-6.1 1.7-12 5-17.1 69.5-109 106.4-234.2 107-364h41.6z m0-64h-44.9C427.2 0 400 27.2 400 60.7c0 127.1-39.1 251.2-112 355.3v484.1c0 68.4 55.5 123.9 123.9 123.9h317c122.7 0 227.2-89.3 246.3-210.5l47.9-303.4c7.8-49.4-30.4-94.1-80.4-94.1H671.6c-50.9 0-90.5-44.4-84.6-95l23.5-203.4C617.7 55 568.7 0 505.6 0z" />
             </svg>
-          </div>
+          </button>
           <div className={styles.zanList}>
             <div className={styles.likedCount}>{t('blogDetail.likes', { n: blog.liked })}</div>
             {followingLikes.length > 0 && (
@@ -570,32 +821,41 @@ export default function BlogDetail() {
             type="text"
             placeholder={t('blogDetail.commentPlaceholder')}
             value={commentText}
+            disabled={submitting}
             onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCommentSubmit(); }}
             className={styles.commentInput}
           />
-          <div
+          <button
+            type="button"
             className={styles.commentSubmit}
             onClick={handleCommentSubmit}
-            style={{ opacity: commentText.trim() && !submitting ? 1 : 0.4 }}
+            disabled={!commentText.trim() || submitting}
           >
-            {t('blogDetail.send')}
-          </div>
+            {submitting ? t('shopDetail.submitting') : t('blogDetail.send')}
+          </button>
         </div>
 
         <div className={styles.bottomBar}>
-          <div className={styles.bottomBox} onClick={handleLike}>
+          <button
+            type="button"
+            className={styles.bottomBox}
+            onClick={handleLike}
+            disabled={likePending}
+            aria-busy={likePending}
+            aria-label={t('shopDetail.like', { n: blog.liked })}
+          >
             <svg viewBox="0 0 1024 1024" width="26" height="26" fill={blog.isLike ? '#ff6633' : '#82848a'}>
               <path d="M160 944c0 8.8-7.2 16-16 16h-32c-26.5 0-48-21.5-48-48V528c0-26.5 21.5-48 48-48h32c8.8 0 16 7.2 16 16v448zM96 416c-53 0-96 43-96 96v416c0 53 43 96 96 96h96c17.7 0 32-14.3 32-32V448c0-17.7-14.3-32-32-32H96zM505.6 64c16.2 0 26.4 8.7 31 13.9 4.6 5.2 12.1 16.3 10.3 32.4l-23.5 203.4c-4.9 42.2 8.6 84.6 36.8 116.4 28.3 31.7 68.9 49.9 111.4 49.9h271.2c6.6 0 10.8 3.3 13.2 6.1s5 7.5 4 14l-48 303.4c-6.9 43.6-29.1 83.4-62.7 112C815.8 944.2 773 960 728.9 960h-317c-33.1 0-59.9-26.8-59.9-59.9v-455c0-6.1 1.7-12 5-17.1 69.5-109 106.4-234.2 107-364h41.6z m0-64h-44.9C427.2 0 400 27.2 400 60.7c0 127.1-39.1 251.2-112 355.3v484.1c0 68.4 55.5 123.9 123.9 123.9h317c122.7 0 227.2-89.3 246.3-210.5l47.9-303.4c7.8-49.4-30.4-94.1-80.4-94.1H671.6c-50.9 0-90.5-44.4-84.6-95l23.5-203.4C617.7 55 568.7 0 505.6 0z" />
             </svg>
             <span className={blog.isLike ? styles.liked : ''}>{blog.liked}</span>
-          </div>
-          <div className={styles.bottomBox} onClick={scrollToComments}>
+          </button>
+          <button type="button" className={styles.bottomBox} onClick={scrollToComments}>
             <svg viewBox="0 0 1024 1024" width="26" height="26" fill={hasCommented ? '#ff6633' : '#82848a'}>
               <path d="M128 128h768v576H128V128zm0-64C92.8 64 64 92.8 64 128v576c0 35.2 28.8 64 64 64h256l128 192 128-192h256c35.2 0 64-28.8 64-64V128c0-35.2-28.8-64-64-64H128z" />
             </svg>
             <span className={hasCommented ? styles.liked : ''}>{blog.comments ?? 0}</span>
-          </div>
+          </button>
         </div>
       </div>
       </div>

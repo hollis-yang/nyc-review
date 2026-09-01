@@ -29,3 +29,8 @@ html, body, #root {
 .adm-picker-view-column-wheel {
   touch-action: none;
 }
+
+/* Toasts must remain visible above modal masks and desktop navigation. */
+.adm-mask.adm-toast-mask {
+  --z-index: var(--z-toast);
+}

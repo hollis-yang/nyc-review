@@ -1,8 +1,10 @@
 import { Toast } from 'antd-mobile';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatPrice } from '../../utils';
 import { purchaseVoucher } from '../../api/voucher';
 import { useAuth } from '../../hooks/useAuth';
+import { buildAuthEntryUrl, currentRouteTarget } from '../../utils/authRedirect';
 import type { TFunction } from 'i18next';
 import styles from './VoucherCard.module.css';
 
@@ -22,7 +24,7 @@ export interface VoucherData {
 
 interface VoucherCardProps {
   voucher: VoucherData;
-  onSeckill: (id: number) => void;
+  onSeckill: (id: number) => Promise<void> | void;
 }
 
 function formatTime(v: VoucherData, t: TFunction): string {
@@ -47,6 +49,8 @@ function isEnd(v: VoucherData): boolean {
 export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
   const { t, i18n } = useTranslation();
   const { isAuthenticated } = useAuth();
+  const actionLockRef = useRef(false);
+  const [actionPending, setActionPending] = useState(false);
   const v = voucher;
 
   if (isEnd(v)) return null;
@@ -60,13 +64,14 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
       : Number((((v.actualValue - v.payValue) * 100) / v.actualValue).toFixed(1))
     : 0;
   const price = formatPrice(v.payValue);
-  const disabled = isNotBegin(v) || (v.type === 1 && v.stock < 1);
+  const disabled = actionPending || isNotBegin(v) || (v.type === 1 && v.stock < 1);
 
   const handleSeckill = async () => {
+    if (actionLockRef.current) return;
     if (!isAuthenticated) {
       Toast.show({ icon: 'fail', content: t('voucher.loginRequired') });
       setTimeout(() => {
-        window.location.href = '/login';
+        window.location.href = buildAuthEntryUrl('/login', currentRouteTarget(window.location));
       }, 200);
       return;
     }
@@ -82,15 +87,20 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
       Toast.show({ icon: 'fail', content: t('voucher.outOfStock') });
       return;
     }
-    if (v.type === 1) {
-      onSeckill(v.id);
-    } else {
-      try {
+    actionLockRef.current = true;
+    setActionPending(true);
+    try {
+      if (v.type === 1) {
+        await onSeckill(v.id);
+      } else {
         const res = await purchaseVoucher(v.id);
         Toast.show({ icon: 'success', content: t('voucher.purchaseSuccess', { id: res.data ?? res }) });
-      } catch (err: unknown) {
-        Toast.show({ icon: 'fail', content: String(err) });
       }
+    } catch {
+      Toast.show({ icon: 'fail', content: t('common.actionFailed') });
+    } finally {
+      actionLockRef.current = false;
+      setActionPending(false);
     }
   };
 
@@ -110,19 +120,30 @@ export default function VoucherCard({ voucher, onSeckill }: VoucherCardProps) {
       <div className={styles.right}>
         {v.type ? (
           <div className={styles.seckillBox}>
-            <div
+            <button
+              type="button"
               className={`${styles.btn} ${disabled ? styles.disableBtn : ''}`}
               onClick={handleSeckill}
+              disabled={disabled}
+              aria-busy={actionPending}
             >
               {t('voucher.flashSale')}
-            </div>
+            </button>
             <div className={styles.stock}>
               {t('voucher.remaining', { n: v.stock })}
             </div>
             <div className={styles.time}>{formatTime(v, t)}</div>
           </div>
         ) : (
-          <div className={styles.btn} onClick={handleSeckill}>{t('voucher.buy')}</div>
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={handleSeckill}
+            disabled={disabled}
+            aria-busy={actionPending}
+          >
+            {t('voucher.buy')}
+          </button>
         )}
       </div>
     </div>

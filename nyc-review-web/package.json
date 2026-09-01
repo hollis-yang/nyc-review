@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "release:check": "node scripts/release_check.mjs",
     "visual:audit": "node scripts/audit_p13_5_visuals.mjs",
     "visual:generate": "python3 scripts/p13_5_visual_assets.py",
     "preview": "vite preview"

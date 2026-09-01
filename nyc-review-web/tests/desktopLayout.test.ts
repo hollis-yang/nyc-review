@@ -39,6 +39,7 @@ test('responsive app shell preserves every current route', () => {
     '/blog-detail.html',
     '/shop-list.html',
     '/other-info.html',
+    '*',
   ]);
   assert.match(app, /function AppRoutes\(\)/);
   assert.match(app, /pathname\.replace\(\/\\\/\+\$\//);

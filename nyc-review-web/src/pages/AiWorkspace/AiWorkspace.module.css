@@ -245,6 +245,11 @@
   font-size: 11px;
 }
 
+.cancelButton:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .safetyNote {
   margin-top: 11px;
   border-left: 3px solid var(--color-primary-light);

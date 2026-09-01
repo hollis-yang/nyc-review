@@ -554,8 +554,9 @@ export default function MapPage() {
 
   const locateMe = useCallback(() => {
     const fallbackToNyc = () => {
-      setUserPos(NYC_CENTER);
+      setUserPos(null);
       setFlyTo([...NYC_CENTER]);
+      Toast.show({ icon: 'fail', content: tt('map.locationFailed') });
     };
 
     if (!('geolocation' in navigator)) {

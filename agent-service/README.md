@@ -25,6 +25,7 @@ curl http://127.0.0.1:8090/health
 ```bash
 curl -sS -X POST http://127.0.0.1:8090/v1/agent/runs \
   -H 'Content-Type: application/json' \
+  -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' \
   -H 'authorization: <current-user-token>' \
   -d '{"mode":"multi","query":"Quiet vegan dinner in Midtown for 2 under $120"}'
 ```
@@ -32,8 +33,8 @@ curl -sS -X POST http://127.0.0.1:8090/v1/agent/runs \
 使用响应中的 `run_id` 和相同登录 token 读取实时协作事件和最终快照：
 
 ```bash
-curl -N -H 'authorization: <current-user-token>' http://127.0.0.1:8090/v1/agent/runs/<run-id>/events
-curl -sS -H 'authorization: <current-user-token>' http://127.0.0.1:8090/v1/agent/runs/<run-id>
+curl -N -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' -H 'authorization: <current-user-token>' http://127.0.0.1:8090/v1/agent/runs/<run-id>/events
+curl -sS -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' -H 'authorization: <current-user-token>' http://127.0.0.1:8090/v1/agent/runs/<run-id>
 ```
 
 Run、事件与最终结果默认持久化到 `./.local/agent-runs.sqlite3`。接口同时支持 `single` 和 `multi`；多 Agent 仍由 Supervisor、Discovery、Evidence、Itinerary、Verifier 协作，Evidence 与 Itinerary 并行。
@@ -44,10 +45,13 @@ Run、事件与最终结果默认持久化到 `./.local/agent-runs.sqlite3`。�
 
 ```bash
 curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/approve \
+  -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' \
   -H 'authorization: <current-user-token>'
 curl -X POST /v1/agent/runs/<run-id>/actions/<action-id>/reject \
+  -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' \
   -H 'authorization: <current-user-token>'
-curl -H 'authorization: <current-user-token>' '/v1/agent/runs?limit=5'
+curl -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' \
+  -H 'authorization: <current-user-token>' '/v1/agent/runs?limit=5'
 curl /v1/agent/metrics
 ```
 
@@ -58,11 +62,13 @@ curl /v1/agent/metrics
 - 每个 Run 持久化 model、tool、agent node、action 和 total span；`GET /v1/agent/runs/{id}/trace` 返回完整 Trace。
 - `/v1/agent/metrics` 聚合操作次数、失败数、P50/P95 延迟和模型 Token；配置 `NYC_REVIEW_AGENT_METRICS_TOKEN` 后需传 `x-metrics-token`。
 - Agent 启动时会恢复未完成且尚未产生写操作的 Run；模型、Embedding、后端工具和 Run 不设置客户端执行超时，运行中的任务只能由用户取消、服务关闭或外部服务返回错误来终止。
-- Run Snapshot、SSE、Trace、取消和 Action 均校验创建者 token 的 SHA-256 owner key；不保存原始 token。
+- 所有持久 Run API 都要求浏览器生成的 `x-agent-session`；匿名 Run 按该 session 隔离，登录后原子绑定到 token 的 SHA-256 owner key，且不保存原始 token。
+- 服务重启不会自动重放已批准的写操作；中断的 Action 会回到可人工重试的 `failed` 状态，并继续使用同一个幂等 `actionId` 对账。
 - Prompt Guard 拒绝显式系统提示词窃取与绕过审批指令，创建 Run 还受按 owner/IP 的滑动窗口限流。
 
 ```bash
 curl -H 'authorization: <current-user-token>' \
+  -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' \
   http://127.0.0.1:8090/v1/agent/runs/<run-id>/trace
 
 curl -H 'x-metrics-token: <metrics-token>' \

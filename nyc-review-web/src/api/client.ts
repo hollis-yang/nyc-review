@@ -1,4 +1,5 @@
 import axios, { type AxiosRequestConfig } from 'axios';
+import { buildAuthEntryUrl, currentRouteTarget } from '../utils/authRedirect';
 
 export interface AuthAwareRequestConfig extends AxiosRequestConfig {
   skipAuthRedirect?: boolean;
@@ -36,7 +37,7 @@ client.interceptors.response.use(
       const requestConfig = error.config as AuthAwareRequestConfig | undefined;
       if (!requestConfig?.skipAuthRedirect) {
         setTimeout(() => {
-          window.location.href = '/login';
+          window.location.href = buildAuthEntryUrl('/login', currentRouteTarget(window.location));
         }, 200);
       }
       return Promise.reject('Please sign in first');

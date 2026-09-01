@@ -146,7 +146,7 @@ test('account security and forgot password use separate desktop canvases', () =>
   assert.match(account, /setRecoveryKey\(\{ currentPassword: keyPassword, recoveryKey \}\)/);
   assert.match(account, /changePassword\(\{ currentPassword, newPassword \}\)/);
   assert.match(account, /sessionStorage\.removeItem\('token'\)/);
-  assert.match(account, /window\.location\.assign\('\/login\?passwordChanged=1'\)/);
+  assert.match(account, /window\.location\.assign\(buildAuthEntryUrl\('\/login', '\/account-security', \{ passwordChanged: '1' \}\)\)/);
   assert.match(account, /<FootBar activeBtn=\{4\}/);
   assertInOrder(account, [
     "t('accountSecurity.recoveryTitle')",
@@ -156,7 +156,8 @@ test('account security and forgot password use separate desktop canvases', () =>
   assert.match(forgot, /styles\.forgotScroll/);
   assert.match(forgot, /styles\.forgotCard/);
   assert.match(forgot, /resetPassword\(\{/);
-  assert.match(forgot, /navigate\('\/login\?passwordReset=1', \{ replace: true \}\)/);
+  assert.match(forgot, /const resetCompleteUrl = buildAuthEntryUrl\('\/login', redirect, \{ passwordReset: '1' \}\)/);
+  assert.match(forgot, /navigate\(resetCompleteUrl, \{ replace: true \}\)/);
   assert.match(forgot, /<PhoneNumberField/);
   assert.match(forgot, /value=\{recoveryKey\}/);
   assert.match(forgot, /value=\{newPassword\}/);
@@ -191,13 +192,14 @@ test('login and register share a desktop brand panel without entering primary na
     assert.match(page, /disabled=\{submitting\}/);
     assertInOrder(page, ['styles.brand', 'styles.formCard', 'styles.agreement']);
   }
-  assert.match(login, /const redirect = searchParams\.get\('redirect'\) \|\| '\/'/);
-  assert.match(login, /const registerUrl = `\/register\?redirect=\$\{encodeURIComponent\(redirect\)\}`/);
+  assert.match(login, /const redirect = safeAuthRedirect\(searchParams\.get\('redirect'\)\)/);
+  assert.match(login, /const registerUrl = buildAuthEntryUrl\('\/register', redirect\)/);
+  assert.match(login, /const forgotPasswordUrl = buildAuthEntryUrl\('\/forgot-password', redirect\)/);
   assert.match(login, /loginByPassword\(\{ regionCode, phoneNumber: phoneNumber\.trim\(\), password \}\)/);
   assert.match(login, /<PhoneNumberField/);
   assert.match(login, /type=\{showPassword \? 'text' : 'password'\}/);
   assert.match(login, /setShowPassword\(!showPassword\)/);
-  assert.match(login, /<Link to="\/forgot-password">/);
+  assert.match(login, /<Link to=\{forgotPasswordUrl\}>/);
   assert.match(login, /navigate\(redirect, \{ replace: true \}\)/);
   assertInOrder(login, [
     'if (!agreed)',
@@ -207,7 +209,8 @@ test('login and register share a desktop brand panel without entering primary na
   ]);
   assert.match(login, /passwordChanged/);
   assert.match(login, /passwordReset/);
-  assert.match(register, /const loginUrl = `\/login\?redirect=\$\{encodeURIComponent\(redirect\)\}`/);
+  assert.match(register, /const redirect = safeAuthRedirect\(searchParams\.get\('redirect'\)\)/);
+  assert.match(register, /const loginUrl = buildAuthEntryUrl\('\/login', redirect\)/);
   assert.match(register, /isStrongRegistrationPassword\(password\)/);
   assert.match(register, /maxLength=\{32\}/);
   assert.equal(register.match(/type=\{showPassword \? 'text' : 'password'\}/g)?.length, 2);

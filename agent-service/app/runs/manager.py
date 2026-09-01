@@ -61,10 +61,15 @@ class AgentRunManager:
         self,
         request: AgentRunCreateRequest,
         authorization: str = "",
+        owner_session: str = "",
     ) -> AgentRunCreated:
         PromptGuard.validate(request.query)
         run_id = str(uuid4())
-        await self._store.create(run_id, request, self._owner_key(authorization))
+        await self._store.create(
+            run_id,
+            request,
+            self._creation_owner_key(authorization, owner_session),
+        )
         await self._store.append_event(
             run_id,
             event="run.created",
@@ -79,6 +84,20 @@ class AgentRunManager:
         )
 
     async def recover(self) -> int:
+        interrupted_actions = await self._store.recover_interrupted_actions()
+        for run_id, action in interrupted_actions:
+            await self._store.append_event(
+                run_id,
+                event="action.failed",
+                agent="Action Executor",
+                status="failed",
+                message=action.error or "Action recovery requires another approval.",
+                details={
+                    "actionId": action.action_id,
+                    "actionType": action.action_type.value,
+                    "recovery": "service_restart",
+                },
+            )
         recovered = await self._store.recoverable_runs(self._max_recovery_attempts)
         for run_id, request in recovered:
             await self._store.append_event(
@@ -89,7 +108,7 @@ class AgentRunManager:
                 message="Resuming an interrupted read-only Agent run from durable state.",
             )
             self._schedule(run_id, request, "")
-        return len(recovered)
+        return len(recovered) + len({run_id for run_id, _ in interrupted_actions})
 
     def _schedule(self, run_id: str, request: AgentRunCreateRequest, authorization: str) -> None:
         task = asyncio.create_task(self._execute(run_id, request, authorization))
@@ -99,13 +118,23 @@ class AgentRunManager:
     async def get(self, run_id: str) -> AgentRunSnapshot | None:
         return await self._store.get(run_id)
 
-    async def get_owned(self, run_id: str, authorization: str) -> AgentRunSnapshot | None:
-        if not await self._store.owner_matches(run_id, self._owner_key(authorization)):
+    async def get_owned(
+        self,
+        run_id: str,
+        authorization: str,
+        owner_session: str = "",
+    ) -> AgentRunSnapshot | None:
+        if not await self._owns_run(run_id, authorization, owner_session):
             return None
         return await self._store.get(run_id)
 
-    async def trace(self, run_id: str, authorization: str) -> list[AgentTraceSpan] | None:
-        if not await self._store.owner_matches(run_id, self._owner_key(authorization)):
+    async def trace(
+        self,
+        run_id: str,
+        authorization: str,
+        owner_session: str = "",
+    ) -> list[AgentTraceSpan] | None:
+        if not await self._owns_run(run_id, authorization, owner_session):
             return None
         return await self._store.spans(run_id)
 
@@ -117,21 +146,30 @@ class AgentRunManager:
     async def metrics(self) -> dict:
         return await self._store.metrics()
 
-    async def cancel(self, run_id: str, authorization: str = "") -> AgentRunSnapshot | None:
-        snapshot = await self.get_owned(run_id, authorization)
+    async def cancel(
+        self,
+        run_id: str,
+        authorization: str = "",
+        owner_session: str = "",
+    ) -> AgentRunSnapshot | None:
+        snapshot = await self.get_owned(run_id, authorization, owner_session)
         if snapshot is None:
             return None
         task = self._tasks.get(run_id)
         if task is not None and not task.done():
             task.cancel()
-        if snapshot.status not in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
-            await self._store.set_status(run_id, RunStatus.CANCELLED)
-            await self._store.append_event(
-                run_id,
-                event="run.cancelled",
-                status="cancelled",
-                message="Run cancelled by the user.",
-            )
+            await asyncio.gather(task, return_exceptions=True)
+        cancelled, current_status = await self._store.cancel_run(run_id)
+        if not cancelled:
+            if current_status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
+                return await self._store.get(run_id)
+            raise ValueError("An approved action is executing and cannot be cancelled.")
+        await self._store.append_event(
+            run_id,
+            event="run.cancelled",
+            status="cancelled",
+            message="Run cancelled by the user.",
+        )
         return await self._store.get(run_id)
 
     async def approve_action(
@@ -139,12 +177,15 @@ class AgentRunManager:
         run_id: str,
         action_id: str,
         authorization: str,
+        owner_session: str = "",
     ) -> AgentRunSnapshot | None:
         if not authorization:
             raise PermissionError("Sign in before approving an Agent action.")
-        snapshot = await self.get_owned(run_id, authorization)
+        snapshot = await self.get_owned(run_id, authorization, owner_session)
         if snapshot is None:
             return None
+        if snapshot.status is RunStatus.CANCELLED:
+            raise ValueError("A cancelled run cannot execute actions.")
         run_metadata = snapshot.result.metadata if snapshot.result is not None else {}
         run_data_version = run_metadata.get("dataVersion")
         run_dataset_sha256 = run_metadata.get("datasetSha256")
@@ -166,7 +207,29 @@ class AgentRunManager:
         if action.status in {AgentActionStatus.APPROVED, AgentActionStatus.EXECUTING}:
             raise ValueError("This action is already being executed.")
 
-        await self._store.update_action(run_id, action_id, AgentActionStatus.APPROVED)
+        claimed = await self._store.transition_action(
+            run_id,
+            action_id,
+            {AgentActionStatus.PROPOSED, AgentActionStatus.FAILED},
+            AgentActionStatus.EXECUTING,
+            expected_run_statuses={
+                RunStatus.WAITING_CONFIRMATION,
+                RunStatus.COMPLETED,
+            },
+            run_status=RunStatus.TOOL_RUNNING,
+        )
+        if not claimed:
+            latest_snapshot = await self._store.get(run_id)
+            if latest_snapshot is not None and latest_snapshot.status is RunStatus.CANCELLED:
+                raise ValueError("A cancelled run cannot execute actions.")
+            latest = await self._store.get_action(run_id, action_id)
+            if latest is None:
+                raise KeyError(action_id)
+            if latest.status is AgentActionStatus.COMPLETED:
+                return latest_snapshot
+            if latest.status is AgentActionStatus.REJECTED:
+                raise ValueError("A rejected action cannot be approved.")
+            raise ValueError("This action is already being executed.")
         await self._store.append_event(
             run_id,
             event="action.approved",
@@ -175,8 +238,6 @@ class AgentRunManager:
             message="User approved a proposed action.",
             details={"actionId": action_id, "actionType": action.action_type.value},
         )
-        await self._store.set_status(run_id, RunStatus.TOOL_RUNNING)
-        await self._store.update_action(run_id, action_id, AgentActionStatus.EXECUTING)
         await self._store.append_event(
             run_id,
             event="action.started",
@@ -258,10 +319,13 @@ class AgentRunManager:
         run_id: str,
         action_id: str,
         authorization: str = "",
+        owner_session: str = "",
     ) -> AgentRunSnapshot | None:
-        snapshot = await self.get_owned(run_id, authorization)
+        snapshot = await self.get_owned(run_id, authorization, owner_session)
         if snapshot is None:
             return None
+        if snapshot.status is RunStatus.CANCELLED:
+            raise ValueError("A cancelled run cannot change actions.")
         action = await self._store.get_action(run_id, action_id)
         if action is None:
             raise KeyError(action_id)
@@ -269,16 +333,38 @@ class AgentRunManager:
             raise ValueError("A completed action cannot be rejected.")
         if action.status is AgentActionStatus.EXECUTING:
             raise ValueError("An executing action cannot be rejected.")
-        if action.status is not AgentActionStatus.REJECTED:
-            await self._store.update_action(run_id, action_id, AgentActionStatus.REJECTED)
-            await self._store.append_event(
-                run_id,
-                event="action.rejected",
-                agent="Action Executor",
-                status="rejected",
-                message="User rejected a proposed action. No write was performed.",
-                details={"actionId": action_id, "actionType": action.action_type.value},
-            )
+        if action.status is AgentActionStatus.REJECTED:
+            return snapshot
+        rejected = await self._store.transition_action(
+            run_id,
+            action_id,
+            {AgentActionStatus.PROPOSED, AgentActionStatus.FAILED},
+            AgentActionStatus.REJECTED,
+            expected_run_statuses={
+                RunStatus.WAITING_CONFIRMATION,
+                RunStatus.COMPLETED,
+            },
+        )
+        if not rejected:
+            latest_snapshot = await self._store.get(run_id)
+            if latest_snapshot is not None and latest_snapshot.status is RunStatus.CANCELLED:
+                raise ValueError("A cancelled run cannot change actions.")
+            latest = await self._store.get_action(run_id, action_id)
+            if latest is None:
+                raise KeyError(action_id)
+            if latest.status is AgentActionStatus.REJECTED:
+                return latest_snapshot
+            if latest.status is AgentActionStatus.COMPLETED:
+                raise ValueError("A completed action cannot be rejected.")
+            raise ValueError("An executing action cannot be rejected.")
+        await self._store.append_event(
+            run_id,
+            event="action.rejected",
+            agent="Action Executor",
+            status="rejected",
+            message="User rejected a proposed action. No write was performed.",
+            details={"actionId": action_id, "actionType": action.action_type.value},
+        )
         await self._finalize_action_state(run_id)
         return await self._store.get(run_id)
 
@@ -287,8 +373,9 @@ class AgentRunManager:
         run_id: str,
         after: int = 0,
         authorization: str = "",
+        owner_session: str = "",
     ) -> AsyncIterator[str]:
-        if not await self._store.owner_matches(run_id, self._owner_key(authorization)):
+        if not await self._owns_run(run_id, authorization, owner_session):
             return
         last_sequence = max(0, after)
         while True:
@@ -576,12 +663,21 @@ class AgentRunManager:
                 AgentActionStatus.PROPOSED,
                 AgentActionStatus.APPROVED,
                 AgentActionStatus.EXECUTING,
+                AgentActionStatus.FAILED,
             }
             for action in snapshot.actions
         )
         next_status = RunStatus.WAITING_CONFIRMATION if unresolved else RunStatus.COMPLETED
-        await self._store.set_status(run_id, next_status)
-        if not unresolved:
+        if snapshot.status is RunStatus.CANCELLED:
+            return
+        transitioned = await self._store.transition_status(
+            run_id,
+            {snapshot.status},
+            next_status,
+        )
+        if not transitioned:
+            return
+        if not unresolved and snapshot.status is not RunStatus.COMPLETED:
             await self._store.append_event(
                 run_id,
                 event="run.completed",
@@ -605,6 +701,38 @@ class AgentRunManager:
         if not authorization:
             return ""
         return hashlib.sha256(authorization.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _anonymous_owner_key(owner_session: str) -> str:
+        if not owner_session:
+            return ""
+        return hashlib.sha256(f"anonymous-session:{owner_session}".encode()).hexdigest()
+
+    @classmethod
+    def _creation_owner_key(cls, authorization: str, owner_session: str) -> str:
+        return cls._owner_key(authorization) or cls._anonymous_owner_key(owner_session)
+
+    async def _owns_run(
+        self,
+        run_id: str,
+        authorization: str,
+        owner_session: str,
+    ) -> bool:
+        authenticated_owner = self._owner_key(authorization)
+        if authenticated_owner and await self._store.owner_matches(run_id, authenticated_owner):
+            return True
+
+        anonymous_owner = self._anonymous_owner_key(owner_session)
+        if anonymous_owner and await self._store.owner_matches(run_id, anonymous_owner):
+            if not authenticated_owner:
+                return True
+            if await self._store.claim_owner(run_id, anonymous_owner, authenticated_owner):
+                return True
+            return await self._store.owner_matches(run_id, authenticated_owner)
+
+        if not authenticated_owner and not anonymous_owner:
+            return await self._store.owner_matches(run_id, "")
+        return False
 
     def _response(
         self,

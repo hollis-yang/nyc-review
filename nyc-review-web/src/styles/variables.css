@@ -45,4 +45,17 @@
   --desktop-grid-gap: 20px;
   --desktop-reading-width: 820px;
   --desktop-form-width: 560px;
+
+  /* Layering: content < context/map < primary nav < modal < toast. */
+  --z-context: 1000;
+  --z-map-controls: 1100;
+  --z-primary-navigation: 1200;
+  --z-modal-mask: 1300;
+  --z-modal-content: 1310;
+  --z-toast: 1400;
+  --adm-mask-z-index: var(--z-modal-mask);
+  --adm-popup-z-index: var(--z-modal-mask);
+  --adm-dialog-z-index: var(--z-modal-content);
+  --adm-center-popup-z-index: var(--z-modal-content);
+  --adm-modal-z-index: var(--z-modal-content);
 }

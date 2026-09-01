@@ -19,6 +19,7 @@ function assertInOrder(source: string, tokens: string[]) {
 
 test('shop detail preserves its commerce and review contract in two desktop grids', () => {
   const page = readSource('../src/pages/ShopDetail/index.tsx');
+  const voucher = readSource('../src/components/VoucherCard/index.tsx');
   const styles = readSource('../src/pages/ShopDetail/ShopDetail.module.css');
   const voucherStyles = readSource('../src/components/VoucherCard/VoucherCard.module.css');
 
@@ -43,10 +44,36 @@ test('shop detail preserves its commerce and review contract in two desktop grid
   assert.match(page, /reviews\.slice\(0, 3\)\.map/);
   assert.match(page, /<ReviewThread/);
   assert.match(page, /id="write-shop-review"/);
-  assert.match(page, /favoriteShop\(id\)/);
-  assert.match(page, /unfavoriteShop\(id\)/);
+  assert.match(page, /favoriteShop\(routeId\)/);
+  assert.match(page, /unfavoriteShop\(routeId\)/);
   assert.match(page, /seckillVoucher\(voucherId\)/);
-  assert.match(page, /createShopReview\(\{ shopId: Number\(id\), rating: reviewRating/);
+  assert.match(page, /const seckillRequestsRef = useRef\(new Set<number>\(\)\)/);
+  assert.match(page, /if \(seckillRequestsRef\.current\.has\(voucherId\)\) return;/);
+  assert.match(page, /seckillRequestsRef\.current\.add\(voucherId\)/);
+  assert.match(page, /finally \{\s*seckillRequestsRef\.current\.delete\(voucherId\);\s*\}/s);
+  assert.match(voucher, /onSeckill: \(id: number\) => Promise<void> \| void/);
+  assert.match(voucher, /const actionLockRef = useRef\(false\)/);
+  assert.match(voucher, /const \[actionPending, setActionPending\] = useState\(false\)/);
+  assert.match(voucher, /if \(actionLockRef\.current\) return;/);
+  assert.match(voucher, /await onSeckill\(v\.id\)/);
+  assert.match(voucher, /finally \{\s*actionLockRef\.current = false;\s*setActionPending\(false\);\s*\}/s);
+  assert.equal(voucher.match(/<button/g)?.length, 2);
+  assert.equal(voucher.match(/disabled=\{disabled\}/g)?.length, 2);
+  assert.equal(voucher.match(/aria-busy=\{actionPending\}/g)?.length, 2);
+  assert.match(page, /createShopReview\(\{ shopId: Number\(routeId\), rating: reviewRating/);
+  assert.match(page, /const reviewSubmittingRef = useRef<number \| null>\(null\)/);
+  assert.match(page, /if \(reviewSubmittingRef\.current === generation\) return/);
+  assert.match(page, /reviewSubmittingRef\.current = generation/);
+  assert.match(page, /routeGenerationRef\.current !== generation \|\| activeShopIdRef\.current !== routeId/);
+  assert.match(page, /Promise\.allSettled\(\[/);
+  assert.match(page, /t\('shopDetail\.reviewRefreshFailed'\)/);
+  assert.match(page, /<button\s+type="button"\s+className=\{styles\.reviewSubmit\}/s);
+  assert.match(page, /disabled=\{reviewSubmitting \|\| !reviewContent\.trim\(\)\}/);
+  assert.match(page, /if \(reviewSubmittingRef\.current === generation\) reviewSubmittingRef\.current = null/);
+  assert.match(page, /const \[shopLoadFailed, setShopLoadFailed\] = useState\(false\)/);
+  assert.match(page, /const \[vouchersLoadFailed, setVouchersLoadFailed\] = useState\(false\)/);
+  assert.match(page, /const \[reviewsLoadFailed, setReviewsLoadFailed\] = useState\(false\)/);
+  assert.doesNotMatch(page, /Promise\.all\(\[\s*getShopById/);
   assert.match(page, /maps\.apple\.com\/\?q=/);
   assert.match(page, /\{shop\.phone &&/);
   assert.match(page, /\{shop\.website &&/);
@@ -68,6 +95,7 @@ test('shop detail preserves its commerce and review contract in two desktop grid
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.lowerGrid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 2fr\) minmax\(300px, 1fr\)/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.shopImages\s*\{[^}]*overflow-x:\s*auto;/s);
   assert.match(voucherStyles, /@media \(min-width: 1024px\)[\s\S]*?overflow-wrap:\s*anywhere;/s);
+  assert.match(voucherStyles, /\.btn:disabled\s*\{[^}]*cursor:\s*not-allowed;[^}]*opacity:\s*0\.72;/s);
 });
 
 test('shop reviews remains one reading column with safe responsive continuation', () => {
@@ -127,11 +155,18 @@ test('blog detail uses a wide side rail without moving the mobile content order'
   assert.match(page, /isChinese &&/);
   assert.match(page, /currentUser && currentUser\.id === blog\.userId/);
   assert.match(page, /followingLikes\.map/);
-  assert.match(page, /follow\(blog\.userId, !followed\)/);
+  assert.match(page, /const nextFollowed = !followed/);
+  assert.match(page, /follow\(blog\.userId, nextFollowed\)/);
+  assert.match(page, /if \(!blog \|\| !id\) return/);
+  assert.match(page, /if \(followLockRef\.current === generation\) return/);
+  assert.match(page, /if \(likeLockRef\.current === generation\) return/);
+  assert.match(page, /commentTranslationLocksRef\.current\.get\(comment\.id\) === generation/);
+  assert.match(page, /const routeGenerationRef = useRef\(0\)/);
+  assert.match(page, /setError\(null\)/);
   assert.match(page, /likeBlog\(blog\.id\)/);
   assert.match(page, /navigator\.share/);
   assert.match(page, /deleteBlog\(blog\.id\)/);
-  assert.match(page, /createBlogComment\(\{ blogId: Number\(id\), content: commentText\.trim\(\) \}\)/);
+  assert.match(page, /createBlogComment\(\{ blogId: Number\(routeId\), content: commentText\.trim\(\) \}\)/);
   assert.match(page, /deleteBlogComment\(c\.id\)/);
   assert.match(page, /onKeyDown=\{\(e\) => \{ if \(e\.key === 'Enter'\) handleCommentSubmit\(\); \}\}/);
   assertInOrder(page, [

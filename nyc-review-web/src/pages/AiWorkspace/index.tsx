@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Toast } from 'antd-mobile';
 import { CheckCircleFill, CloseCircleFill, RightOutline } from 'antd-mobile-icons';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,8 @@ import {
 import { translateText } from '../../api/translate';
 import FootBar from '../../components/FootBar';
 import MerchantVisual from '../../components/MerchantVisual';
+import { useAuth } from '../../hooks/useAuth';
+import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './AiWorkspace.module.css';
 
@@ -28,9 +30,13 @@ const ACTIVE_RUN_STATUSES = new Set<AgentRunSnapshot['status']>([
   'planning',
   'tool_running',
 ]);
+const MAX_STREAM_RECONNECT_ATTEMPTS = 4;
+const STREAM_RECONNECT_BASE_DELAY_MS = 500;
+const STREAM_SNAPSHOT_POLL_INTERVAL_MS = 5_000;
 
 const EVENT_KEYS: Record<string, string> = {
   'run.created': 'runCreated',
+  'run.recovered': 'runRecovered',
   'model.started': 'modelStarted',
   'model.completed': 'modelCompleted',
   'agent.completed': 'agentCompleted',
@@ -53,6 +59,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export default function AiWorkspace() {
   const { t, i18n } = useTranslation();
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedRunId = searchParams.get('runId');
@@ -73,9 +80,38 @@ export default function AiWorkspace() {
   const [result, setResult] = useState<AgentRunResponse | null>(null);
   const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const closeStreamRef = useRef<(() => void) | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const streamGenerationRef = useRef(0);
+  const runContextGenerationRef = useRef(0);
+  const activeRunIdRef = useRef<string | null>(null);
+  const runSubmitLockRef = useRef(false);
+  const actionLockRef = useRef<{ actionId: string; generation: number } | null>(null);
+  const cancelLockRef = useRef<{ runId: string; generation: number } | null>(null);
+  const queryTranslationLockRef = useRef(false);
 
-  useEffect(() => () => closeStreamRef.current?.(), []);
+  const clearStreamConnection = useCallback(() => {
+    streamGenerationRef.current += 1;
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    const close = closeStreamRef.current;
+    closeStreamRef.current = null;
+    close?.();
+  }, []);
+
+  const beginRunContext = useCallback((nextRunId: string | null): number => {
+    clearStreamConnection();
+    const generation = ++runContextGenerationRef.current;
+    activeRunIdRef.current = nextRunId;
+    actionLockRef.current = null;
+    cancelLockRef.current = null;
+    return generation;
+  }, [clearStreamConnection]);
+
+  useEffect(() => () => clearStreamConnection(), [clearStreamConnection]);
   useEffect(() => {
     if (!sessionStorage.getItem('token')) return;
     listAgentRuns(5).then(setHistory).catch(() => {});
@@ -139,67 +175,181 @@ export default function AiWorkspace() {
     setResult(snapshot.result || null);
     setRunError(snapshot.error || null);
     setRunning(ACTIVE_RUN_STATUSES.has(snapshot.status));
+    setCancelBusy(false);
   };
 
   useEffect(() => {
     if (!requestedRunId || !sessionStorage.getItem('token')) return;
-    let active = true;
-    closeStreamRef.current?.();
+    const generation = beginRunContext(requestedRunId);
     getAgentRun(requestedRunId)
       .then((snapshot) => {
-        if (!active) return;
+        if (
+          runContextGenerationRef.current !== generation
+          || activeRunIdRef.current !== requestedRunId
+        ) return;
         applySnapshot(snapshot);
-        if (ACTIVE_RUN_STATUSES.has(snapshot.status)) attachRunStream(snapshot.run_id);
+        listAgentRuns(5).then(setHistory).catch(() => {});
+        if (ACTIVE_RUN_STATUSES.has(snapshot.status)) {
+          attachRunStream(snapshot.run_id, generation);
+        }
       })
       .catch((error) => {
-        if (!active) return;
+        if (
+          runContextGenerationRef.current !== generation
+          || activeRunIdRef.current !== requestedRunId
+        ) return;
         setRunning(false);
         setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
       });
     return () => {
-      active = false;
-      closeStreamRef.current?.();
+      if (
+        runContextGenerationRef.current === generation
+        && activeRunIdRef.current === requestedRunId
+      ) {
+        clearStreamConnection();
+        runContextGenerationRef.current += 1;
+        activeRunIdRef.current = null;
+      }
     };
   // Restoring a saved itinerary is intentionally keyed only by the URL run ID.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedRunId]);
 
-  async function loadFinalSnapshot(currentRunId: string) {
+  async function loadFinalSnapshot(
+    currentRunId: string,
+    contextGeneration: number,
+    expectedStreamGeneration: number,
+  ): Promise<AgentRunSnapshot | null> {
     try {
-      applySnapshot(await getAgentRun(currentRunId));
+      const snapshot = await getAgentRun(currentRunId);
+      if (
+        runContextGenerationRef.current !== contextGeneration
+        || streamGenerationRef.current !== expectedStreamGeneration
+        || activeRunIdRef.current !== currentRunId
+      ) return null;
+      applySnapshot(snapshot);
       if (sessionStorage.getItem('token')) {
         listAgentRuns(5).then(setHistory).catch(() => {});
       }
+      return snapshot;
     } catch (error) {
-      setRunning(false);
-      setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
+      if (
+        runContextGenerationRef.current === contextGeneration
+        && streamGenerationRef.current === expectedStreamGeneration
+        && activeRunIdRef.current === currentRunId
+      ) {
+        setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
+      }
+      return null;
     }
   }
 
-  function attachRunStream(currentRunId: string) {
-    closeStreamRef.current?.();
+  function attachRunStream(
+    currentRunId: string,
+    contextGeneration: number,
+    reconnectAttempt = 0,
+  ) {
+    if (
+      runContextGenerationRef.current !== contextGeneration
+      || activeRunIdRef.current !== currentRunId
+    ) return;
+    clearStreamConnection();
+    const streamGeneration = streamGenerationRef.current;
+    let recoveryStarted = false;
+
+    const recoverStream = () => {
+      if (recoveryStarted) return;
+      recoveryStarted = true;
+      void (async () => {
+        const snapshot = await loadFinalSnapshot(
+          currentRunId,
+          contextGeneration,
+          streamGeneration,
+        );
+        if (
+          runContextGenerationRef.current !== contextGeneration
+          || streamGenerationRef.current !== streamGeneration
+          || activeRunIdRef.current !== currentRunId
+        ) return;
+        if (snapshot && !ACTIVE_RUN_STATUSES.has(snapshot.status)) return;
+        if (reconnectAttempt >= MAX_STREAM_RECONNECT_ATTEMPTS) {
+          setRunError(t('aiGuide.streamReconnectFailed'));
+          const pollRunSnapshot = () => {
+            if (
+              runContextGenerationRef.current !== contextGeneration
+              || streamGenerationRef.current !== streamGeneration
+              || activeRunIdRef.current !== currentRunId
+            ) return;
+            reconnectTimerRef.current = window.setTimeout(() => {
+              reconnectTimerRef.current = null;
+              void (async () => {
+                const polledSnapshot = await loadFinalSnapshot(
+                  currentRunId,
+                  contextGeneration,
+                  streamGeneration,
+                );
+                if (
+                  runContextGenerationRef.current !== contextGeneration
+                  || streamGenerationRef.current !== streamGeneration
+                  || activeRunIdRef.current !== currentRunId
+                ) return;
+                if (polledSnapshot && !ACTIVE_RUN_STATUSES.has(polledSnapshot.status)) return;
+                if (polledSnapshot) setRunError(t('aiGuide.streamReconnectFailed'));
+                pollRunSnapshot();
+              })();
+            }, STREAM_SNAPSHOT_POLL_INTERVAL_MS);
+          };
+          pollRunSnapshot();
+          return;
+        }
+        const delay = Math.min(
+          STREAM_RECONNECT_BASE_DELAY_MS * (2 ** reconnectAttempt),
+          4_000,
+        );
+        reconnectTimerRef.current = window.setTimeout(() => {
+          if (
+            runContextGenerationRef.current === contextGeneration
+            && streamGenerationRef.current === streamGeneration
+            && activeRunIdRef.current === currentRunId
+          ) {
+            attachRunStream(currentRunId, contextGeneration, reconnectAttempt + 1);
+          }
+        }, delay);
+      })();
+    };
+
     closeStreamRef.current = subscribeToAgentRun(
       currentRunId,
       (event) => {
+        if (
+          runContextGenerationRef.current !== contextGeneration
+          || streamGenerationRef.current !== streamGeneration
+          || activeRunIdRef.current !== currentRunId
+        ) return;
         setEvents((current) => {
           const bySequence = new Map(current.map((item) => [item.sequence, item]));
           bySequence.set(event.sequence, event);
           return [...bySequence.values()].sort((a, b) => a.sequence - b.sequence);
         });
       },
-      () => { void loadFinalSnapshot(currentRunId); },
-      () => { void loadFinalSnapshot(currentRunId); },
+      recoverStream,
+      recoverStream,
     );
   }
 
   const submit = async () => {
+    if (runSubmitLockRef.current) return;
     if (!query.trim()) {
       Toast.show({ icon: 'fail', content: t('aiGuide.queryRequired') });
       return;
     }
-    closeStreamRef.current?.();
+    runSubmitLockRef.current = true;
+    const generation = beginRunContext(null);
+    setActionBusy(null);
     if (requestedRunId) setSearchParams({}, { replace: true });
     setRunning(true);
+    setRunId(null);
+    setCancelBusy(false);
     setEvents([]);
     setActions([]);
     setResult(null);
@@ -212,16 +362,29 @@ export default function AiWorkspace() {
         latitude: 40.7614,
         longitude: -73.9776,
       });
+      if (
+        runContextGenerationRef.current !== generation
+        || activeRunIdRef.current !== null
+      ) return;
+      activeRunIdRef.current = created.run_id;
       setRunId(created.run_id);
-      attachRunStream(created.run_id);
+      attachRunStream(created.run_id, generation);
     } catch (error) {
-      setRunning(false);
-      setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
+      if (
+        runContextGenerationRef.current === generation
+        && activeRunIdRef.current === null
+      ) {
+        setRunning(false);
+        setRunError(errorMessage(error, t('aiGuide.serviceUnavailable')));
+      }
+    } finally {
+      runSubmitLockRef.current = false;
     }
   };
 
   const translateQuery = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || queryTranslationLockRef.current) return;
+    queryTranslationLockRef.current = true;
     setTranslating(true);
     try {
       const response = await translateText(query.trim(), 'en');
@@ -233,29 +396,74 @@ export default function AiWorkspace() {
     } catch (error) {
       Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
     } finally {
+      queryTranslationLockRef.current = false;
       setTranslating(false);
     }
   };
 
   const cancel = async () => {
-    if (!runId) return;
+    const currentRunId = activeRunIdRef.current;
+    if (!currentRunId) return;
+    const generation = runContextGenerationRef.current;
+    if (
+      cancelLockRef.current?.runId === currentRunId
+      && cancelLockRef.current.generation === generation
+    ) return;
+    cancelLockRef.current = { runId: currentRunId, generation };
+    setCancelBusy(true);
     try {
-      applySnapshot(await cancelAgentRun(runId));
-      closeStreamRef.current?.();
+      const snapshot = await cancelAgentRun(currentRunId);
+      if (
+        runContextGenerationRef.current !== generation
+        || activeRunIdRef.current !== currentRunId
+      ) return;
+      applySnapshot(snapshot);
+      clearStreamConnection();
       setRunning(false);
     } catch (error) {
-      Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
+      if (
+        runContextGenerationRef.current === generation
+        && activeRunIdRef.current === currentRunId
+      ) {
+        Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
+      }
+    } finally {
+      if (
+        cancelLockRef.current?.runId === currentRunId
+        && cancelLockRef.current.generation === generation
+      ) cancelLockRef.current = null;
+      if (
+        runContextGenerationRef.current === generation
+        && activeRunIdRef.current === currentRunId
+      ) setCancelBusy(false);
     }
   };
 
   const decideAction = async (action: AgentActionProposal, decision: 'approve' | 'reject') => {
     if (!runId) return;
+    if (decision === 'approve' && !isAuthenticated) {
+      const resumeTarget = `/ai?${new URLSearchParams({ runId }).toString()}`;
+      Toast.show({ icon: 'fail', content: t('aiGuide.approvalLoginRequired') });
+      navigate(buildAuthEntryUrl('/login', resumeTarget));
+      return;
+    }
+    if (actionLockRef.current !== null) return;
+    const currentRunId = runId;
+    const generation = runContextGenerationRef.current;
+    actionLockRef.current = { actionId: action.action_id, generation };
     setActionBusy(action.action_id);
     try {
       const snapshot = decision === 'approve'
-        ? await approveAgentAction(runId, action.action_id)
-        : await rejectAgentAction(runId, action.action_id);
+        ? await approveAgentAction(currentRunId, action.action_id)
+        : await rejectAgentAction(currentRunId, action.action_id);
+      if (
+        runContextGenerationRef.current !== generation
+        || activeRunIdRef.current !== currentRunId
+      ) return;
       applySnapshot(snapshot);
+      if (ACTIVE_RUN_STATUSES.has(snapshot.status)) {
+        attachRunStream(snapshot.run_id, generation);
+      }
       if (sessionStorage.getItem('token')) {
         listAgentRuns(5).then(setHistory).catch(() => {});
       }
@@ -269,9 +477,23 @@ export default function AiWorkspace() {
         });
       }
     } catch (error) {
-      Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
+      if (
+        runContextGenerationRef.current === generation
+        && activeRunIdRef.current === currentRunId
+      ) {
+        Toast.show({ icon: 'fail', content: errorMessage(error, t('aiGuide.serviceUnavailable')) });
+      }
     } finally {
-      setActionBusy(null);
+      if (
+        actionLockRef.current?.actionId === action.action_id
+        && actionLockRef.current.generation === generation
+      ) actionLockRef.current = null;
+      if (
+        runContextGenerationRef.current === generation
+        && activeRunIdRef.current === currentRunId
+      ) {
+        setActionBusy(null);
+      }
     }
   };
 
@@ -339,9 +561,15 @@ export default function AiWorkspace() {
                   <button
                     key={item.run_id}
                     onClick={() => {
+                      const generation = beginRunContext(item.run_id);
                       setSearchParams({ runId: item.run_id }, { replace: true });
+                      setActionBusy(null);
+                      setCancelBusy(false);
                       applySnapshot(item);
                       setRunError(item.error || null);
+                      if (ACTIVE_RUN_STATUSES.has(item.status)) {
+                        attachRunStream(item.run_id, generation);
+                      }
                     }}
                   >
                     <span>{item.query}</span>
@@ -383,7 +611,11 @@ export default function AiWorkspace() {
               <span>{running ? t('aiGuide.running') : t('aiGuide.run')}</span>
               {!running && <RightOutline fontSize={15} />}
             </button>
-            {running && <button className={styles.cancelButton} onClick={cancel}>{t('aiGuide.cancel')}</button>}
+            {running && (
+              <button className={styles.cancelButton} disabled={cancelBusy} onClick={cancel}>
+                {t('aiGuide.cancel')}
+              </button>
+            )}
             <div className={styles.safetyNote}>
               <strong>{t('aiGuide.safetyTitle')}</strong>
               <span>{t('aiGuide.safetyText')}</span>
@@ -571,10 +803,10 @@ export default function AiWorkspace() {
                       {action.error && <div className={styles.actionError}>{action.error}</div>}
                       {canDecide && (
                         <div className={styles.actionButtons}>
-                          <button disabled={actionBusy === action.action_id} onClick={() => decideAction(action, 'reject')}>
+                          <button disabled={actionBusy !== null} onClick={() => decideAction(action, 'reject')}>
                             {t('aiGuide.reject')}
                           </button>
-                          <button disabled={actionBusy === action.action_id} onClick={() => decideAction(action, 'approve')}>
+                          <button disabled={actionBusy !== null} onClick={() => decideAction(action, 'approve')}>
                             {actionBusy === action.action_id
                               ? t('aiGuide.executing')
                               : action.status === 'failed' ? t('aiGuide.retry') : t('aiGuide.approve')}

@@ -277,6 +277,158 @@ class SQLiteRunStore:
             self._connection.commit()
         return item
 
+    async def transition_action(
+        self,
+        run_id: str,
+        action_id: str,
+        expected: set[AgentActionStatus],
+        status: AgentActionStatus,
+        *,
+        expected_run_statuses: set[RunStatus] | None = None,
+        run_status: RunStatus | None = None,
+    ) -> bool:
+        """Atomically transition an action and, when requested, its parent run."""
+        async with self._lock:
+            if expected_run_statuses is not None:
+                run_row = self._connection.execute(
+                    "SELECT status FROM agent_runs WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()
+                if run_row is None:
+                    raise KeyError(run_id)
+                if RunStatus(run_row["status"]) not in expected_run_statuses:
+                    return False
+            row = self._connection.execute(
+                "SELECT action_json FROM agent_run_actions WHERE run_id = ? AND action_id = ?",
+                (run_id, action_id),
+            ).fetchone()
+            if row is None:
+                raise KeyError(action_id)
+            current = AgentActionProposal.model_validate_json(row["action_json"])
+            if current.status not in expected:
+                return False
+            now = utc_now()
+            item = current.model_copy(
+                update={
+                    "status": status,
+                    "error": None,
+                    "updated_at": now,
+                }
+            )
+            self._connection.execute(
+                "UPDATE agent_run_actions SET action_json = ? WHERE run_id = ? AND action_id = ?",
+                (item.model_dump_json(), run_id, action_id),
+            )
+            if run_status is not None:
+                self._connection.execute(
+                    "UPDATE agent_runs SET status = ?, updated_at = ?, error = NULL WHERE run_id = ?",
+                    (run_status.value, now.isoformat(), run_id),
+                )
+            self._connection.commit()
+        return True
+
+    async def transition_status(
+        self,
+        run_id: str,
+        expected: set[RunStatus],
+        status: RunStatus,
+    ) -> bool:
+        """Compare-and-set a run status without overwriting a concurrent terminal decision."""
+        async with self._lock:
+            row = self._connection.execute(
+                "SELECT status FROM agent_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            if RunStatus(row["status"]) not in expected:
+                return False
+            self._connection.execute(
+                "UPDATE agent_runs SET status = ?, updated_at = ?, error = NULL WHERE run_id = ?",
+                (status.value, utc_now().isoformat(), run_id),
+            )
+            self._connection.commit()
+        return True
+
+    async def cancel_run(self, run_id: str) -> tuple[bool, RunStatus]:
+        """Cancel a run unless it is terminal or an approved write is in flight."""
+        terminal = {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
+        async with self._lock:
+            row = self._connection.execute(
+                "SELECT status FROM agent_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(run_id)
+            current_status = RunStatus(row["status"])
+            if current_status in terminal:
+                return False, current_status
+            action_rows = self._connection.execute(
+                "SELECT action_json FROM agent_run_actions WHERE run_id = ?",
+                (run_id,),
+            ).fetchall()
+            action_in_flight = any(
+                AgentActionProposal.model_validate_json(item["action_json"]).status
+                in {AgentActionStatus.APPROVED, AgentActionStatus.EXECUTING}
+                for item in action_rows
+            )
+            if action_in_flight:
+                return False, current_status
+            self._connection.execute(
+                "UPDATE agent_runs SET status = ?, updated_at = ?, error = NULL WHERE run_id = ?",
+                (RunStatus.CANCELLED.value, utc_now().isoformat(), run_id),
+            )
+            self._connection.commit()
+        return True, RunStatus.CANCELLED
+
+    async def recover_interrupted_actions(self) -> list[tuple[str, AgentActionProposal]]:
+        """Return interrupted writes to an explicit, user-retryable state after restart."""
+        recovered: list[tuple[str, AgentActionProposal]] = []
+        affected_runs: set[str] = set()
+        recovery_error = (
+            "Action execution was interrupted by a service restart. "
+            "Approve it again to reconcile or retry the idempotent action."
+        )
+        async with self._lock:
+            rows = self._connection.execute(
+                "SELECT run_id, action_json FROM agent_run_actions ORDER BY rowid"
+            ).fetchall()
+            for row in rows:
+                current = AgentActionProposal.model_validate_json(row["action_json"])
+                if current.status not in {
+                    AgentActionStatus.APPROVED,
+                    AgentActionStatus.EXECUTING,
+                }:
+                    continue
+                item = current.model_copy(
+                    update={
+                        "status": AgentActionStatus.FAILED,
+                        "error": recovery_error,
+                        "updated_at": utc_now(),
+                    }
+                )
+                self._connection.execute(
+                    "UPDATE agent_run_actions SET action_json = ? "
+                    "WHERE run_id = ? AND action_id = ?",
+                    (item.model_dump_json(), row["run_id"], item.action_id),
+                )
+                recovered.append((row["run_id"], item))
+                affected_runs.add(row["run_id"])
+            now = utc_now().isoformat()
+            for run_id in affected_runs:
+                self._connection.execute(
+                    "UPDATE agent_runs SET status = ?, updated_at = ?, error = NULL "
+                    "WHERE run_id = ? AND status != ?",
+                    (
+                        RunStatus.WAITING_CONFIRMATION.value,
+                        now,
+                        run_id,
+                        RunStatus.CANCELLED.value,
+                    ),
+                )
+            self._connection.commit()
+        return recovered
+
     async def events_after(self, run_id: str, sequence: int) -> list[AgentRunEvent]:
         async with self._lock:
             rows = self._connection.execute(
@@ -336,6 +488,27 @@ class SQLiteRunStore:
                 (run_id,),
             ).fetchone()
         return row is not None and row["owner_key"] == owner_key
+
+    async def claim_owner(
+        self,
+        run_id: str,
+        current_owner_key: str,
+        authenticated_owner_key: str,
+    ) -> bool:
+        """Atomically attach an anonymous browser-session run to its signed-in owner."""
+        async with self._lock:
+            cursor = self._connection.execute(
+                "UPDATE agent_runs SET owner_key = ?, updated_at = ? "
+                "WHERE run_id = ? AND owner_key = ?",
+                (
+                    authenticated_owner_key,
+                    utc_now().isoformat(),
+                    run_id,
+                    current_owner_key,
+                ),
+            )
+            self._connection.commit()
+        return cursor.rowcount == 1
 
     async def recoverable_runs(
         self,

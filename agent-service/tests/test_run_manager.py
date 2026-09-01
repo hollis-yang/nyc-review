@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from app.config import Settings
-from app.domain.models import AgentMode, AgentRunCreateRequest, RunStatus
+from app.domain.models import AgentActionStatus, AgentMode, AgentRunCreateRequest, RunStatus
 from app.model_gateway import HeuristicModelGateway
 from app.runs.store import SQLiteRunStore
 from app.runtime import AgentRuntime
@@ -113,6 +113,175 @@ async def test_user_can_approve_and_reject_persisted_actions():
         await runtime.close()
 
 
+async def test_concurrent_approval_executes_an_action_only_once():
+    class BlockingActionGateway:
+        def __init__(self):
+            self.calls = 0
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def preferences(self, authorization):
+            return {}
+
+        async def available_vouchers(self, shop_id, authorization):
+            return []
+
+        async def execute(self, run_id, action, authorization):
+            self.calls += 1
+            self.started.set()
+            await self.release.wait()
+            return {"status": "completed"}
+
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    gateway = BlockingActionGateway()
+    runtime.action_service._gateway = gateway
+    try:
+        created = await runtime.run_manager.create(
+            AgentRunCreateRequest(query="A quiet dinner in Midtown"),
+            "test-token",
+        )
+        snapshot = await wait_for_terminal(runtime, created.run_id)
+        action = snapshot.actions[0]
+        other_action = snapshot.actions[1]
+
+        first = asyncio.create_task(
+            runtime.run_manager.approve_action(created.run_id, action.action_id, "test-token")
+        )
+        await asyncio.wait_for(gateway.started.wait(), timeout=1)
+        with pytest.raises(ValueError, match="already being executed"):
+            await runtime.run_manager.approve_action(
+                created.run_id,
+                action.action_id,
+                "test-token",
+            )
+        with pytest.raises(ValueError, match="already being executed"):
+            await runtime.run_manager.approve_action(
+                created.run_id,
+                other_action.action_id,
+                "test-token",
+            )
+        with pytest.raises(ValueError, match="cannot be cancelled"):
+            await runtime.run_manager.cancel(created.run_id, "test-token")
+        gateway.release.set()
+        completed = await first
+
+        assert gateway.calls == 1
+        assert completed is not None
+        assert next(
+            item for item in completed.actions if item.action_id == action.action_id
+        ).status.value == "completed"
+        assert not any(event.event == "run.cancelled" for event in completed.events)
+    finally:
+        gateway.release.set()
+        await runtime.close()
+
+
+async def test_cancelled_run_cannot_execute_or_change_actions():
+    class CountingActionGateway:
+        def __init__(self):
+            self.calls = 0
+
+        async def preferences(self, authorization):
+            return {}
+
+        async def available_vouchers(self, shop_id, authorization):
+            return []
+
+        async def execute(self, run_id, action, authorization):
+            self.calls += 1
+            return {"status": "completed"}
+
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    gateway = CountingActionGateway()
+    runtime.action_service._gateway = gateway
+    try:
+        created = await runtime.run_manager.create(
+            AgentRunCreateRequest(query="A quiet dinner in Midtown"),
+            "test-token",
+        )
+        snapshot = await wait_for_terminal(runtime, created.run_id)
+        action = snapshot.actions[0]
+        cancelled = await runtime.run_manager.cancel(created.run_id, "test-token")
+
+        assert cancelled.status is RunStatus.CANCELLED
+        with pytest.raises(ValueError, match="cancelled run"):
+            await runtime.run_manager.approve_action(
+                created.run_id,
+                action.action_id,
+                "test-token",
+            )
+        with pytest.raises(ValueError, match="cancelled run"):
+            await runtime.run_manager.reject_action(
+                created.run_id,
+                action.action_id,
+                "test-token",
+            )
+        await runtime.run_manager._finalize_action_state(created.run_id)
+        unchanged = await runtime.run_manager.get(created.run_id)
+        assert unchanged.status is RunStatus.CANCELLED
+        assert gateway.calls == 0
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.parametrize(
+    "interrupted_status",
+    [AgentActionStatus.APPROVED, AgentActionStatus.EXECUTING],
+)
+async def test_restart_returns_interrupted_actions_to_one_retryable_state(
+    tmp_path,
+    interrupted_status,
+):
+    settings = Settings(run_store_path=str(tmp_path / "agent-runs.sqlite3"))
+    runtime = await AgentRuntime.create(settings)
+    created = await runtime.run_manager.create(
+        AgentRunCreateRequest(query="A quiet dinner in Midtown"),
+        "test-token",
+    )
+    snapshot = await wait_for_terminal(runtime, created.run_id)
+    action = snapshot.actions[0]
+    await runtime.run_manager._store.update_action(
+        created.run_id,
+        action.action_id,
+        interrupted_status,
+    )
+    await runtime.run_manager._store.set_status(created.run_id, RunStatus.TOOL_RUNNING)
+    await runtime.close()
+
+    recovered_runtime = await AgentRuntime.create(settings)
+    recovered = await recovered_runtime.run_manager.get_owned(created.run_id, "test-token")
+    assert recovered is not None
+    recovered_action = next(
+        item for item in recovered.actions if item.action_id == action.action_id
+    )
+    assert recovered.status is RunStatus.WAITING_CONFIRMATION
+    assert recovered_action.status is AgentActionStatus.FAILED
+    assert "service restart" in (recovered_action.error or "")
+    assert sum(
+        event.event == "action.failed" and event.details.get("recovery") == "service_restart"
+        for event in recovered.events
+    ) == 1
+    await recovered_runtime.close()
+
+    restarted_runtime = await AgentRuntime.create(settings)
+    restarted = await restarted_runtime.run_manager.get_owned(created.run_id, "test-token")
+    assert restarted is not None
+    assert sum(
+        event.event == "action.failed" and event.details.get("recovery") == "service_restart"
+        for event in restarted.events
+    ) == 1
+    completed = await restarted_runtime.run_manager.approve_action(
+        created.run_id,
+        action.action_id,
+        "test-token",
+    )
+    assert completed is not None
+    assert next(
+        item for item in completed.actions if item.action_id == action.action_id
+    ).status is AgentActionStatus.COMPLETED
+    await restarted_runtime.close()
+
+
 @pytest.mark.parametrize(
     ("runtime_field", "new_value"),
     [
@@ -181,6 +350,51 @@ async def test_run_history_is_isolated_by_hashed_authorization():
             "discovery",
             "run.total",
         }
+    finally:
+        await runtime.close()
+
+
+async def test_anonymous_session_run_is_securely_claimed_after_sign_in():
+    runtime = await AgentRuntime.create(Settings(run_store_path=":memory:"))
+    owner_session = "anonymous-browser-session-a"
+    try:
+        created = await runtime.run_manager.create(
+            AgentRunCreateRequest(query="A quiet dinner in Midtown"),
+            "",
+            owner_session,
+        )
+        snapshot = await wait_for_terminal(runtime, created.run_id)
+        action = snapshot.actions[0]
+
+        assert await runtime.run_manager.get_owned(
+            created.run_id, "", "anonymous-browser-session-b"
+        ) is None
+        assert await runtime.run_manager.get_owned(
+            created.run_id, "signed-in-token", "anonymous-browser-session-b"
+        ) is None
+
+        claimed = await runtime.run_manager.get_owned(
+            created.run_id, "signed-in-token", owner_session
+        )
+        assert claimed is not None
+        assert [item.run_id for item in await runtime.run_manager.list_runs("signed-in-token")] == [
+            created.run_id
+        ]
+        assert await runtime.run_manager.get_owned(created.run_id, "", owner_session) is None
+        assert await runtime.run_manager.get_owned(
+            created.run_id, "another-user-token", owner_session
+        ) is None
+
+        approved = await runtime.run_manager.approve_action(
+            created.run_id,
+            action.action_id,
+            "signed-in-token",
+            owner_session,
+        )
+        assert approved is not None
+        assert next(
+            item for item in approved.actions if item.action_id == action.action_id
+        ).status.value == "completed"
     finally:
         await runtime.close()
 

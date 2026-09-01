@@ -8,6 +8,7 @@ import { createBlog } from '../../api/blog';
 import { getMe } from '../../api/user';
 import { useTranslation } from 'react-i18next';
 import FootBar from '../../components/FootBar';
+import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import styles from './BlogEdit.module.css';
 
 interface ShopItem {
@@ -34,6 +35,7 @@ export default function BlogEdit() {
   const shopDialogRef = useRef<HTMLDivElement>(null);
   const shopSearchRef = useRef<HTMLInputElement>(null);
   const shopRequestRef = useRef(0);
+  const publishingRef = useRef(false);
   const [fileList, setFileList] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -46,18 +48,20 @@ export default function BlogEdit() {
   const [shopPage, setShopPage] = useState(1);
   const [shopTotal, setShopTotal] = useState(0);
   const [shopsLoading, setShopsLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const loginUrl = buildAuthEntryUrl('/login', '/blog-edit');
 
   useEffect(() => {
     const token = sessionStorage.getItem('token');
     if (!token) {
-      navigate('/login');
+      navigate(loginUrl);
       return;
     }
     getMe().catch(() => {
       Toast.show({ icon: 'fail', content: t('blogEdit.loginRequired') });
-      setTimeout(() => navigate('/login'), 200);
+      setTimeout(() => navigate(loginUrl), 200);
     });
-  }, [navigate, t]);
+  }, [loginUrl, navigate, t]);
 
   const queryShops = useCallback(async (
     page = 1,
@@ -181,10 +185,13 @@ export default function BlogEdit() {
   };
 
   const handleSubmit = async () => {
+    if (publishingRef.current) return;
     if (!selectedShop) {
       Toast.show({ icon: 'fail', content: t('blogEdit.shopRequired') });
       return;
     }
+    publishingRef.current = true;
+    setPublishing(true);
     try {
       await createBlog({
         title,
@@ -195,6 +202,9 @@ export default function BlogEdit() {
       navigate('/profile');
     } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: String(err) });
+    } finally {
+      publishingRef.current = false;
+      setPublishing(false);
     }
   };
 
@@ -209,7 +219,15 @@ export default function BlogEdit() {
         <div className={styles.cancelBtn} onClick={handleBack}>{t('blogEdit.cancel')}</div>
         <div className={styles.title}>{t('blogEdit.title')}</div>
         <div className={styles.commit}>
-          <div className={styles.commitBtn} onClick={handleSubmit}>{t('blogEdit.publish')}</div>
+          <button
+            type="button"
+            className={styles.commitBtn}
+            onClick={handleSubmit}
+            disabled={publishing}
+            aria-busy={publishing}
+          >
+            {t('blogEdit.publish')}
+          </button>
         </div>
       </div>
 

@@ -17,6 +17,11 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
-document.documentElement.lang = initialLanguage;
+const syncDocumentLanguage = (language: string) => {
+  document.documentElement.lang = language.startsWith('zh') ? 'zh-CN' : 'en';
+};
+
+syncDocumentLanguage(initialLanguage);
+i18n.on('languageChanged', syncDocumentLanguage);
 
 export default i18n;

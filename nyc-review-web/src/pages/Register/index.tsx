@@ -8,6 +8,7 @@ import PhoneNumberField from '../../components/PhoneNumberField';
 import { initialPhoneRegion } from '../../constants/phoneRegions';
 import { useAuth } from '../../hooks/useAuth';
 import { localizedAuthError } from '../../utils/authError';
+import { buildAuthEntryUrl, safeAuthRedirect } from '../../utils/authRedirect';
 import { isStrongRegistrationPassword } from '../../utils/passwordPolicy';
 import styles from '../Login/Login.module.css';
 
@@ -40,8 +41,8 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const redirect = searchParams.get('redirect') || '/';
-  const loginUrl = `/login?redirect=${encodeURIComponent(redirect)}`;
+  const redirect = safeAuthRedirect(searchParams.get('redirect'));
+  const loginUrl = buildAuthEntryUrl('/login', redirect);
 
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);

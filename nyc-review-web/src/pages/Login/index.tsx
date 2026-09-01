@@ -8,6 +8,7 @@ import { loginByPassword } from '../../api/auth';
 import PhoneNumberField from '../../components/PhoneNumberField';
 import { initialPhoneRegion } from '../../constants/phoneRegions';
 import { localizedAuthError } from '../../utils/authError';
+import { buildAuthEntryUrl, safeAuthRedirect } from '../../utils/authRedirect';
 import styles from './Login.module.css';
 
 function BrandIcon({ size = 36 }: { size?: number }) {
@@ -38,8 +39,9 @@ export default function Login() {
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const redirect = searchParams.get('redirect') || '/';
-  const registerUrl = `/register?redirect=${encodeURIComponent(redirect)}`;
+  const redirect = safeAuthRedirect(searchParams.get('redirect'));
+  const registerUrl = buildAuthEntryUrl('/register', redirect);
+  const forgotPasswordUrl = buildAuthEntryUrl('/forgot-password', redirect);
 
   useEffect(() => {
     if (searchParams.get('passwordChanged') === '1') {
@@ -121,7 +123,7 @@ export default function Login() {
           </div>
           <div className={styles.fieldDivider} />
           <div className={styles.forgotLink}>
-            <Link to="/forgot-password">{t('login.forgotPassword')}</Link>
+            <Link to={forgotPasswordUrl}>{t('login.forgotPassword')}</Link>
           </div>
           <button className={styles.loginBtn} onClick={handleLogin} disabled={submitting}>
             {submitting ? t('auth.submitting') : t('login.loginBtn')}

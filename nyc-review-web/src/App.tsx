@@ -1,5 +1,5 @@
 import './i18n';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd-mobile';
 import enUS from 'antd-mobile/es/locales/en-US';
 import zhCN from 'antd-mobile/es/locales/zh-CN';
@@ -37,6 +37,23 @@ const routesWithPrimaryNavigation = [
 function hasPrimaryNavigation(pathname: string) {
   const normalizedPath = pathname === '/' ? pathname : pathname.replace(/\/+$/, '');
   return routesWithPrimaryNavigation.includes(normalizedPath) || /^\/user\/[^/]+$/.test(normalizedPath);
+}
+
+function RouteFallback() {
+  const { t } = useTranslation();
+
+  return (
+    <main className={styles.routeFallback}>
+      <section className={styles.routeFallbackCard} aria-labelledby="route-fallback-title">
+        <div className={styles.routeFallbackCode} aria-hidden="true">404</div>
+        <h1 id="route-fallback-title">{t('routeFallback.title')}</h1>
+        <p>{t('routeFallback.description')}</p>
+        <Link className={styles.routeFallbackAction} to="/">
+          {t('routeFallback.home')}
+        </Link>
+      </section>
+    </main>
+  );
 }
 
 function AppRoutes() {
@@ -82,6 +99,7 @@ function AppRoutes() {
           <Route path="/blog-detail.html" element={<LegacyRedirect />} />
           <Route path="/shop-list.html" element={<LegacyRedirect />} />
           <Route path="/other-info.html" element={<LegacyRedirect />} />
+          <Route path="*" element={<RouteFallback />} />
         </Routes>
       </div>
     </div>

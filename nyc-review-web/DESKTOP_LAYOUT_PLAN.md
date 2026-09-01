@@ -1,6 +1,6 @@
 # NYC Review desktop layout plan
 
-Status: Phase 5 complete
+Status: Phase 6 complete; final browser acceptance deferred to Phase 7
 Baseline: `b379b86` (`feat: add account security and check-in calendar`)
 Phase 1 commit: `3f26310` (`feat(web): add desktop shell and home layout`)
 Phase 2 commit: `52e39f2` (`feat(web): add desktop discovery layouts`)
@@ -8,6 +8,7 @@ Phase 3 commit: `bfa0f5f` (`feat(web): add desktop detail and conversation layou
 Post-Phase 3 stabilization commit: `53e8e80` (`fix(web): repair desktop home feed and create navigation`)
 Phase 4 commit: `44675bd` (`feat(web): add desktop profile and authentication layouts`)
 Post-Phase 4 stabilization commit: `00e9722` (`fix(web): polish desktop feeds and navigation`)
+Phase 5 commit: `745e861` (`feat(web): add desktop creation and AI workspaces`)
 Scope: the current 15 React page routes in `nyc-review-web/src/App.tsx`
 
 ## Goal and non-negotiable constraints
@@ -304,6 +305,56 @@ Completed in Phase 5:
 - Complete bilingual, authentication, state, interaction, responsive, and
   build validation across all routes.
 
+Completed in Phase 6:
+
+- added a shared, sanitized authentication-return contract across protected
+  routes, login, registration, recovery, expired-session, voucher, profile,
+  editor, and AI approval paths, including normalized-path open-redirect and
+  authentication-loop protection;
+- preserved anonymous AI plans through login with a required random
+  browser-session ownership key, atomically attached the plan to the
+  authenticated owner, and prevented cross-session access;
+- serialized approve, reject, and cancel decisions in one durable run/action
+  state transition, blocked cancellation after a write begins, and returned
+  restart-interrupted writes to an explicit retry state with the same
+  idempotent action ID;
+- made AI stream restoration generation-safe, handled ordinary stream EOF,
+  added bounded reconnect attempts with low-frequency snapshot fallback, and
+  made run creation, cancellation, translation, and approval controls
+  single-flight;
+- completed English/Chinese key and interpolation parity, synchronized the
+  document language after runtime language changes, and added explicit
+  contracts for dynamic AI status, event, agent, and action translation keys;
+- added localized unknown-route recovery plus safe legacy-link fallbacks, and
+  completed independent loading, empty, error, retry, and stale-response
+  handling for Shop Detail, Shop Reviews, Blog Detail, Home search, and Map
+  geolocation;
+- made like, follow, comment, reply, translation, favorite, voucher, review,
+  and publish mutations single-flight while preserving successful local state
+  when a follow-up refresh fails;
+- established a shared desktop layer order for context bars, map controls,
+  navigation, dialogs, and toasts without changing the mobile presentation;
+- added one fail-fast `npm run release:check` command covering frontend lint,
+  51 static/unit contracts, production build, bilingual contracts, visual
+  audit, Agent Ruff, and all 98 Agent tests;
+- gated production image publication on that exact-SHA quality job, pinned the
+  setup actions, selected Node 22 for native TypeScript test stripping, and
+  made the tracked visual manifest auditable in a clean CI checkout while
+  rejecting partial local datasets.
+
+Per the acceptance schedule, Phase 6 does not perform browser-based visual or
+interaction acceptance. Mobile and desktop viewport acceptance is grouped into
+Phase 7.
+
+### Phase 7 — final responsive acceptance
+
+- Run the full signed-out and signed-in route matrix in English and Chinese at
+  the mobile and desktop viewport sizes listed below.
+- Exercise loading, empty, error, retry, submitting, success, and concurrent
+  interaction states, including AI reconnection and approval recovery.
+- Fix acceptance findings without changing the shared content or mobile
+  behavior, rerun the canonical release gate, and record the final handoff.
+
 ## Validation matrix
 
 Viewport coverage:
@@ -327,10 +378,13 @@ Feature coverage:
 
 Quality gates:
 
+- `npm run release:check` (the canonical fail-fast release gate)
 - `npm run lint`
 - `npm test`
 - `npm run build`
 - `python3 -B scripts/quality/frontend_contracts.py`
 - `npm run visual:audit` after resolving or explicitly updating its pre-existing
   My Profile default-avatar baseline
+- `uv run --locked ruff check app tests` in `agent-service`
+- `uv run --locked pytest` in `agent-service`
 - mobile/desktop semantic-content parity checks and final responsive review

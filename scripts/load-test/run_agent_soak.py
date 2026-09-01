@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from uuid import uuid4
 
 TERMINAL = {"waiting_confirmation", "completed", "failed", "cancelled"}
 PROMPTS = (
@@ -36,11 +37,13 @@ def request_json(
     method: str,
     url: str,
     token: str,
+    owner_session: str,
     body: dict | None = None,
 ) -> dict:
     payload = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(url, data=payload, method=method)
     request.add_header("Content-Type", "application/json")
+    request.add_header("x-agent-session", owner_session)
     if token:
         request.add_header("authorization", token)
     try:
@@ -70,6 +73,7 @@ def main() -> int:
 
     def run_once(index: int) -> dict:
         nonlocal active, maximum_active
+        owner_session = f"agent-soak-{uuid4()}"
         with lock:
             active += 1
             maximum_active = max(maximum_active, active)
@@ -79,6 +83,7 @@ def main() -> int:
                 "POST",
                 args.base_url.rstrip("/") + "/v1/agent/runs",
                 args.authorization,
+                owner_session,
                 {"mode": "multi", "query": PROMPTS[index % len(PROMPTS)]},
             )
             run_id = created["run_id"]
@@ -87,6 +92,7 @@ def main() -> int:
                     "GET",
                     args.base_url.rstrip("/") + f"/v1/agent/runs/{run_id}",
                     args.authorization,
+                    owner_session,
                 )
                 if snapshot["status"] in TERMINAL:
                     break

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Rate, Toast } from 'antd-mobile';
 import { useTranslation } from 'react-i18next';
 import { translateReview } from '../../api/translate';
@@ -46,12 +46,20 @@ export default function ReviewThread({
   const isChinese = i18n.resolvedLanguage === 'zh-CN';
   const [translation, setTranslation] = useState('');
   const [translating, setTranslating] = useState(false);
-  const [liked, setLiked] = useState(review.liked ?? 0);
-  const [isLike, setIsLike] = useState(Boolean(review.isLike));
+  const translationLockRef = useRef(false);
+  const [likeState, setLikeState] = useState(() => ({
+    sourceReview: review,
+    liked: review.liked ?? 0,
+    isLike: Boolean(review.isLike),
+  }));
+  const liked = likeState.sourceReview === review ? likeState.liked : (review.liked ?? 0);
+  const isLike = likeState.sourceReview === review ? likeState.isLike : Boolean(review.isLike);
   const [likeBusy, setLikeBusy] = useState(false);
+  const likeLockRef = useRef(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyContent, setReplyContent] = useState('');
   const [replySubmitting, setReplySubmitting] = useState(false);
+  const replyLockRef = useRef(false);
   const reviewImages = review.images ? review.images.split(',').filter(Boolean) : [];
   const depth = Math.min(2, Math.max(0, review.depth ?? 0));
   const visualDepth = Math.min(2, Math.max(nestingDepth, review.depth ?? 0));
@@ -61,7 +69,8 @@ export default function ReviewThread({
       setTranslation('');
       return;
     }
-    if (translating) return;
+    if (translating || translationLockRef.current) return;
+    translationLockRef.current = true;
     setTranslating(true);
     try {
       const response = await translateReview(review.id, 'zh-CN');
@@ -75,27 +84,30 @@ export default function ReviewThread({
           : t('shopDetail.translationFailed'),
       });
     } finally {
+      translationLockRef.current = false;
       setTranslating(false);
     }
   };
 
   const toggleLike = async () => {
-    if (likeBusy) return;
+    if (likeBusy || likeLockRef.current) return;
+    likeLockRef.current = true;
     setLikeBusy(true);
     try {
       const response = await toggleShopReviewLike(review.id);
       const result = (response.data ?? response) as { liked: number; isLike: boolean };
-      setLiked(result.liked);
-      setIsLike(result.isLike);
-    } catch (error: unknown) {
-      Toast.show({ icon: 'fail', content: error instanceof Error ? error.message : String(error) });
+      setLikeState({ sourceReview: review, liked: result.liked, isLike: result.isLike });
+    } catch {
+      Toast.show({ icon: 'fail', content: t('common.actionFailed') });
     } finally {
+      likeLockRef.current = false;
       setLikeBusy(false);
     }
   };
 
   const submitReply = async () => {
-    if (!shopId || !replyContent.trim() || replySubmitting) return;
+    if (!shopId || !replyContent.trim() || replySubmitting || replyLockRef.current) return;
+    replyLockRef.current = true;
     setReplySubmitting(true);
     try {
       await createShopReview({
@@ -105,11 +117,16 @@ export default function ReviewThread({
       });
       setReplyContent('');
       setReplyOpen(false);
-      await onReplyCreated?.();
-      Toast.show({ icon: 'success', content: t('shopReviews.replySuccess') });
-    } catch (error: unknown) {
-      Toast.show({ icon: 'fail', content: error instanceof Error ? error.message : String(error) });
+      try {
+        await onReplyCreated?.();
+        Toast.show({ icon: 'success', content: t('shopReviews.replySuccess') });
+      } catch {
+        Toast.show({ icon: 'success', content: t('shopReviews.replySuccessRefreshFailed') });
+      }
+    } catch {
+      Toast.show({ icon: 'fail', content: t('common.actionFailed') });
     } finally {
+      replyLockRef.current = false;
       setReplySubmitting(false);
     }
   };
@@ -173,7 +190,11 @@ export default function ReviewThread({
                 {t('shopReviews.reply')}
               </button>
             )}
-            {review.createTime && <time>{new Date(review.createTime).toLocaleDateString()}</time>}
+            {review.createTime && (
+              <time>{new Intl.DateTimeFormat(
+                i18n.resolvedLanguage?.startsWith('zh') ? 'zh-CN' : 'en-US',
+              ).format(new Date(review.createTime))}</time>
+            )}
           </div>
           {replyOpen && (
             <div className={styles.replyComposer}>

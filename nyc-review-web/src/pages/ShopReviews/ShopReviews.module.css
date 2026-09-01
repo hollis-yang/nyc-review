@@ -125,6 +125,71 @@
   font-size: 13px;
 }
 
+.statePanel {
+  min-height: 260px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 32px 20px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.statePanel strong {
+  color: var(--color-text-dark);
+  font-size: 16px;
+}
+
+.stateIcon,
+.emptyIcon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-primary);
+  font-size: 26px;
+  font-weight: 700;
+  background: #fff0eb;
+}
+
+.emptyIcon {
+  color: #b38b7a;
+  background: #eee8e5;
+}
+
+.retryButton {
+  min-height: 38px;
+  margin-top: 4px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  background: var(--color-primary-gradient);
+  cursor: pointer;
+}
+
+.retryButton:focus-visible {
+  outline: 3px solid rgba(255, 102, 51, 0.25);
+  outline-offset: 2px;
+}
+
+.paginationError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 16px 24px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
 .loadingFull {
   height: 100%;
   display: flex;
@@ -199,5 +264,18 @@
 
   .loading {
     padding: 24px;
+  }
+
+  .statePanel {
+    min-height: 420px;
+    font-size: 15px;
+  }
+
+  .statePanel strong {
+    font-size: 19px;
+  }
+
+  .paginationError {
+    font-size: 14px;
   }
 }

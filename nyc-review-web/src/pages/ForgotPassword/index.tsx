@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { Input, Toast } from 'antd-mobile';
 import { LeftOutline } from 'antd-mobile-icons';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { resetPassword } from '../../api/auth';
 import PhoneNumberField from '../../components/PhoneNumberField';
 import { initialPhoneRegion } from '../../constants/phoneRegions';
 import { localizedAuthError } from '../../utils/authError';
+import { buildAuthEntryUrl, safeAuthRedirect } from '../../utils/authRedirect';
 import { isStrongRecoveryKey, isStrongRegistrationPassword } from '../../utils/passwordPolicy';
 import styles from '../AccountSecurity/SecurityForm.module.css';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { t, i18n } = useTranslation();
   const [regionCode, setRegionCode] = useState(() => initialPhoneRegion(i18n.resolvedLanguage));
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -19,6 +21,9 @@ export default function ForgotPassword() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const redirect = safeAuthRedirect(searchParams.get('redirect'));
+  const loginUrl = buildAuthEntryUrl('/login', redirect);
+  const resetCompleteUrl = buildAuthEntryUrl('/login', redirect, { passwordReset: '1' });
 
   const submit = async () => {
     if (!phoneNumber.trim() || !recoveryKey || !newPassword || !confirmation) {
@@ -46,7 +51,7 @@ export default function ForgotPassword() {
         recoveryKey,
         newPassword,
       });
-      navigate('/login?passwordReset=1', { replace: true });
+      navigate(resetCompleteUrl, { replace: true });
     } catch (error: unknown) {
       Toast.show({ icon: 'fail', content: localizedAuthError(error, t) });
     } finally {
@@ -57,7 +62,7 @@ export default function ForgotPassword() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.backBtn} onClick={() => navigate('/login')} aria-label={t('auth.back')}>
+        <button type="button" className={styles.backBtn} onClick={() => navigate(loginUrl)} aria-label={t('auth.back')}>
           <LeftOutline fontSize={22} color="white" />
         </button>
         <div className={styles.title}>{t('forgotPassword.title')}</div>
@@ -81,7 +86,7 @@ export default function ForgotPassword() {
           <button type="button" className={styles.button} disabled={submitting} onClick={submit}>
             {submitting ? t('auth.submitting') : t('forgotPassword.resetPassword')}
           </button>
-          <Link className={styles.footerLink} to="/login">{t('forgotPassword.backToLogin')}</Link>
+          <Link className={styles.footerLink} to={loginUrl}>{t('forgotPassword.backToLogin')}</Link>
         </section>
       </main>
     </div>

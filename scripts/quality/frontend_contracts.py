@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REACT = ROOT / "nyc-review-web"
+LITERAL_TRANSLATION_CALL = re.compile(r"\b(?:t|tt)\(\s*(['\"`])([^'\"`\n]+)\1")
+INTERPOLATION_PLACEHOLDER = re.compile(r"{{\s*([\w.-]+)")
 
 
 def flatten(value: dict, prefix: str = "") -> dict[str, object]:
@@ -27,6 +30,24 @@ def main() -> int:
     chinese = flatten(json.loads((locale_dir / "zh-CN.json").read_text(encoding="utf-8")))
     missing_chinese = sorted(set(english) - set(chinese))
     missing_english = sorted(set(chinese) - set(english))
+    placeholder_mismatches = sorted(
+        key
+        for key in set(english) & set(chinese)
+        if set(INTERPOLATION_PLACEHOLDER.findall(str(english[key])))
+        != set(INTERPOLATION_PLACEHOLDER.findall(str(chinese[key])))
+    )
+
+    used_translation_keys: set[str] = set()
+    for source_path in (REACT / "src").rglob("*"):
+        if source_path.suffix not in {".ts", ".tsx"}:
+            continue
+        source = source_path.read_text(encoding="utf-8")
+        for match in LITERAL_TRANSLATION_CALL.finditer(source):
+            key = match.group(2)
+            if "${" not in key:
+                used_translation_keys.add(key)
+    missing_used_english = sorted(used_translation_keys - set(english))
+    missing_used_chinese = sorted(used_translation_keys - set(chinese))
 
     categories = (
         "Food & Dining",
@@ -63,12 +84,24 @@ def main() -> int:
     report = {
         "status": "ok",
         "localeKeys": len(english),
+        "literalTranslationKeysUsed": len(used_translation_keys),
         "missingChineseKeys": missing_chinese,
         "missingEnglishKeys": missing_english,
+        "placeholderMismatches": placeholder_mismatches,
+        "missingUsedChineseKeys": missing_used_chinese,
+        "missingUsedEnglishKeys": missing_used_english,
         "categoryTranslationFailures": category_failures,
         "contracts": contract_checks,
     }
-    if missing_chinese or missing_english or category_failures or not all(contract_checks.values()):
+    if (
+        missing_chinese
+        or missing_english
+        or missing_used_chinese
+        or missing_used_english
+        or placeholder_mismatches
+        or category_failures
+        or not all(contract_checks.values())
+    ):
         report["status"] = "failed"
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == "ok" else 1

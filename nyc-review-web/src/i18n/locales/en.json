@@ -232,7 +232,9 @@
     "followed": "Followed",
     "unfollowed": "Unfollowed",
     "commentSuccess": "Comment posted",
+    "commentSuccessRefreshFailed": "Comment posted, but the latest thread could not be refreshed. Reload to see it.",
     "replySuccess": "Reply posted",
+    "replySuccessRefreshFailed": "Reply posted, but the latest thread could not be refreshed. Reload to see it.",
     "likes": "{{n}} likes",
     "followingLiked": "Liked by {{count}} people you follow: {{names}}",
     "translate": "Translate",
@@ -240,7 +242,9 @@
     "original": "Original",
     "confirm": "Confirm",
     "aiTranslate": "Translate with AI",
-    "translatingAI": "AI is translating…"
+    "translatingAI": "AI is translating…",
+    "translationFailed": "Translation failed. Please try again.",
+    "translationLoginRequired": "Please sign in to use AI translation."
   },
   "blogEdit": {
     "cancel": "Cancel",
@@ -280,6 +284,7 @@
     "loadFailed": "Failed to load",
     "categoriesLoadFailed": "Categories could not be refreshed",
     "located": "Located",
+    "locationFailed": "Location unavailable. Showing New York City instead.",
     "locateMe": "Locate me",
     "myLocation": "My Location",
     "viewDetail": "View Details →",
@@ -300,8 +305,15 @@
     "demoRating": "Demo rating"
   },
   "shopDetail": {
+    "title": "Shop Details",
     "loading": "Loading...",
     "notFound": "Shop not found",
+    "loadFailed": "We couldn't load this shop.",
+    "retry": "Try again",
+    "vouchersLoading": "Loading vouchers...",
+    "vouchersLoadFailed": "Vouchers are temporarily unavailable.",
+    "reviewsLoading": "Loading reviews...",
+    "reviewsLoadFailed": "Reviews are temporarily unavailable.",
     "score": "{{n}} pts",
     "comments": "{{n}} reviews",
     "navigate": "Navigate",
@@ -318,6 +330,8 @@
     "seckillSuccess": "Purchase successful! Order ID: {{id}}",
     "linkCopied": "Link copied",
     "reviewSuccess": "Review posted",
+    "reviewSubmitFailed": "The review couldn't be posted. Please try again.",
+    "reviewRefreshFailed": "Your review was posted, but the latest list couldn't be refreshed.",
     "aiTranslate": "Translate with AI",
     "translatingAI": "AI is translating…",
     "hideTranslation": "Hide translation",
@@ -378,7 +392,18 @@
     "replyingTo": "Replying to {{name}}",
     "reply": "Reply",
     "replyPlaceholder": "Write a reply...",
-    "replySuccess": "Reply posted"
+    "replySuccess": "Reply posted",
+    "replySuccessRefreshFailed": "Reply posted, but the latest thread could not be refreshed. Reload to see it.",
+    "loadFailed": "We couldn't load these reviews.",
+    "retry": "Try again",
+    "empty": "No reviews yet",
+    "emptyHint": "Be the first to share your experience.",
+    "moreFailed": "We couldn't load more reviews. Your current reviews are still here."
+  },
+  "routeFallback": {
+    "title": "Page not found",
+    "description": "The page may have moved or the address may be incorrect.",
+    "home": "Back to home"
   },
   "contentSource": {
     "synthetic": "Synthetic demo",
@@ -418,7 +443,8 @@
     "delete": "Delete",
     "edit": "Edit",
     "close": "Close",
-    "search": "Search"
+    "search": "Search",
+    "actionFailed": "That action couldn't be completed. Please try again."
   },
   "sign": {
     "success": "Check-in successful!",
@@ -481,6 +507,7 @@
     "translating": "AI is translating…",
     "translationSuccess": "Translated to English with AI",
     "serviceUnavailable": "The service is temporarily unavailable.",
+    "streamReconnectFailed": "Live updates were interrupted. This plan will refresh automatically.",
     "run": "Ask the agent team",
     "running": "Agents are working…",
     "cancel": "Cancel run",
@@ -527,6 +554,7 @@
     "actionCompleted": "Approved action completed",
     "actionRejected": "Action rejected — no write was performed",
     "actionFailed": "The approved action could not be completed",
+    "approvalLoginRequired": "Sign in to approve this action. We'll bring you back to this plan.",
     "recentPlans": "Recent plans",
     "savedRuns": "{{count}} saved runs",
     "runStatus": {
@@ -549,6 +577,7 @@
     },
     "events": {
       "runCreated": "Run created from your request.",
+      "runRecovered": "The run recovered and safely resumed.",
       "modelStarted": "Supervisor is extracting your constraints.",
       "modelCompleted": "Structured constraints are ready.",
       "agentCompleted": "{{agent}} completed its task.",

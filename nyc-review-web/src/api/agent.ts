@@ -186,6 +186,17 @@ export interface AgentRunSnapshot {
 }
 
 const AGENT_BASE_URL = import.meta.env.VITE_AGENT_API_BASE_URL || '/agent-api';
+const AGENT_OWNER_SESSION_KEY = 'agentOwnerSession';
+
+function getAgentOwnerSession(): string {
+  const existing = sessionStorage.getItem(AGENT_OWNER_SESSION_KEY);
+  if (existing && existing.length >= 16 && existing.length <= 128) return existing;
+  const generated = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(24)), (value) => value.toString(16).padStart(2, '0')).join('');
+  sessionStorage.setItem(AGENT_OWNER_SESSION_KEY, generated);
+  return generated;
+}
 
 const agentClient = axios.create({
   baseURL: AGENT_BASE_URL,
@@ -194,6 +205,7 @@ const agentClient = axios.create({
 agentClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('token');
   if (token) config.headers.authorization = token;
+  config.headers['x-agent-session'] = getAgentOwnerSession();
   return config;
 });
 
@@ -264,10 +276,14 @@ export function subscribeToAgentRun(
 ): () => void {
   const controller = new AbortController();
   const token = sessionStorage.getItem('token');
+  const headers: Record<string, string> = {
+    'x-agent-session': getAgentOwnerSession(),
+  };
+  if (token) headers.authorization = token;
   void (async () => {
     try {
       const response = await fetch(`${AGENT_BASE_URL}/v1/agent/runs/${runId}/events`, {
-        headers: token ? { authorization: token } : {},
+        headers,
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error(`Agent stream returned ${response.status}`);
@@ -294,6 +310,7 @@ export function subscribeToAgentRun(
         }
         if (done) break;
       }
+      if (!controller.signal.aborted) onClosed();
     } catch {
       if (!controller.signal.aborted) onError();
     }

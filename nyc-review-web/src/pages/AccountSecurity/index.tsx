@@ -11,6 +11,7 @@ import {
 import FootBar from '../../components/FootBar';
 import { localizedAuthError } from '../../utils/authError';
 import { isStrongRecoveryKey, isStrongRegistrationPassword } from '../../utils/passwordPolicy';
+import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import styles from './SecurityForm.module.css';
 
 export default function AccountSecurity() {
@@ -81,7 +82,7 @@ export default function AccountSecurity() {
       await changePassword({ currentPassword, newPassword });
       sessionStorage.removeItem('token');
       sessionStorage.removeItem('userInfo');
-      window.location.assign('/login?passwordChanged=1');
+      window.location.assign(buildAuthEntryUrl('/login', '/account-security', { passwordChanged: '1' }));
     } catch (error: unknown) {
       Toast.show({ icon: 'fail', content: localizedAuthError(error, t) });
       setSavingPassword(false);

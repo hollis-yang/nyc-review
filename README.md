@@ -214,9 +214,12 @@ npm run build
 
 ```bash
 cd nyc-review-web
-npm run build
-npm run lint
+npm run release:check
 ```
+
+这条命令按发布顺序执行前端 lint、测试、生产构建、双语/路由契约检查和视觉资源审计，
+再通过锁定的 `uv.lock` 执行 Agent 服务的 Ruff 与完整测试；生产镜像工作流也会在构建并推送
+固定 SHA 镜像前运行同一质量门。本地需要已安装 `uv`。
 
 安全的后端回归命令是 `mvn -Dtest='!NycReviewApplicationTests' test`。
 `NycReviewApplicationTests` 包含数据构造和 Redis 回填方法；在完成容器化隔离前，不要在承载有效数据的环境执行它。

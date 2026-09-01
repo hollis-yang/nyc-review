@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { LeftOutline, EnvironmentOutline, HeartFill, HeartOutline } from 'antd-mobile-icons';
@@ -10,6 +10,7 @@ import VoucherCard, { type VoucherData } from '../../components/VoucherCard';
 import ReviewThread, { type ReviewData } from '../../components/ReviewThread';
 import MerchantVisual from '../../components/MerchantVisual';
 import { useAuth } from '../../hooks/useAuth';
+import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import styles from './ShopDetail.module.css';
 
 interface ShopImageAsset {
@@ -100,7 +101,7 @@ function localizedSeckillError(error: unknown, translate: (key: string) => strin
   if (normalized.includes('temporarily unavailable')) {
     return translate('voucher.temporarilyUnavailable');
   }
-  return message;
+  return translate('voucher.temporarilyUnavailable');
 }
 
 export default function ShopDetail() {
@@ -108,9 +109,24 @@ export default function ShopDetail() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const seckillRequestsRef = useRef(new Set<number>());
+  const shopRequestRef = useRef(0);
+  const voucherRequestRef = useRef(0);
+  const reviewRequestRef = useRef(0);
+  const routeGenerationRef = useRef(0);
+  const activeShopIdRef = useRef<string | null>(id ?? null);
+  const reviewSubmittingRef = useRef<number | null>(null);
+  const favoriteStatusRequestRef = useRef(0);
+  const favoriteMutationRef = useRef<number | null>(null);
   const [shop, setShop] = useState<ShopInfo | null>(null);
+  const [shopLoading, setShopLoading] = useState(true);
+  const [shopLoadFailed, setShopLoadFailed] = useState(false);
   const [vouchers, setVouchers] = useState<VoucherData[]>([]);
+  const [vouchersLoading, setVouchersLoading] = useState(true);
+  const [vouchersLoadFailed, setVouchersLoadFailed] = useState(false);
   const [reviews, setReviews] = useState<ReviewData[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsLoadFailed, setReviewsLoadFailed] = useState(false);
   const [reviewTotal, setReviewTotal] = useState(0);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
@@ -120,62 +136,200 @@ export default function ShopDetail() {
     value: false,
   });
   const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [favoriteStatusLoading, setFavoriteStatusLoading] = useState(true);
 
-  useEffect(() => {
-    if (!id) return;
-    Promise.all([
-      getShopById(id).then((res) => {
-        const data = unwrapData<ShopApiData>(res);
-        const images = Array.isArray(data.images)
-          ? data.images
-          : data.images?.split(',').filter(Boolean) ?? [];
-        setShop({ ...data, images });
-      }),
-      getVoucherList(id).then((res) => {
+  const loadShop = useCallback(async () => {
+    const requestId = ++shopRequestRef.current;
+    setShopLoading(true);
+    setShopLoadFailed(false);
+    if (!id) {
+      setShop(null);
+      setShopLoadFailed(true);
+      setShopLoading(false);
+      return;
+    }
+    try {
+      const res = await getShopById(id);
+      if (requestId !== shopRequestRef.current) return;
+      const data = unwrapData<ShopApiData>(res);
+      const images = Array.isArray(data.images)
+        ? data.images
+        : data.images?.split(',').filter(Boolean) ?? [];
+      setShop({ ...data, images });
+    } catch {
+      if (requestId === shopRequestRef.current) {
+        setShop(null);
+        setShopLoadFailed(true);
+      }
+    } finally {
+      if (requestId === shopRequestRef.current) setShopLoading(false);
+    }
+  }, [id]);
+
+  const loadVouchers = useCallback(async () => {
+    const requestId = ++voucherRequestRef.current;
+    setVouchersLoading(true);
+    setVouchersLoadFailed(false);
+    if (!id) {
+      setVouchers([]);
+      setVouchersLoading(false);
+      return;
+    }
+    try {
+      const res = await getVoucherList(id);
+      if (requestId === voucherRequestRef.current) {
         setVouchers((res.data ?? res) as VoucherData[]);
-      }),
-      getShopReviews(id).then((res) => {
-        const page = unwrapReviews(res);
-        setReviews(page.records);
-        setReviewTotal(page.total);
-      }),
-    ]).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || t('shopDetail.notFound'));
-    });
-  }, [id, t]);
+      }
+    } catch {
+      if (requestId === voucherRequestRef.current) setVouchersLoadFailed(true);
+    } finally {
+      if (requestId === voucherRequestRef.current) setVouchersLoading(false);
+    }
+  }, [id]);
+
+  const loadReviews = useCallback(async () => {
+    const requestId = ++reviewRequestRef.current;
+    setReviewsLoading(true);
+    setReviewsLoadFailed(false);
+    if (!id) {
+      setReviews([]);
+      setReviewTotal(0);
+      setReviewsLoading(false);
+      return;
+    }
+    try {
+      const res = await getShopReviews(id);
+      if (requestId !== reviewRequestRef.current) return;
+      const page = unwrapReviews(res);
+      setReviews(page.records);
+      setReviewTotal(page.total);
+    } catch {
+      if (requestId === reviewRequestRef.current) setReviewsLoadFailed(true);
+    } finally {
+      if (requestId === reviewRequestRef.current) setReviewsLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    let active = true;
-    if (!id || !isAuthenticated) return () => { active = false; };
+    const routeId = id;
+    const generation = ++routeGenerationRef.current;
+    activeShopIdRef.current = routeId ?? null;
+    reviewSubmittingRef.current = null;
+    favoriteMutationRef.current = null;
+    seckillRequestsRef.current.clear();
+    const timer = window.setTimeout(() => {
+      setReviewContent('');
+      setReviewRating(5);
+      setReviewSubmitting(false);
+      setFavoriteLoading(false);
+      setFavoriteStatusLoading(true);
+      void loadShop();
+      void loadVouchers();
+      void loadReviews();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      shopRequestRef.current += 1;
+      voucherRequestRef.current += 1;
+      reviewRequestRef.current += 1;
+      if (routeGenerationRef.current === generation) routeGenerationRef.current += 1;
+    };
+  }, [id, loadReviews, loadShop, loadVouchers]);
 
-    getShopFavoriteStatus(id)
-      .then((response) => {
-        if (active) setFavoriteStatus({ shopId: id, value: Boolean(response.data ?? response) });
-      })
-      .catch(() => {
-        if (active) Toast.show({ icon: 'fail', content: t('shopDetail.favoriteLoadFailed') });
-      });
+  useEffect(() => {
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    const requestId = ++favoriteStatusRequestRef.current;
+    const timer = window.setTimeout(() => {
+      if (activeShopIdRef.current !== routeId || routeGenerationRef.current !== generation) return;
+      setFavoriteStatus({ shopId: routeId ?? '', value: false });
+      if (!routeId || !isAuthenticated) {
+        setFavoriteStatusLoading(false);
+        return;
+      }
 
-    return () => { active = false; };
+      setFavoriteStatusLoading(true);
+      void getShopFavoriteStatus(routeId)
+        .then((response) => {
+          if (
+            favoriteStatusRequestRef.current === requestId
+            && activeShopIdRef.current === routeId
+            && routeGenerationRef.current === generation
+          ) {
+            setFavoriteStatus({ shopId: routeId, value: Boolean(response.data ?? response) });
+          }
+        })
+        .catch(() => {
+          if (
+            favoriteStatusRequestRef.current === requestId
+            && activeShopIdRef.current === routeId
+            && routeGenerationRef.current === generation
+          ) {
+            Toast.show({ icon: 'fail', content: t('shopDetail.favoriteLoadFailed') });
+          }
+        })
+        .finally(() => {
+          if (
+            favoriteStatusRequestRef.current === requestId
+            && activeShopIdRef.current === routeId
+            && routeGenerationRef.current === generation
+          ) {
+            setFavoriteStatusLoading(false);
+          }
+        });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (favoriteStatusRequestRef.current === requestId) favoriteStatusRequestRef.current += 1;
+    };
   }, [id, isAuthenticated, t]);
 
   const handleSeckill = async (voucherId: number) => {
+    if (seckillRequestsRef.current.has(voucherId)) return;
+    seckillRequestsRef.current.add(voucherId);
     try {
       const res = await seckillVoucher(voucherId);
       Toast.show({ icon: 'success', content: t('shopDetail.seckillSuccess', { id: res.data ?? res }) });
     } catch (err: unknown) {
       Toast.show({ icon: 'fail', content: localizedSeckillError(err, t) });
+    } finally {
+      seckillRequestsRef.current.delete(voucherId);
     }
   };
 
-  const refreshReviews = async () => {
-    if (!id) return;
-    const response = await getShopReviews(id);
+  const refreshReviews = async (routeId: string, generation: number): Promise<boolean> => {
+    const requestId = ++reviewRequestRef.current;
+    const response = await getShopReviews(routeId);
+    if (
+      requestId !== reviewRequestRef.current
+      || routeGenerationRef.current !== generation
+      || activeShopIdRef.current !== routeId
+    ) return false;
     const page = unwrapReviews(response);
     setReviews(page.records);
     setReviewTotal(page.total);
+    setReviewsLoadFailed(false);
+    return true;
+  };
+
+  const refreshShop = async (routeId: string, generation: number): Promise<boolean> => {
+    const requestId = ++shopRequestRef.current;
+    const shopResponse = await getShopById(routeId);
+    if (
+      requestId !== shopRequestRef.current
+      || routeGenerationRef.current !== generation
+      || activeShopIdRef.current !== routeId
+    ) return false;
+    const shopData = unwrapData<ShopApiData>(shopResponse);
+    setShop({
+      ...shopData,
+      images: Array.isArray(shopData.images)
+        ? shopData.images
+        : shopData.images?.split(',').filter(Boolean) ?? [],
+    });
+    setShopLoadFailed(false);
+    return true;
   };
 
   const handleBack = () => {
@@ -199,27 +353,41 @@ export default function ShopDetail() {
 
   const handleReviewSubmit = async () => {
     if (!reviewContent.trim() || !id) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (reviewSubmittingRef.current === generation) return;
+    reviewSubmittingRef.current = generation;
     setReviewSubmitting(true);
     try {
-      await createShopReview({ shopId: Number(id), rating: reviewRating, content: reviewContent.trim() });
+      try {
+        await createShopReview({ shopId: Number(routeId), rating: reviewRating, content: reviewContent.trim() });
+      } catch {
+        if (routeGenerationRef.current === generation && activeShopIdRef.current === routeId) {
+          Toast.show({ icon: 'fail', content: t('shopDetail.reviewSubmitFailed') });
+        }
+        return;
+      }
+      if (routeGenerationRef.current !== generation || activeShopIdRef.current !== routeId) return;
       Toast.show({ icon: 'success', content: t('shopDetail.reviewSuccess') });
       setReviewContent('');
       setReviewRating(5);
       setReviewTotal((prev) => prev + 1);
-      // refresh reviews
-      await refreshReviews();
-      const shopResponse = await getShopById(id);
-      const shopData = unwrapData<ShopApiData>(shopResponse);
-      setShop({
-        ...shopData,
-        images: Array.isArray(shopData.images)
-          ? shopData.images
-          : shopData.images?.split(',').filter(Boolean) ?? [],
-      });
-    } catch (err: unknown) {
-      Toast.show({ icon: 'fail', content: errorMessage(err) });
+      const refreshResults = await Promise.allSettled([
+        refreshReviews(routeId, generation),
+        refreshShop(routeId, generation),
+      ]);
+      if (
+        routeGenerationRef.current === generation
+        && activeShopIdRef.current === routeId
+        && refreshResults.some((result) => result.status === 'rejected')
+      ) {
+        Toast.show({ icon: 'fail', content: t('shopDetail.reviewRefreshFailed') });
+      }
     } finally {
-      setReviewSubmitting(false);
+      if (reviewSubmittingRef.current === generation) reviewSubmittingRef.current = null;
+      if (routeGenerationRef.current === generation && activeShopIdRef.current === routeId) {
+        setReviewSubmitting(false);
+      }
     }
   };
 
@@ -228,47 +396,62 @@ export default function ShopDetail() {
     if (!isAuthenticated) {
       Toast.show({ icon: 'fail', content: t('shopDetail.favoriteLoginRequired') });
       setTimeout(() => {
-        navigate(`/login?redirect=${encodeURIComponent(`/shop-detail/${id}`)}`);
+        navigate(buildAuthEntryUrl('/login', `/shop-detail/${id}`));
       }, 200);
       return;
     }
-    if (favoriteLoading) return;
+    const routeId = id;
+    const generation = routeGenerationRef.current;
+    if (favoriteStatusLoading || favoriteMutationRef.current === generation) return;
 
+    favoriteMutationRef.current = generation;
+    favoriteStatusRequestRef.current += 1;
     setFavoriteLoading(true);
     try {
-      const isFavorite = favoriteStatus.shopId === id && favoriteStatus.value;
+      const isFavorite = favoriteStatus.shopId === routeId && favoriteStatus.value;
       if (isFavorite) {
-        await unfavoriteShop(id);
-        setFavoriteStatus({ shopId: id, value: false });
-        Toast.show({ icon: 'success', content: t('shopDetail.unfavoriteSuccess') });
+        await unfavoriteShop(routeId);
+        if (routeGenerationRef.current === generation && activeShopIdRef.current === routeId) {
+          setFavoriteStatus({ shopId: routeId, value: false });
+          Toast.show({ icon: 'success', content: t('shopDetail.unfavoriteSuccess') });
+        }
       } else {
-        await favoriteShop(id);
-        setFavoriteStatus({ shopId: id, value: true });
-        Toast.show({ icon: 'success', content: t('shopDetail.favoriteSuccess') });
+        await favoriteShop(routeId);
+        if (routeGenerationRef.current === generation && activeShopIdRef.current === routeId) {
+          setFavoriteStatus({ shopId: routeId, value: true });
+          Toast.show({ icon: 'success', content: t('shopDetail.favoriteSuccess') });
+        }
       }
     } catch {
-      Toast.show({ icon: 'fail', content: t('shopDetail.favoriteFailed') });
+      if (routeGenerationRef.current === generation && activeShopIdRef.current === routeId) {
+        Toast.show({ icon: 'fail', content: t('shopDetail.favoriteFailed') });
+      }
     } finally {
-      setFavoriteLoading(false);
+      if (favoriteMutationRef.current === generation) favoriteMutationRef.current = null;
+      if (routeGenerationRef.current === generation && activeShopIdRef.current === routeId) {
+        setFavoriteLoading(false);
+      }
     }
   };
 
-  if (error) {
+  if (shopLoading || shopLoadFailed || !shop || String(shop.id) !== id) {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
-          <div className={styles.backBtn} onClick={handleBack}>
+          <button type="button" className={styles.backBtn} onClick={handleBack} aria-label={t('auth.back')}>
             <LeftOutline fontSize={18} color="white" />
-          </div>
-          <div className={styles.title}></div>
+          </button>
+          <div className={styles.title}>{t('shopDetail.title')}</div>
+          <div className={styles.share} aria-hidden="true" />
         </div>
-        <div className={styles.loadingFull}>{error}</div>
+        <div className={styles.loadingFull} role={shopLoadFailed ? 'alert' : 'status'}>
+          <span>{shopLoadFailed ? t('shopDetail.loadFailed') : t('shopDetail.loading')}</span>
+          {shopLoadFailed && (
+            <button type="button" onClick={() => void loadShop()}>{t('shopDetail.retry')}</button>
+          )}
+        </div>
       </div>
     );
-  }
-
-  if (!shop) {
-    return <div className={styles.loadingFull}>{t('shopDetail.loading')}</div>;
   }
 
   const imageAssets: ShopImageAsset[] = shop.imageAssets?.length
@@ -296,7 +479,7 @@ export default function ShopDetail() {
               type="button"
               className={`${styles.favoriteButton} ${favorite ? styles.favoriteButtonActive : ''}`}
               aria-pressed={favorite}
-              disabled={favoriteLoading}
+              disabled={favoriteLoading || favoriteStatusLoading}
               onClick={handleFavorite}
             >
               {favorite ? <HeartFill fontSize={17} /> : <HeartOutline fontSize={17} />}
@@ -404,7 +587,16 @@ export default function ShopDetail() {
 
             <div className={styles.divider} />
 
-            {vouchers.length > 0 && (
+            {vouchersLoading && (
+              <div className={styles.localStatus} role="status">{t('shopDetail.vouchersLoading')}</div>
+            )}
+            {!vouchersLoading && vouchersLoadFailed && (
+              <div className={styles.localStatus} role="alert">
+                <span>{t('shopDetail.vouchersLoadFailed')}</span>
+                <button type="button" onClick={() => void loadVouchers()}>{t('shopDetail.retry')}</button>
+              </div>
+            )}
+            {!vouchersLoading && !vouchersLoadFailed && vouchers.length > 0 && (
               <>
                 <div className={styles.voucherSection}>
                   <div>
@@ -433,24 +625,35 @@ export default function ShopDetail() {
                   )}
                 </div>
               </div>
-              <div className={styles.commentList}>
-                {reviews.slice(0, 3).map((review) => (
-                  <div className={styles.commentBox} key={review.id}>
-                    <ReviewThread
-                      review={review}
-                      compact
-                      shopId={shop.id}
-                      onReplyCreated={refreshReviews}
-                    />
-                  </div>
-                ))}
-                {reviewTotal > 3 && (
-                  <div className={styles.viewAll} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>
-                    <div>{t('shopDetail.viewAll', { n: reviewTotal })}</div>
-                    <div>&gt;</div>
-                  </div>
-                )}
-              </div>
+              {reviewsLoading ? (
+                <div className={styles.localStatus} role="status">{t('shopDetail.reviewsLoading')}</div>
+              ) : reviewsLoadFailed ? (
+                <div className={styles.localStatus} role="alert">
+                  <span>{t('shopDetail.reviewsLoadFailed')}</span>
+                  <button type="button" onClick={() => void loadReviews()}>{t('shopDetail.retry')}</button>
+                </div>
+              ) : (
+                <div className={styles.commentList}>
+                  {reviews.slice(0, 3).map((review) => (
+                    <div className={styles.commentBox} key={review.id}>
+                      <ReviewThread
+                        review={review}
+                        compact
+                        shopId={shop.id}
+                        onReplyCreated={async () => {
+                          await refreshReviews(id, routeGenerationRef.current);
+                        }}
+                      />
+                    </div>
+                  ))}
+                  {reviewTotal > 3 && (
+                    <div className={styles.viewAll} onClick={() => navigate(`/shop-reviews/${id}?name=${encodeURIComponent(shop.name)}`)}>
+                      <div>{t('shopDetail.viewAll', { n: reviewTotal })}</div>
+                      <div>&gt;</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 写评价 */}
@@ -472,16 +675,15 @@ export default function ShopDetail() {
                 rows={3}
                 maxLength={500}
               />
-              <div
+              <button
+                type="button"
                 className={styles.reviewSubmit}
                 onClick={handleReviewSubmit}
-                style={{
-                  cursor: reviewContent.trim() && !reviewSubmitting ? 'pointer' : 'default',
-                  opacity: reviewContent.trim() && !reviewSubmitting ? 1 : 0.5,
-                }}
+                disabled={reviewSubmitting || !reviewContent.trim()}
+                aria-busy={reviewSubmitting}
               >
                 {reviewSubmitting ? t('shopDetail.submitting') : t('shopDetail.submit')}
-              </div>
+              </button>
             </div>
 
             <div className={styles.divider} />

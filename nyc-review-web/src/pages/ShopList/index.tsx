@@ -218,6 +218,12 @@ export default function ShopList() {
     else navigate('/');
   };
 
+  const listTitle = searchQuery
+    ? t('shopList.searchResult', { query: searchQuery })
+    : typeName
+      ? t(`shopTypes.${typeName}`, typeName)
+      : t('shopList.allCategories');
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -225,7 +231,7 @@ export default function ShopList() {
           <LeftOutline fontSize={18} color="white" />
         </button>
         <div className={styles.title}>
-          {searchQuery ? t('shopList.searchResult', { query: searchQuery }) : t(`shopTypes.${typeName}`, typeName)}
+          {listTitle}
         </div>
       </div>
 

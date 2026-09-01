@@ -20,10 +20,12 @@ function assertInOrder(source: string, tokens: string[]) {
 test('blog editor preserves publishing behavior in a bounded desktop workspace', () => {
   const page = readSource('../src/pages/BlogEdit/index.tsx');
   const styles = readSource('../src/pages/BlogEdit/BlogEdit.module.css');
+  const submitBlock = page.slice(page.indexOf('const handleSubmit = async'), page.indexOf('const handleBack'));
 
   assert.match(page, /sessionStorage\.getItem\('token'\)/);
   assert.match(page, /getMe\(\)\.catch/);
-  assert.match(page, /setTimeout\(\(\) => navigate\('\/login'\), 200\)/);
+  assert.match(page, /const loginUrl = buildAuthEntryUrl\('\/login', '\/blog-edit'\)/);
+  assert.match(page, /setTimeout\(\(\) => navigate\(loginUrl\), 200\)/);
   assert.match(page, /getShopTypes\(\)/);
   assert.match(page, /getShopLinkOptions\(\{ typeId, query: query\.trim\(\), current: page, size: 30 \}\)/);
   assert.match(page, /const requestId = \+\+shopRequestRef\.current/);
@@ -41,8 +43,21 @@ test('blog editor preserves publishing behavior in a bounded desktop workspace',
   assert.match(page, /deleteBlogImage\(filePath\)/);
   assert.match(page, /fileInputRef\.current\.value = ''/);
   assert.match(page, /if \(!selectedShop\)/);
+  assert.match(page, /const publishingRef = useRef\(false\)/);
+  assert.match(page, /const \[publishing, setPublishing\] = useState\(false\)/);
+  assert.match(submitBlock, /if \(publishingRef\.current\) return;/);
+  assertInOrder(submitBlock, [
+    'publishingRef.current = true',
+    'setPublishing(true)',
+    'createBlog',
+    "navigate('/profile')",
+    'finally',
+    'publishingRef.current = false',
+    'setPublishing(false)',
+  ]);
   assert.match(page, /createBlog\(\{\s*title,\s*content,\s*images: fileList\.join\(','\),\s*shopId: selectedShop\.id,\s*\}\)/s);
   assert.match(page, /navigate\('\/profile'\)/);
+  assert.match(page, /<button\s+type="button"\s+className=\{styles\.commitBtn\}\s+onClick=\{handleSubmit\}\s+disabled=\{publishing\}\s+aria-busy=\{publishing\}/s);
   assert.match(page, /role="dialog"/);
   assert.match(page, /aria-modal="true"/);
   assert.match(page, /element\.inert = true/);
@@ -72,6 +87,7 @@ test('blog editor preserves publishing behavior in a bounded desktop workspace',
   ]);
 
   assert.match(styles, /\.editorWorkspace,[\s\S]*?\.shopPanel\s*\{\s*display:\s*contents;/s);
+  assert.match(styles, /\.commitBtn:disabled\s*\{[^}]*cursor:\s*wait;[^}]*opacity:\s*0\.65;/s);
   assert.match(styles, /\.shopDialog\s*\{[^}]*bottom:\s*0;[^}]*height:\s*60%;[^}]*animation:\s*slideUp/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.editorWorkspace\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 2\.375fr\) minmax\(260px, 1fr\);[^}]*overflow-y:\s*auto;/s);
   assert.match(styles, /@media \(min-width: 1024px\)[\s\S]*?\.editorPanel\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1 \/ span 2;[^}]*display:\s*flex;/s);
@@ -89,13 +105,14 @@ test('AI workspace preserves run, evidence, history, and approval behavior', () 
 
   assert.match(page, /listAgentRuns\(5\)\.then\(setHistory\)/);
   assert.match(page, /getAgentRun\(requestedRunId\)/);
-  assert.match(page, /useEffect\(\(\) => \(\) => closeStreamRef\.current\?\.\(\), \[\]\)/);
+  assert.match(page, /useEffect\(\(\) => \(\) => clearStreamConnection\(\), \[clearStreamConnection\]\)/);
   assert.match(page, /const ACTIVE_RUN_STATUSES = new Set[^]*?'created',\s*'planning',\s*'tool_running'/s);
   assert.match(page, /setRunning\(ACTIVE_RUN_STATUSES\.has\(snapshot\.status\)\)/);
-  assert.match(page, /ACTIVE_RUN_STATUSES\.has\(snapshot\.status\)\) attachRunStream\(snapshot\.run_id\)/);
-  assert.match(page, /setSearchParams\(\{ runId: item\.run_id \}, \{ replace: true \}\);\s*applySnapshot\(item\);\s*setRunError\(item\.error \|\| null\);/s);
+  assert.match(page, /ACTIVE_RUN_STATUSES\.has\(snapshot\.status\)[\s\S]*?attachRunStream\(snapshot\.run_id, generation\)/);
+  assert.match(page, /beginRunContext\(item\.run_id\)[\s\S]*?setSearchParams\(\{ runId: item\.run_id \}, \{ replace: true \}\)[\s\S]*?applySnapshot\(item\)/);
   assert.match(page, /createAgentRun\(\{\s*mode: 'multi',\s*query: query\.trim\(\),\s*latitude: 40\.7614,\s*longitude: -73\.9776,\s*\}\)/s);
-  assert.match(submitBlock, /closeStreamRef\.current\?\.\(\)/);
+  assert.match(submitBlock, /const generation = beginRunContext\(null\)/);
+  assert.match(submitBlock, /if \(runSubmitLockRef\.current\) return/);
   assertInOrder(submitBlock, [
     'setRunning(true)',
     'setEvents([])',
@@ -107,12 +124,14 @@ test('AI workspace preserves run, evidence, history, and approval behavior', () 
     'attachRunStream',
   ]);
   assert.match(streamBlock, /subscribeToAgentRun\(/);
-  assert.equal(streamBlock.match(/void loadFinalSnapshot\(currentRunId\)/g)?.length, 2);
+  assert.match(streamBlock, /MAX_STREAM_RECONNECT_ATTEMPTS/);
+  assert.match(streamBlock, /loadFinalSnapshot\([\s\S]*?currentRunId,[\s\S]*?contextGeneration,[\s\S]*?streamGeneration/);
+  assert.match(streamBlock, /attachRunStream\(currentRunId, contextGeneration, reconnectAttempt \+ 1\)/);
   assert.match(streamBlock, /new Map\(current\.map\(\(item\) => \[item\.sequence, item\]\)\)/);
   assert.match(streamBlock, /sort\(\(a, b\) => a\.sequence - b\.sequence\)/);
-  assert.match(page, /cancelAgentRun\(runId\)/);
-  assert.match(page, /approveAgentAction\(runId, action\.action_id\)/);
-  assert.match(page, /rejectAgentAction\(runId, action\.action_id\)/);
+  assert.match(page, /cancelAgentRun\(currentRunId\)/);
+  assert.match(page, /approveAgentAction\(currentRunId, action\.action_id\)/);
+  assert.match(page, /rejectAgentAction\(currentRunId, action\.action_id\)/);
   assert.match(page, /translateText\(query\.trim\(\), 'en'\)/);
   assert.match(page, /find\(\(shop\) => shop\.shop_id === selectedShopId\)\s*\?\? result\?\.candidates\.candidates\[0\]/s);
   assert.match(page, /action\.action_type === 'save_itinerary'\s*\|\| Number\(action\.payload\.shopId\) === selectedShop\?\.shop_id/s);

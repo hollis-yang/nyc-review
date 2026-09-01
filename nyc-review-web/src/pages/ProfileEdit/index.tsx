@@ -8,6 +8,7 @@ import { getMe, getUserInfo, updateUser, updateUserInfo } from '../../api/user';
 import { uploadBlogImage } from '../../api/upload';
 import FootBar from '../../components/FootBar';
 import { getCommunityOptions } from '../../constants/regions';
+import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import styles from './ProfileEdit.module.css';
 
 type EditField = 'nickname' | 'introduce' | null;
@@ -49,7 +50,7 @@ export default function ProfileEdit() {
           .catch(() => {});
       })
       .catch(() => {
-        setTimeout(() => navigate('/login'), 1000);
+        setTimeout(() => navigate(buildAuthEntryUrl('/login', '/profile-edit')), 1000);
       });
   }, [navigate]);
 
@@ -121,7 +122,6 @@ export default function ProfileEdit() {
     setLanguagePickerVisible(false);
     const language = value[0] === 'zh-CN' ? 'zh-CN' : 'en';
     localStorage.setItem('appLanguage', language);
-    document.documentElement.lang = language;
     await i18n.changeLanguage(language);
     Toast.show({ icon: 'success', content: t('profileEdit.languageUpdated') });
   };

@@ -64,7 +64,7 @@
 @media (min-width: 1024px) {
   .foot {
     position: fixed;
-    z-index: 1200;
+    z-index: var(--z-primary-navigation);
     inset: 0 auto 0 0;
     width: var(--desktop-nav-compact-width);
     height: 100dvh;

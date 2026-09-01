@@ -31,6 +31,7 @@ import {
 import FootBar from '../../components/FootBar';
 import type { BlogData } from '../../components/BlogCard';
 import MerchantVisual, { NoteVisual } from '../../components/MerchantVisual';
+import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import styles from './MyProfile.module.css';
 
 type ProfileSection =
@@ -124,7 +125,7 @@ export default function MyProfile() {
           .catch(() => setAssets(null))
           .finally(() => setAssetsLoading(false));
       })
-      .catch(() => navigate('/login'));
+      .catch(() => navigate(buildAuthEntryUrl('/login', '/profile')));
   }, [navigate]);
 
   useEffect(() => {

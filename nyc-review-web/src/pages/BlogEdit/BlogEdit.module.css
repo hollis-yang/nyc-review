@@ -54,10 +54,12 @@
 }
 
 .commitBtn {
+  border: 0;
   background: rgba(255, 255, 255, 0.25);
   color: #fff;
   padding: 5px 16px;
   border-radius: 14px;
+  font-family: inherit;
   font-size: 13px;
   white-space: nowrap;
   cursor: pointer;
@@ -67,6 +69,16 @@
 .commitBtn:active {
   background: rgba(255, 255, 255, 0.4);
   transform: scale(0.95);
+}
+
+.commitBtn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.commitBtn:disabled:active {
+  background: rgba(255, 255, 255, 0.25);
+  transform: none;
 }
 
 .uploadBox {
