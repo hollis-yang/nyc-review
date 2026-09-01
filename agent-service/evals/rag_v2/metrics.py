@@ -41,6 +41,7 @@ LATENCY_STAGES = (
     "hydration",
     "fusion",
     "queryRewrite",
+    "reranker",
     "evidenceRetrieval",
     "embedding",
     "total",

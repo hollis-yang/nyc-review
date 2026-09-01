@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "rag-v2-m4-reranker-control-treatment-v1",
+  "latencyPolicy": {
+    "status": "quality-accepted-under-latency-waiver",
+    "totalLatency": "observed-not-gating",
+    "rerankerLatency": "observed-not-gating"
+  },
+  "budgetContract": {
+    "maximumCases": 80,
+    "preRerankCandidateLimit": 30,
+    "finalCandidateLimit": 10,
+    "maxTreatmentRerankerNetworkRequests": 80,
+    "maxTreatmentRerankerTokens": 500000,
+    "maxRerankerEstimatedCostUsd": 0.5
+  },
+  "pairedBootstrap": {
+    "metric": "ndcgAt5",
+    "confidence": 0.95,
+    "resamples": 10000,
+    "seed": 20260901,
+    "minimumObservedDelta": 0.005,
+    "minimumLowerBound": 0.0
+  },
+  "comparison": {
+    "minDeltas": {
+      "overall.ndcgAt5": 0.005
+    },
+    "maxDrops": {
+      "overall.recallAt10": 0.0,
+      "overall.precisionAt5": 0.005,
+      "overall.mrrAt10": 0.005,
+      "overall.ndcgAt10": 0.005,
+      "overall.hardConstraintSatisfaction": 0.0,
+      "byLanguage.zh.ndcgAt5": 0.01
+    },
+    "treatmentMinimums": {
+      "overall.evidenceCoverage": 0.99
+    },
+    "treatmentMaximums": {
+      "overall.unjudgedReturnedRate": 0.0,
+      "integrity.securityLeakageCount": 0,
+      "integrity.versionMismatchCount": 0,
+      "integrity.citationOwnershipMismatchCount": 0,
+      "integrity.citationExternalIdMismatchCount": 0,
+      "integrity.citationSourceMismatchCount": 0,
+      "integrity.hardConstraintViolationCount": 0,
+      "integrity.hardConstraintUnknownCount": 0,
+      "integrity.duplicateMerchantCount": 0,
+      "integrity.excessiveBrandCount": 0,
+      "integrity.hardNegativeReturnCount": 0,
+      "integrity.emptyResultCount": 0,
+      "requestCounts.rerankerProviderRetries": 0,
+      "requestCounts.rerankerProviderFailures": 0,
+      "requestCounts.rerankerFallbacks": 0
+    },
+    "maxIncreases": {
+      "requestCounts.rerankerRequests": 80,
+      "requestCounts.rerankerProviderNetworkRequests": 80,
+      "requestCounts.rerankerProviderTokens": 500000,
+      "requestCounts.rerankerProviderRetries": 0,
+      "requestCounts.rerankerProviderFailures": 0,
+      "requestCounts.rerankerFallbacks": 0
+    }
+  }
+}

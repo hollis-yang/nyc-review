@@ -69,7 +69,7 @@ M2_CANDIDATE_UNIVERSE_CONTRACT_FIELDS = (
 
 def suite_contract_sha256(suite: dict[str, Any]) -> str:
     schema_version = int(suite.get("schemaVersion") or 0)
-    fields = M2_SUITE_CONTRACT_FIELDS if schema_version in {3, 4} else SUITE_CONTRACT_FIELDS
+    fields = M2_SUITE_CONTRACT_FIELDS if schema_version in {3, 4, 5} else SUITE_CONTRACT_FIELDS
     missing = [field for field in fields if field not in suite]
     if missing:
         raise ValueError(f"Eval suite contract is missing fields: {', '.join(missing)}")

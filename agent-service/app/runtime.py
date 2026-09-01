@@ -33,6 +33,11 @@ from app.rag.query_rewriter import (
     OpenAICompatibleQueryRewriter,
     QueryRewriteProvider,
 )
+from app.rag.reranker import (
+    CandidateReranker,
+    HttpCrossEncoderReranker,
+    MerchantRerankTextBuilder,
+)
 from app.runs.manager import AgentRunManager
 from app.runs.store import SQLiteRunStore
 from app.security import SlidingWindowRateLimiter
@@ -69,6 +74,7 @@ class AgentRuntime:
     itinerary_service: Any = None
     embedding_service: EmbeddingService | None = None
     query_rewriter: QueryRewriteProvider | None = None
+    reranker: CandidateReranker | None = None
     candidate_discovery: CandidateDiscovery | None = None
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -85,6 +91,7 @@ class AgentRuntime:
         rag_index_stats: dict[str, int] = {}
         embedding_service: EmbeddingService | None = None
         query_rewriter: QueryRewriteProvider | None = None
+        reranker: CandidateReranker | None = None
         if settings.rag_data_directory is not None:
             data_version, dataset_sha256, source_counts = _validate_data_directory(
                 settings.rag_data_directory.resolve()
@@ -142,6 +149,7 @@ class AgentRuntime:
                     document_limit=settings.global_retrieval_document_limit,
                 )
                 query_rewriter = _build_query_rewriter(settings)
+                reranker = _build_reranker(settings)
                 candidate_discovery = GlobalHybridCandidateDiscovery(
                     shops,
                     rag,
@@ -155,6 +163,13 @@ class AgentRuntime:
                     rrf_k=settings.global_retrieval_rrf_k,
                     brand_cap=settings.global_retrieval_brand_cap,
                     query_rewriter=query_rewriter,
+                    reranker=reranker,
+                    rerank_text_builder=MerchantRerankTextBuilder(
+                        max_characters=settings.reranker_max_document_characters,
+                        max_evidence=settings.reranker_max_evidence_excerpts,
+                        max_evidence_characters=settings.reranker_max_evidence_characters,
+                    ),
+                    reranker_candidate_limit=settings.reranker_candidate_limit,
                 )
             else:
                 candidate_discovery = LegacyCandidateDiscovery(shops, rag)
@@ -198,6 +213,7 @@ class AgentRuntime:
                 itinerary_service=itinerary,
                 embedding_service=embedding_service,
                 query_rewriter=query_rewriter,
+                reranker=reranker,
                 candidate_discovery=candidate_discovery,
             )
             model_gateway = _build_model_gateway(settings)
@@ -219,6 +235,8 @@ class AgentRuntime:
                 callbacks.append(run_store.close)
             if query_rewriter is not None:
                 callbacks.append(query_rewriter.aclose)
+            if reranker is not None:
+                callbacks.append(reranker.aclose)
             if embedding_service is not None:
                 callbacks.append(embedding_service.aclose)
             if qdrant_client is not None:
@@ -235,6 +253,8 @@ class AgentRuntime:
             callbacks.append(self.run_manager.close)
         if self.query_rewriter is not None:
             callbacks.append(self.query_rewriter.aclose)
+        if self.reranker is not None:
+            callbacks.append(self.reranker.aclose)
         if self.embedding_service is not None:
             callbacks.append(self.embedding_service.aclose)
         if self.qdrant_client is not None:
@@ -375,6 +395,58 @@ def _build_query_rewriter(settings: Settings) -> QueryRewriteProvider | None:
         cache_ttl_seconds=settings.query_rewrite_cache_ttl_seconds,
         max_input_characters=settings.query_rewrite_max_input_characters,
         max_output_tokens=settings.query_rewrite_max_output_tokens,
+    )
+
+
+def _build_reranker(settings: Settings) -> CandidateReranker | None:
+    """Build M4 only behind its explicit query-side feature flag."""
+
+    if settings.reranker_provider == "disabled":
+        return None
+    api_key = (
+        settings.reranker_api_key.get_secret_value().strip()
+        or settings.qwen_embedding_api_key.get_secret_value().strip()
+    )
+    if not api_key:
+        raise ValueError(
+            "Qwen reranking requires a configured reranker or DashScope API key."
+        )
+    base_url = settings.reranker_base_url or _qwen_reranker_base_url(
+        settings.qwen_embedding_base_url
+    )
+    return HttpCrossEncoderReranker(
+        provider=settings.reranker_provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=settings.reranker_model,
+        instruct=settings.reranker_instruct,
+        version=settings.reranker_version or settings.reranker_model,
+        timeout_seconds=settings.reranker_timeout_seconds,
+        max_concurrency=settings.reranker_max_concurrency,
+        max_candidates=settings.reranker_candidate_limit,
+        max_retries=settings.reranker_max_retries,
+        cache_size=settings.reranker_cache_size,
+        cache_ttl_seconds=settings.reranker_cache_ttl_seconds,
+        circuit_failure_threshold=settings.reranker_circuit_failure_threshold,
+        circuit_recovery_seconds=settings.reranker_circuit_cooldown_seconds,
+        input_cost_per_million_tokens=(
+            settings.reranker_input_price_usd_per_million_tokens
+        ),
+    )
+
+
+def _qwen_reranker_base_url(embedding_base_url: str) -> str:
+    """Derive only the documented workspace rerank endpoint, never another provider."""
+
+    normalized = embedding_base_url.strip().rstrip("/")
+    suffix = "/compatible-mode/v1"
+    if normalized.endswith("/compatible-api/v1"):
+        return normalized
+    if normalized.endswith(suffix):
+        return f"{normalized[: -len(suffix)]}/compatible-api/v1"
+    raise ValueError(
+        "qwen reranking requires NYC_REVIEW_AGENT_RERANKER_BASE_URL or a "
+        "DASHSCOPE_BASE_URL ending in /compatible-mode/v1."
     )
 
 

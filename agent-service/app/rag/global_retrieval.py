@@ -106,6 +106,22 @@ class GlobalDocumentHit(BaseModel):
     content_type: str = Field(min_length=1)
     document_kind: str = Field(min_length=1)
     text: str = Field(min_length=1)
+    created_at: str | None = Field(default=None, min_length=1)
+    content_source_type: str = Field(default="SYNTHETIC", min_length=1)
+    content_source_name: str | None = Field(default=None, min_length=1)
+    content_source_url: str | None = Field(default=None, min_length=1)
+    untrusted_content: bool = Field(default=True, strict=True)
+    synthetic: bool = Field(default=True, strict=True)
+    data_version: str | None = Field(default=None, min_length=1)
+    dataset_sha256: str | None = Field(default=None, min_length=1)
+    security_test: bool = Field(default=False, strict=True)
+
+    @field_validator("security_test")
+    @classmethod
+    def _security_documents_cannot_be_hits(cls, value: bool) -> bool:
+        if value:
+            raise ValueError("Security-test documents cannot become global retrieval hits.")
+        return value
 
 
 class ChannelRetrievalResult(BaseModel):
@@ -192,6 +208,12 @@ PAYLOAD_FIELDS = (
     "content_type",
     "document_kind",
     "text",
+    "created_at",
+    "content_source_type",
+    "content_source_name",
+    "content_source_url",
+    "untrusted_content",
+    "synthetic",
     "category",
     "neighborhood",
     "data_version",
@@ -892,6 +914,15 @@ def _validated_hit(
             content_type=_required_string(payload, "content_type"),
             document_kind=str(payload.get("document_kind") or "evidence"),
             text=_required_string(payload, "text"),
+            created_at=_optional_string(payload, "created_at"),
+            content_source_type=_provenance_source_type(payload),
+            content_source_name=_optional_string(payload, "content_source_name"),
+            content_source_url=_optional_string(payload, "content_source_url"),
+            untrusted_content=_provenance_bool(payload, "untrusted_content", default=True),
+            synthetic=_provenance_bool(payload, "synthetic", default=True),
+            data_version=_required_string(payload, "data_version"),
+            dataset_sha256=_required_string(payload, "dataset_sha256"),
+            security_test=_provenance_bool(payload, "security_test", default=False),
         )
     except (TypeError, ValueError, ValidationError):
         return None
@@ -926,6 +957,37 @@ def _required_string(payload: Mapping[str, Any], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Qdrant payload field {key!r} must be a non-empty string.")
+    return value
+
+
+def _optional_string(payload: Mapping[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Qdrant payload field {key!r} must be null or a non-empty string.")
+    return value
+
+
+def _provenance_source_type(payload: Mapping[str, Any]) -> str:
+    if "content_source_type" not in payload:
+        # Missing provenance in a legacy payload must never be upgraded to a
+        # source-backed claim. Preserve the pre-existing conservative default.
+        return "SYNTHETIC"
+    return _required_string(payload, "content_source_type")
+
+
+def _provenance_bool(
+    payload: Mapping[str, Any],
+    key: str,
+    *,
+    default: bool,
+) -> bool:
+    if key not in payload:
+        return default
+    value = payload[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"Qdrant payload field {key!r} must be a boolean.")
     return value
 
 

@@ -5,7 +5,7 @@ import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.rag.global_retrieval import (
     ChannelRetrievalResult,
@@ -27,8 +27,25 @@ class RetainedDocument(BaseModel):
     root_id: int | None = Field(default=None, gt=0)
     content_type: str = Field(min_length=1)
     document_kind: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    created_at: str | None = Field(default=None, min_length=1)
+    content_source_type: str = Field(default="SYNTHETIC", min_length=1)
+    content_source_name: str | None = Field(default=None, min_length=1)
+    content_source_url: str | None = Field(default=None, min_length=1)
+    untrusted_content: bool = Field(default=True, strict=True)
+    synthetic: bool = Field(default=True, strict=True)
+    data_version: str | None = Field(default=None, min_length=1)
+    dataset_sha256: str | None = Field(default=None, min_length=1)
+    security_test: bool = Field(default=False, strict=True)
     document_rank: int = Field(ge=1)
     score: float
+
+    @field_validator("security_test")
+    @classmethod
+    def _security_documents_cannot_be_retained(cls, value: bool) -> bool:
+        if value:
+            raise ValueError("Security-test documents cannot be retained for reranking.")
+        return value
 
 
 class MerchantChannelSignal(BaseModel):
@@ -489,6 +506,16 @@ def _summarize_merchant(
             root_id=hit.root_id,
             content_type=hit.content_type,
             document_kind=hit.document_kind,
+            text=hit.text,
+            created_at=hit.created_at,
+            content_source_type=hit.content_source_type,
+            content_source_name=hit.content_source_name,
+            content_source_url=hit.content_source_url,
+            untrusted_content=hit.untrusted_content,
+            synthetic=hit.synthetic,
+            data_version=hit.data_version,
+            dataset_sha256=hit.dataset_sha256,
+            security_test=hit.security_test,
             document_rank=hit.rank,
             score=hit.score,
         )

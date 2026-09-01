@@ -333,6 +333,82 @@ uv run python -m evals.rag_v2.compare_m3 \
 
 批处理将 treatment 的 Qwen 网络请求从首轮的 468 降至 147，较 control 只增加 67，低于 +320 上限；最终 capture + formal 协议的 OpenAI rewrite 与 Qwen query 估算费用合计 `$0.05784`，没有产生 document embedding 成本。但 Total P95 的冻结上限是 1.25×，最终实测为 4.920×；独立 comparator 因此只保留一项失败并拒绝晋级。生产 Compose 继续固定关闭 Global Retrieval 与 Query Rewrite，后续必须换用显著更低延迟的 rewrite provider/本地模型并通过同一 gate，再建立新的 hidden holdout。
 
+## M4：共享候选池的 Cross-Encoder 重排序
+
+M4 只比较 M3 heuristic 排序和 learned reranker，不改变 M3 Query Rewrite、Dense/Sparse 检索或 merchant-level RRF。协议先执行一次不调用 reranker Provider 的 capture，冻结每条 query 的完整 pre-rerank Top-30、pool SHA 和确定性 reranker-input SHA；schema-v5 suite 对完整 Top-30 做 judgment。随后 control/treatment 必须逐条重放相同 pool 和输入，任何漂移、未标注候选、fallback、retry 或 failure 都会 fail closed。
+
+以下命令从 `agent-service/` 执行；API Key 和 endpoint 继续从本地 `.env` 读取：
+
+```bash
+m4_common_args=(
+  --split dev
+  --quality-gate evals/rag_v2/m4_quality_gate.json
+  --qdrant-location http://127.0.0.1:6333
+  --collection nyc_review_content_v3_dashscope_qwen37_1024_v1
+  --index-manifest .local/rag-v2-remote-index-bf6ad011a2118add-65530477dcfe.json
+  --index-action reuse
+  --embedding-profile qwen37-1024
+  --max-provider-cost-usd 1.25
+  --discovery-pool-size 30
+  --candidate-limit 10
+  --warmup-cases 1
+  --global-retrieval-mode global-hybrid
+  --global-retrieval-enabled
+  --global-document-limit 200
+  --global-merchant-limit 60
+  --fusion-pool-limit 30
+  --global-documents-per-merchant 3
+  --global-hydration-concurrency 8
+  --global-branch-timeout-seconds 30
+  --fusion-rrf-k 60
+  --brand-cap 2
+  --query-rewrite-provider openai
+  --query-rewrite-model gpt-4o-mini-2024-07-18
+  --query-rewrite-max-queries 3
+  --query-rewrite-input-price-usd-per-million-tokens 0.15
+  --query-rewrite-output-price-usd-per-million-tokens 0.60
+  --reranker-candidate-limit 30
+  --reranker-max-provider-cost-usd 0.50
+)
+
+# 1. 唯一一次 pre-rerank capture；不调用 learned reranker。
+uv run python -m evals.rag_v2.run_eval \
+  "${m4_common_args[@]}" \
+  --cases evals/rag_v2/m3/cases.m3.dev.json \
+  --m4-capture \
+  --reranker-provider heuristic-multi-signal \
+  --output .local/m4-capture.json
+
+# 2. 对完整共享 Top-30 生成 schema-v5 Dev suite。
+uv run python -m evals.rag_v2.build_m4_cases \
+  --source-suite evals/rag_v2/m3/cases.m3.dev.json \
+  --capture-report .local/m4-capture.json \
+  --output-directory .local/m4-suite
+
+# 3. Provider-free heuristic control。
+uv run python -m evals.rag_v2.run_eval \
+  "${m4_common_args[@]}" \
+  --cases .local/m4-suite/cases.m4.dev.json \
+  --reranker-provider heuristic-multi-signal \
+  --output .local/m4-control.json
+
+# 4. Qwen learned-reranker treatment；每条 query 最多一个 batch request。
+uv run python -m evals.rag_v2.run_eval \
+  "${m4_common_args[@]}" \
+  --cases .local/m4-suite/cases.m4.dev.json \
+  --reranker-provider qwen \
+  --reranker-model qwen3-rerank \
+  --reranker-max-retries 0 \
+  --output .local/m4-treatment.json
+
+# 5. Paired quality/cost/safety comparison。
+uv run python -m evals.rag_v2.compare_m4 \
+  .local/m4-control.json .local/m4-treatment.json \
+  --output .local/m4-comparison.json
+```
+
+主门槛是 `nDCG@5` 至少提升 0.5pp 且 paired bootstrap 95% CI 下界不小于 0；Recall@10 不得下降，Precision@5、MRR@10、nDCG@10、中文 nDCG@5、安全与完整性指标受独立约束。按已批准的 latency waiver，Total 和 Reranker P95 继续记录但不参与本地质量判定；这不会把 Dev 结果表述为 hidden-holdout 或生产晋级证据。
+
 ## 指标和报告
 
 质量指标包括 Recall@5/10、Precision@5、nDCG@5/10、MRR@10、硬约束满足率、证据覆盖率、未标注率、hard-negative final-return rate，以及 citation owner、merchant identity、source、security、data version 和 dataset SHA 完整性。品牌指标分为从同品牌第 2 个结果起计算的 `duplicateBrandRate`，以及只惩罚第 3 个及以后结果的 `excessiveBrandRate`。

@@ -103,6 +103,42 @@ class Settings(BaseSettings):
     query_rewrite_cache_ttl_seconds: float = Field(default=900.0, ge=0, le=86_400)
     query_rewrite_max_input_characters: int = Field(default=2_000, ge=1, le=2_000)
     query_rewrite_max_output_tokens: int = Field(default=300, ge=64, le=2_000)
+    # M4 reranking is query-side only and remains opt-in until the production
+    # migration.  The dedicated secret may fall back to the existing
+    # DashScope credential without ever serializing it into trace metadata.
+    reranker_provider: Literal["disabled", "qwen"] = "disabled"
+    reranker_base_url: str = ""
+    reranker_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "NYC_REVIEW_AGENT_RERANKER_API_KEY",
+            "DASHSCOPE_API_KEY",
+        ),
+    )
+    reranker_model: str = "qwen3-rerank"
+    reranker_version: str = ""
+    reranker_instruct: str = (
+        "Given a local-business search query, rank merchants by satisfaction of the user's "
+        "stated preferences. Canonical tags and source-backed evidence are authoritative: "
+        "matching all requested preferences must outrank matching only some, while rating and "
+        "distance are tie-breakers rather than substitutes for intent."
+    )
+    reranker_candidate_limit: int = Field(default=30, ge=1, le=100)
+    reranker_max_document_characters: int = Field(default=1_600, ge=256, le=8_000)
+    reranker_max_evidence_excerpts: int = Field(default=2, ge=0, le=5)
+    reranker_max_evidence_characters: int = Field(default=500, ge=64, le=2_000)
+    reranker_timeout_seconds: float = Field(default=8.0, gt=0, le=60)
+    reranker_max_concurrency: int = Field(default=2, ge=1, le=8)
+    reranker_max_retries: int = Field(default=0, ge=0, le=2)
+    reranker_cache_size: int = Field(default=512, ge=0, le=10_000)
+    reranker_cache_ttl_seconds: float = Field(default=900.0, ge=0, le=86_400)
+    reranker_circuit_failure_threshold: int = Field(default=3, ge=1, le=20)
+    reranker_circuit_cooldown_seconds: float = Field(default=30.0, gt=0, le=600)
+    reranker_input_price_usd_per_million_tokens: float = Field(
+        default=0.11,
+        ge=0,
+        le=100,
+    )
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)
     max_recovery_attempts: int = Field(default=2, ge=0, le=5)
@@ -168,6 +204,17 @@ class Settings(BaseSettings):
                 )
         if self.query_rewrite_provider != "disabled" and not self.global_retrieval_enabled:
             raise ValueError("Query rewrite requires global retrieval to be enabled.")
+        if self.reranker_provider != "disabled":
+            if not self.global_retrieval_enabled:
+                raise ValueError("Cross-Encoder reranking requires global retrieval to be enabled.")
+            if self.reranker_model != "qwen3-rerank":
+                raise ValueError("The qwen reranker provider requires reranker_model=qwen3-rerank.")
+            if self.reranker_candidate_limit < self.max_candidates:
+                raise ValueError("Reranker candidate_limit must be at least max_candidates.")
+            if self.reranker_candidate_limit > self.global_retrieval_fusion_pool_limit:
+                raise ValueError(
+                    "Reranker candidate_limit cannot exceed global retrieval fusion_pool_limit."
+                )
         return self
 
 

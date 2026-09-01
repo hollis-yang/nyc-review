@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
@@ -23,6 +25,16 @@ from app.rag.merchant_aggregation import (
 )
 from app.rag.query_plan import build_retrieval_plan
 from app.rag.query_rewriter import QueryRewritePlan, QueryRewriteProvider
+from app.rag.reranker import (
+    CandidateReranker,
+    MerchantRerankTextBuilder,
+    RerankCandidate,
+    RerankerConfigurationError,
+    RerankEvidence,
+    RerankResult,
+    RerankStatus,
+    rerank_input_fingerprint,
+)
 from app.tools.services import (
     HARD_DESIRED_TAGS,
     RagService,
@@ -126,6 +138,9 @@ class GlobalHybridCandidateDiscovery:
         rrf_k: int = 60,
         brand_cap: int = 2,
         query_rewriter: QueryRewriteProvider | None = None,
+        reranker: CandidateReranker | None = None,
+        rerank_text_builder: MerchantRerankTextBuilder | None = None,
+        reranker_candidate_limit: int | None = None,
     ) -> None:
         if document_limit < 1:
             raise ValueError("Global document limit must be positive.")
@@ -143,6 +158,13 @@ class GlobalHybridCandidateDiscovery:
             raise ValueError("Documents per merchant must be positive.")
         if rrf_k < 1 or brand_cap < 1:
             raise ValueError("Fusion bounds must be positive.")
+        resolved_reranker_limit = (
+            fusion_pool_limit if reranker_candidate_limit is None else reranker_candidate_limit
+        )
+        if resolved_reranker_limit < 1 or resolved_reranker_limit > fusion_pool_limit:
+            raise ValueError(
+                "Reranker candidate limit must be positive and no greater than the fusion pool."
+            )
         self._shops = shops
         # The same candidate ranker is applied after M2 fusion as in the legacy
         # control. A global Qdrant outage still does not retry that ranker because
@@ -158,6 +180,9 @@ class GlobalHybridCandidateDiscovery:
         self._rrf_k = rrf_k
         self._brand_cap = brand_cap
         self._query_rewriter = query_rewriter
+        self._reranker = reranker
+        self._rerank_text_builder = rerank_text_builder or MerchantRerankTextBuilder()
+        self._reranker_candidate_limit = resolved_reranker_limit
 
     async def discover(
         self,
@@ -432,6 +457,9 @@ class GlobalHybridCandidateDiscovery:
             fusion_pool,
             limit=limit,
             discovery_started=started,
+            hard_constraints=constraints,
+            excluded_tags=excluded_tags,
+            aggregation=aggregation,
         )
 
     async def _search_global(
@@ -485,6 +513,104 @@ class GlobalHybridCandidateDiscovery:
         *,
         limit: int,
         discovery_started: float,
+        hard_constraints: UserConstraints,
+        excluded_tags: tuple[str, ...],
+        aggregation: MerchantAggregationResult,
+    ) -> CandidateSet:
+        rerank_query = _reranker_query(constraints)
+        rerank_candidates = self._rerank_candidates(
+            fusion_pool,
+            aggregation,
+            limit=self._reranker_candidate_limit,
+        )
+        pre_rerank_metadata = _pre_rerank_metadata(
+            fusion_pool,
+            rerank_query=rerank_query,
+            rerank_candidates=rerank_candidates,
+        )
+        if self._reranker is not None:
+            reranking_started = time.perf_counter()
+            try:
+                result = await self._reranker.rerank(rerank_query, rerank_candidates)
+            except asyncio.CancelledError:
+                raise
+            except RerankerConfigurationError as exc:
+                raise CandidateDiscoveryError(
+                    "Cross-Encoder reranker authorization failed."
+                ) from exc
+            except Exception:
+                result = None
+            reranking_latency_ms = _elapsed_ms(reranking_started)
+            if result is not None and result.trace.status is RerankStatus.APPLIED:
+                try:
+                    ranked = self._apply_rerank_result(
+                        fusion_pool,
+                        result,
+                        rerank_candidates=rerank_candidates,
+                        expected_input_fingerprint=str(
+                            pre_rerank_metadata["rerankerInputFingerprint"]
+                        ),
+                        limit=limit,
+                        hard_constraints=hard_constraints,
+                        excluded_tags=excluded_tags,
+                    )
+                except Exception:
+                    result = None
+                else:
+                    return ranked.model_copy(
+                        update={
+                            "retrieval_metadata": self._candidate_ranking_metadata(
+                                fusion_pool,
+                                ranked,
+                                ranking_latency_ms=reranking_latency_ms,
+                                total_latency_ms=_elapsed_ms(discovery_started),
+                                fallback_reason=None,
+                                extra_metadata={
+                                    **pre_rerank_metadata,
+                                    **_reranker_trace_metadata(result, enabled=True),
+                                },
+                            )
+                        }
+                    )
+
+            fallback_reason = (
+                result.trace.fallback_reason
+                if result is not None
+                else "reranker-error"
+            )
+            return await self._rank_with_m3_fallback(
+                constraints,
+                fusion_pool,
+                limit=limit,
+                discovery_started=discovery_started,
+                pre_rerank_metadata=pre_rerank_metadata,
+                rerank_result=result,
+                reranking_latency_ms=reranking_latency_ms,
+                reranker_fallback_reason=fallback_reason,
+            )
+
+        return await self._rank_with_m3_fallback(
+            constraints,
+            fusion_pool,
+            limit=limit,
+            discovery_started=discovery_started,
+            pre_rerank_metadata=pre_rerank_metadata,
+            rerank_result=None,
+            reranking_latency_ms=0.0,
+            reranker_fallback_reason=None,
+        )
+
+    async def _rank_with_m3_fallback(
+        self,
+        constraints: UserConstraints,
+        fusion_pool: CandidateSet,
+        *,
+        limit: int,
+        discovery_started: float,
+        pre_rerank_metadata: Mapping[str, Any],
+        rerank_result: RerankResult | None,
+        reranking_latency_ms: float,
+        reranker_fallback_reason: str | None,
     ) -> CandidateSet:
         ranking_started = time.perf_counter()
         try:
@@ -523,6 +649,18 @@ class GlobalHybridCandidateDiscovery:
                         ranking_latency_ms=ranking_latency_ms,
                         total_latency_ms=_elapsed_ms(discovery_started),
                         fallback_reason="candidate-ranking-error",
+                        extra_metadata={
+                            **pre_rerank_metadata,
+                            **_reranker_trace_metadata(
+                                rerank_result,
+                                enabled=self._reranker is not None,
+                                fallback_reason=reranker_fallback_reason,
+                                latency_ms=reranking_latency_ms,
+                                candidate_count=len(
+                                    pre_rerank_metadata["preRerankCandidateExternalIds"]
+                                ),
+                            ),
+                        },
                     )
                 }
             )
@@ -536,6 +674,18 @@ class GlobalHybridCandidateDiscovery:
                     ranking_latency_ms=ranking_latency_ms,
                     total_latency_ms=_elapsed_ms(discovery_started),
                     fallback_reason=None,
+                    extra_metadata={
+                        **pre_rerank_metadata,
+                        **_reranker_trace_metadata(
+                            rerank_result,
+                            enabled=self._reranker is not None,
+                            fallback_reason=reranker_fallback_reason,
+                            latency_ms=reranking_latency_ms,
+                            candidate_count=len(
+                                pre_rerank_metadata["preRerankCandidateExternalIds"]
+                            ),
+                        ),
+                    },
                 )
             }
         )
@@ -548,6 +698,7 @@ class GlobalHybridCandidateDiscovery:
         ranking_latency_ms: float,
         total_latency_ms: float,
         fallback_reason: str | None,
+        extra_metadata: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         base_metadata = dict(fusion_pool.retrieval_metadata)
         stage_latency = dict(base_metadata.get("candidateDiscoveryLatencyMs") or {})
@@ -568,7 +719,71 @@ class GlobalHybridCandidateDiscovery:
             "candidateDiscoveryLatencyMs": stage_latency,
             "candidatePool": len(fusion_pool.candidates),
             "finalCandidates": len(ranked.candidates),
+            **dict(extra_metadata or {}),
         }
+
+    def _rerank_candidates(
+        self,
+        fusion_pool: CandidateSet,
+        aggregation: MerchantAggregationResult,
+        *,
+        limit: int,
+    ) -> tuple[RerankCandidate, ...]:
+        evidence_by_shop = _rerank_evidence_by_shop(aggregation)
+        return tuple(
+            RerankCandidate(
+                shop_id=candidate.shop_id,
+                original_rank=rank,
+                rerank_text=self._rerank_text_builder.build(
+                    candidate,
+                    evidence_by_shop.get(candidate.shop_id, ()),
+                ),
+            )
+            for rank, candidate in enumerate(fusion_pool.candidates[:limit], start=1)
+        )
+
+    def _apply_rerank_result(
+        self,
+        fusion_pool: CandidateSet,
+        result: RerankResult,
+        *,
+        rerank_candidates: tuple[RerankCandidate, ...],
+        expected_input_fingerprint: str,
+        limit: int,
+        hard_constraints: UserConstraints,
+        excluded_tags: tuple[str, ...],
+    ) -> CandidateSet:
+        candidates_by_id = {candidate.shop_id: candidate for candidate in fusion_pool.candidates}
+        rerank_inputs_by_id = {candidate.shop_id: candidate for candidate in rerank_candidates}
+        expected_ids = set(rerank_inputs_by_id)
+        ordered_ids = list(result.ordered_shop_ids)
+        if (
+            len(ordered_ids) != len(set(ordered_ids))
+            or len(ordered_ids) != len(rerank_candidates)
+            or set(ordered_ids) != expected_ids
+            or result.trace.candidate_count != len(rerank_candidates)
+            or result.trace.input_fingerprint != expected_input_fingerprint
+        ):
+            raise ValueError("Reranker output must contain its complete bounded input exactly once.")
+        if any(
+            score.input_sha256
+            != rerank_inputs_by_id[score.shop_id].rerank_text.input_sha256
+            for score in result.scores
+        ):
+            raise ValueError("Reranker output does not match the submitted candidate documents.")
+        ordered = [candidates_by_id[shop_id] for shop_id in ordered_ids]
+        verified, rejected = _hard_filter_candidates(
+            ordered,
+            hard_constraints,
+            required_data_version=self._global.scope.data_version,
+            expected_external_ids={
+                candidate.shop_id: candidate.external_id for candidate in fusion_pool.candidates
+            },
+            excluded_tags=excluded_tags,
+        )
+        if len(verified) != len(ordered) or any(rejected.values()):
+            raise ValueError("Reranker output failed the post-ranking hard-constraint check.")
+        return fusion_pool.model_copy(update={"candidates": verified[:limit]})
 
     def _structured_fallback(
         self,
@@ -769,6 +984,154 @@ async def rank_candidates(
             },
         }
     )
+
+
+def _rerank_evidence_by_shop(
+    aggregation: MerchantAggregationResult,
+) -> dict[int, tuple[RerankEvidence, ...]]:
+    """Convert retained retrieval hits without another Qdrant read."""
+
+    rows: dict[int, list[tuple[int, int, int, str, Any]]] = {}
+    for channel_order, channel in enumerate(
+        (RetrievalChannel.DENSE, RetrievalChannel.SPARSE)
+    ):
+        ranking = aggregation.ranking(channel)
+        for merchant in ranking.merchants:
+            for document in merchant.retained_documents:
+                rows.setdefault(merchant.shop_id, []).append(
+                    (
+                        channel_order,
+                        merchant.merchant_rank,
+                        document.document_rank,
+                        document.document_id,
+                        document,
+                    )
+                )
+
+    result: dict[int, tuple[RerankEvidence, ...]] = {}
+    for shop_id, documents in rows.items():
+        ordered = sorted(documents, key=lambda item: item[:4])
+        converted: list[RerankEvidence] = []
+        for rank, row in enumerate(ordered, start=1):
+            document = row[-1]
+            converted.append(
+                RerankEvidence(
+                    rank=rank,
+                    shop_id=shop_id,
+                    document_id=document.document_id,
+                    source_id=document.source_id,
+                    root_id=document.root_id,
+                    content_type=document.content_type,
+                    document_kind=document.document_kind,
+                    excerpt=document.text,
+                    untrusted_content=document.untrusted_content,
+                    source_type=document.content_source_type,
+                    source_name=document.content_source_name,
+                    synthetic=document.synthetic,
+                    security_test=document.security_test,
+                )
+            )
+        result[shop_id] = tuple(converted)
+    return result
+
+
+def _reranker_query(constraints: UserConstraints) -> str:
+    lines = [constraints.query.strip()]
+    if constraints.category:
+        lines.append(f"category: {constraints.category}")
+    if constraints.neighborhood:
+        lines.append(f"neighborhood: {constraints.neighborhood}")
+    if constraints.desired_tags:
+        lines.append(
+            "preferred_canonical_tags: "
+            + ", ".join(sorted(set(constraints.desired_tags)))
+        )
+    if constraints.budget_cents is not None:
+        per_person = constraints.budget_cents // constraints.party_size
+        lines.append(f"maximum_price_per_person_cents: {per_person}")
+    if constraints.visit_time:
+        lines.append(f"visit_time: {constraints.visit_time}")
+    return "\n".join(lines)
+
+
+def _pre_rerank_metadata(
+    fusion_pool: CandidateSet,
+    *,
+    rerank_query: str,
+    rerank_candidates: tuple[RerankCandidate, ...],
+) -> dict[str, Any]:
+    by_id = {candidate.shop_id: candidate for candidate in fusion_pool.candidates}
+    external_ids = [by_id[item.shop_id].external_id for item in rerank_candidates]
+    document_ids = {
+        str(item.shop_id): list(item.rerank_text.document_ids)
+        for item in rerank_candidates
+    }
+    return {
+        "preRerankCandidateExternalIds": external_ids,
+        "preRerankPoolFingerprint": _sha256_json(external_ids),
+        "rerankerInputExternalIds": external_ids,
+        "rerankerInputFingerprint": rerank_input_fingerprint(
+            rerank_query,
+            rerank_candidates,
+        ),
+        "rerankerInputDocumentIds": document_ids,
+        "rerankerInputTruncatedCount": sum(
+            item.rerank_text.truncated for item in rerank_candidates
+        ),
+    }
+
+
+def _reranker_trace_metadata(
+    result: RerankResult | None,
+    *,
+    enabled: bool,
+    fallback_reason: str | None = None,
+    latency_ms: float = 0.0,
+    candidate_count: int = 0,
+) -> dict[str, Any]:
+    if result is None:
+        return {
+            "rerankerEnabled": enabled,
+            "rerankerProvider": "unknown" if enabled else "heuristic",
+            "rerankerModel": "unknown" if enabled else "m3-heuristic-multi-signal",
+            "rerankerModelVersion": "m4-cross-encoder-v1",
+            "rerankerStatus": "unavailable" if enabled else "disabled",
+            "rerankerCandidates": candidate_count,
+            "rerankerLatencyMs": round(latency_ms, 3),
+            "rerankerNetworkRequests": 0,
+            "rerankerTokens": 0,
+            "rerankerEstimatedCostUsd": 0.0,
+            "rerankerRetryCount": 0,
+            "rerankerFailureCount": int(enabled and fallback_reason is not None),
+            "rerankerFallback": fallback_reason is not None,
+            "rerankerFallbackReason": fallback_reason,
+            "rerankerCacheHit": False,
+            "rerankerCircuitState": "closed",
+        }
+    trace = result.trace
+    return {
+        "rerankerEnabled": enabled,
+        "rerankerProvider": trace.provider,
+        "rerankerModel": trace.model,
+        "rerankerModelVersion": trace.version,
+        "rerankerStatus": trace.status.value,
+        "rerankerCandidates": trace.candidate_count,
+        "rerankerLatencyMs": round(trace.latency_ms, 3),
+        "rerankerNetworkRequests": trace.network_requests,
+        "rerankerTokens": trace.tokens,
+        "rerankerEstimatedCostUsd": trace.estimated_cost_usd,
+        "rerankerRetryCount": trace.retries,
+        "rerankerFailureCount": trace.failures,
+        "rerankerFallback": trace.fallback_used,
+        "rerankerFallbackReason": trace.fallback_reason,
+        "rerankerCacheHit": trace.cache_hit,
+        "rerankerCircuitState": trace.circuit_state.value,
+    }
+
+
+def _sha256_json(value: Any) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 async def _run_branch(
