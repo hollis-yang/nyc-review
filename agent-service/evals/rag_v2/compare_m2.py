@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -166,9 +167,30 @@ def _load_report(path: Path) -> dict[str, Any]:
     ):
         raise ValueError("M2 report contains an unjudged returned merchant.")
     recomputed = rounded(summarize_results(results))
-    if recomputed != report.get("summary"):
+    if not _summaries_match(recomputed, report.get("summary")):
         raise ValueError("M2 report summary does not match recomputation from result rows.")
     return report
+
+
+def _summaries_match(expected: Any, observed: Any) -> bool:
+    """Allow only the one-unit drift caused by serializing six-decimal case metrics."""
+
+    if isinstance(expected, dict):
+        return isinstance(observed, dict) and expected.keys() == observed.keys() and all(
+            _summaries_match(value, observed[key]) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return isinstance(observed, list) and len(expected) == len(observed) and all(
+            _summaries_match(left, right) for left, right in zip(expected, observed, strict=True)
+        )
+    if (
+        isinstance(expected, (int, float))
+        and not isinstance(expected, bool)
+        and isinstance(observed, (int, float))
+        and not isinstance(observed, bool)
+    ):
+        return math.isclose(float(expected), float(observed), rel_tol=0.0, abs_tol=1.1e-6)
+    return expected == observed
 
 
 def _validate_pair(
