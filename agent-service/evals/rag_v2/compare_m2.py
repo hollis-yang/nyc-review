@@ -183,13 +183,17 @@ def _summaries_match(expected: Any, observed: Any) -> bool:
         return isinstance(observed, list) and len(expected) == len(observed) and all(
             _summaries_match(left, right) for left, right in zip(expected, observed, strict=True)
         )
-    if (
-        isinstance(expected, (int, float))
-        and not isinstance(expected, bool)
-        and isinstance(observed, (int, float))
-        and not isinstance(observed, bool)
-    ):
-        return math.isclose(float(expected), float(observed), rel_tol=0.0, abs_tol=1.1e-6)
+    if isinstance(expected, bool):
+        return isinstance(observed, bool) and expected == observed
+    if isinstance(expected, int):
+        return isinstance(observed, int) and not isinstance(observed, bool) and expected == observed
+    if isinstance(expected, float):
+        return (
+            isinstance(observed, float)
+            and math.isfinite(expected)
+            and math.isfinite(observed)
+            and math.isclose(expected, observed, rel_tol=0.0, abs_tol=1.1e-6)
+        )
     return expected == observed
 
 

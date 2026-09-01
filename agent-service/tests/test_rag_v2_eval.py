@@ -2227,6 +2227,27 @@ def test_m2_compare_allows_only_serialization_scale_summary_rounding(tmp_path):
         compare_m2_reports(control_path, treatment_path)
 
 
+def test_m2_compare_requires_exact_integer_summary_counts(tmp_path):
+    control = _m2_report(
+        _m2_report_result(recall=0.5, ndcg=0.5, recovered=0, total_ms=100.0),
+        mode="candidate-filtered",
+        enabled=False,
+    )
+    treatment = _m2_report(
+        _m2_report_result(recall=0.6, ndcg=0.51, recovered=1, total_ms=110.0),
+        mode="global-hybrid",
+        enabled=True,
+    )
+    control["summary"]["requestCounts"]["providerNetworkRequests"] = 0.999999
+    control_path = tmp_path / "control.json"
+    treatment_path = tmp_path / "treatment.json"
+    control_path.write_text(json.dumps(control), encoding="utf-8")
+    treatment_path.write_text(json.dumps(treatment), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="summary does not match recomputation"):
+        compare_m2_reports(control_path, treatment_path)
+
+
 async def test_runtime_closes_resources_when_candidate_discovery_construction_fails(
     monkeypatch,
 ):
