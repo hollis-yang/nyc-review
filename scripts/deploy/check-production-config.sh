@@ -152,12 +152,10 @@ def parse_env(path: Path) -> dict[str, str]:
     return values
 
 env = parse_env(env_path)
-legacy_agent_tag = "sha-c2e712c9f5e55ac53a91024886df53ed806c371b"
-if env.get("AGENT_IMAGE_TAG") != legacy_agent_tag:
-    raise SystemExit(
-        "AGENT_IMAGE_TAG must remain pinned to the production-verified pre-M1 "
-        f"release {legacy_agent_tag} until the explicit RAG migration."
-    )
+profile = env.get("NYC_REVIEW_RAG_RELEASE_PROFILE") or "legacy-v1"
+if profile not in {"legacy-v1", "m3-quality-v1"}:
+    raise SystemExit(f"Unsupported NYC_REVIEW_RAG_RELEASE_PROFILE: {profile!r}")
+
 if mode == "actual":
     required = [
         "APP_SITE_ADDRESS",
@@ -177,6 +175,17 @@ if mode == "actual":
         "NYC_REVIEW_AGENT_METRICS_TOKEN",
         "NYC_REVIEW_AGENT_MCP_API_KEY",
     ]
+    if profile == "m3-quality-v1":
+        required.extend(
+            [
+                "OPENAI_API_KEY",
+                "DASHSCOPE_API_KEY",
+                "DASHSCOPE_BASE_URL",
+                "NYC_REVIEW_QDRANT_IMAGE",
+                "NYC_REVIEW_QDRANT_VOLUME",
+                "NYC_REVIEW_QDRANT_MEMORY_LIMIT",
+            ]
+        )
     missing = [key for key in required if not env.get(key)]
     if missing:
         raise SystemExit(f"Missing required production values: {', '.join(missing)}")
@@ -194,6 +203,8 @@ if mode == "actual":
             raise SystemExit(
                 f"{tag_key} must be sha- followed by the full 40-character Git commit SHA."
             )
+    if profile == "m3-quality-v1" and env["AGENT_IMAGE_TAG"] != env["IMAGE_TAG"]:
+        raise SystemExit("The M3 quality profile requires AGENT_IMAGE_TAG=IMAGE_TAG.")
     secret_keys = [
         "MYSQL_ROOT_PASSWORD",
         "NYC_REVIEW_DB_PASSWORD",
@@ -258,6 +269,7 @@ legacy_rag_contract = {
     "NYC_REVIEW_AGENT_QDRANT_LOCATION": "http://qdrant:6333",
     "NYC_REVIEW_AGENT_QDRANT_COLLECTION": "nyc_review_content_v2",
     "NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY": "/data/nyc-real-p13-full",
+    "NYC_REVIEW_AGENT_RAG_SYNC_MODE": "sync",
     "NYC_REVIEW_AGENT_EMBEDDING_PROVIDER": "hash",
     "NYC_REVIEW_AGENT_EMBEDDING_DIMENSIONS": "64",
     "NYC_REVIEW_AGENT_ALLOW_HASH_EMBEDDINGS": "true",
@@ -266,19 +278,116 @@ legacy_rag_contract = {
     "NYC_REVIEW_AGENT_RERANKER_PROVIDER": "disabled",
     "NYC_REVIEW_AGENT_RETRIEVAL_VERSION": "p12-rag-v1",
 }
-legacy_mismatches = {
+m3_rag_contract = {
+    "NYC_REVIEW_AGENT_ENVIRONMENT": "production",
+    "NYC_REVIEW_AGENT_RAG_ADAPTER": "qdrant",
+    "NYC_REVIEW_AGENT_QDRANT_LOCATION": "http://qdrant:6333",
+    "NYC_REVIEW_AGENT_QDRANT_COLLECTION": "nyc_review_content_v3_dashscope_qwen37_1024_v1",
+    "NYC_REVIEW_AGENT_RETRIEVAL_VERSION": "p12-rag-v1",
+    "NYC_REVIEW_AGENT_RAG_DATA_DIRECTORY": "/data/nyc-real-p13-full",
+    "NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE": "64",
+    "NYC_REVIEW_AGENT_RAG_SYNC_MODE": "verify",
+    "NYC_REVIEW_AGENT_EMBEDDING_PROVIDER": "qwen",
+    "NYC_REVIEW_AGENT_EMBEDDING_MODEL": "qwen3.7-text-embedding",
+    "NYC_REVIEW_AGENT_EMBEDDING_DIMENSIONS": "1024",
+    "NYC_REVIEW_AGENT_EMBEDDING_VERSION": "qwen3.7-text-embedding-1024-m1-v1",
+    "NYC_REVIEW_AGENT_EMBEDDING_BATCH_SIZE": "64",
+    "NYC_REVIEW_AGENT_EMBEDDING_MAX_CONCURRENCY": "2",
+    "NYC_REVIEW_AGENT_EMBEDDING_TIMEOUT_SECONDS": "30",
+    "NYC_REVIEW_AGENT_EMBEDDING_MAX_RETRIES": "4",
+    "NYC_REVIEW_AGENT_EMBEDDING_MAX_BATCH_CHARACTERS": "250000",
+    "NYC_REVIEW_AGENT_EMBEDDING_QUERY_CACHE_SIZE": "512",
+    "NYC_REVIEW_AGENT_EMBEDDING_QUERY_CACHE_TTL_SECONDS": "900",
+    "NYC_REVIEW_AGENT_EMBEDDING_SPARSE_FALLBACK": "false",
+    "NYC_REVIEW_AGENT_ALLOW_HASH_EMBEDDINGS": "false",
+    "NYC_REVIEW_AGENT_MAX_CANDIDATES": "10",
+    "NYC_REVIEW_AGENT_DISCOVERY_POOL_SIZE": "30",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_ENABLED": "true",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_DOCUMENT_LIMIT": "200",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_HYDRATION_LIMIT": "60",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_FUSION_POOL_LIMIT": "30",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_HYDRATION_CONCURRENCY": "8",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_BRANCH_TIMEOUT_SECONDS": "30",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_DOCUMENTS_PER_MERCHANT": "3",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_RRF_K": "60",
+    "NYC_REVIEW_AGENT_GLOBAL_RETRIEVAL_BRAND_CAP": "2",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_PROVIDER": "openai",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_BASE_URL": "https://api.openai.com/v1",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_MODEL": "gpt-4o-mini-2024-07-18",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_PROMPT_VERSION": "m3-query-rewrite-v1",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_MAX_QUERIES": "3",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_TIMEOUT_SECONDS": "8",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_MAX_CONCURRENCY": "2",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_CACHE_SIZE": "512",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_CACHE_TTL_SECONDS": "900",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_MAX_INPUT_CHARACTERS": "2000",
+    "NYC_REVIEW_AGENT_QUERY_REWRITE_MAX_OUTPUT_TOKENS": "300",
+    "NYC_REVIEW_AGENT_RERANKER_PROVIDER": "disabled",
+}
+
+expected_rag_contract = m3_rag_contract if profile == "m3-quality-v1" else legacy_rag_contract
+rag_mismatches = {
     key: agent_environment.get(key)
-    for key, expected in legacy_rag_contract.items()
+    for key, expected in expected_rag_contract.items()
     if str(agent_environment.get(key)) != expected
 }
-if legacy_mismatches:
+if rag_mismatches:
     raise SystemExit(
-        "The pinned legacy Agent requires the production hash/64d/p12-rag-v1 "
-        f"contract; mismatches: {legacy_mismatches}"
+        f"The {profile} Agent/RAG contract has mismatches: {rag_mismatches}"
     )
 
+qdrant_service = services["qdrant"]
+qdrant_volume_config = (config.get("volumes") or {}).get("qdrant-data") or {}
+if qdrant_volume_config.get("external") is not True:
+    raise SystemExit("Qdrant storage must be an explicitly external rollback-safe volume.")
+qdrant_volumes = qdrant_service.get("volumes") or []
+qdrant_storage = next(
+    (
+        volume
+        for volume in qdrant_volumes
+        if isinstance(volume, dict) and volume.get("target") == "/qdrant/storage"
+    ),
+    None,
+)
+if not qdrant_storage:
+    raise SystemExit("Qdrant must mount a named volume at /qdrant/storage.")
+
+if profile == "m3-quality-v1":
+    if qdrant_service.get("image") != "qdrant/qdrant:v1.19.0":
+        raise SystemExit("M3 quality requires qdrant/qdrant:v1.19.0.")
+    if qdrant_volume_config.get("name") != "nyc-review-production_qdrant-m3-data":
+        raise SystemExit("M3 quality requires the checksum-pinned M3 Qdrant volume.")
+    memory_limit = int(qdrant_service.get("mem_limit") or 0)
+    if memory_limit < 1_610_612_736:
+        raise SystemExit("M3 quality requires a Qdrant memory limit of at least 1536 MiB.")
+    if agent_environment.get("NYC_REVIEW_AGENT_QWEN_EMBEDDING_API_KEY") != env.get(
+        "DASHSCOPE_API_KEY"
+    ):
+        raise SystemExit("The DashScope credential was not injected into the Agent container.")
+    if agent_environment.get("NYC_REVIEW_AGENT_QWEN_EMBEDDING_BASE_URL") != env.get(
+        "DASHSCOPE_BASE_URL"
+    ):
+        raise SystemExit("The DashScope endpoint was not injected into the Agent container.")
+    if agent_environment.get("NYC_REVIEW_AGENT_QUERY_REWRITE_API_KEY") != env.get(
+        "OPENAI_API_KEY"
+    ):
+        raise SystemExit("The OpenAI rewrite credential was not injected into the Agent container.")
+    dashscope_url = env.get("DASHSCOPE_BASE_URL", "").rstrip("/")
+    allowed_suffixes = (
+        "/compatible-mode/v1",
+        "/api/v1",
+        "/services/embeddings/text-embedding/text-embedding",
+    )
+    if not dashscope_url.startswith("https://") or not dashscope_url.endswith(allowed_suffixes):
+        raise SystemExit("DASHSCOPE_BASE_URL must be an HTTPS Qwen-compatible endpoint.")
+else:
+    if qdrant_service.get("image") != "qdrant/qdrant:v1.15.3":
+        raise SystemExit("The legacy profile requires qdrant/qdrant:v1.15.3.")
+    if qdrant_volume_config.get("name") != "nyc-review-production_qdrant-data":
+        raise SystemExit("The legacy profile must retain the original Qdrant volume.")
+
 print(
-    "Production Compose validation passed: pull-only images, pinned legacy Agent, "
+    f"Production Compose validation passed: profile={profile}, pull-only images, "
     "only 80/443 published."
 )
 PY

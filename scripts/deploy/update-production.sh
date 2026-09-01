@@ -11,10 +11,9 @@ usage() {
 Usage: ./scripts/deploy/update-production.sh <40-character-git-sha>
 
 Updates a running production deployment to immutable GHCR images published by
-the successful GitHub Actions run for that commit. This script updates Spring
-and Web while preserving the independently pinned AGENT_IMAGE_TAG. Database
-migrations, P13 data releases, and Agent/RAG rollouts must follow their separate
-runbooks.
+the successful GitHub Actions run for that commit. Spring, Agent, and Web move
+to the same immutable commit tag as one application release. Qdrant index/profile
+promotion remains a separate, reversible operation.
 EOF
 }
 
@@ -49,31 +48,32 @@ if [[ ! "$old_tag" =~ ^sha-[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 
-agent_tag="$(awk -F= '$1 == "AGENT_IMAGE_TAG" { print substr($0, index($0, "=") + 1); exit }' "$ENV_FILE")"
-if [[ ! "$agent_tag" =~ ^sha-[0-9a-f]{40}$ ]]; then
+old_agent_tag="$(awk -F= '$1 == "AGENT_IMAGE_TAG" { print substr($0, index($0, "=") + 1); exit }' "$ENV_FILE")"
+if [[ ! "$old_agent_tag" =~ ^sha-[0-9a-f]{40}$ ]]; then
   echo "AGENT_IMAGE_TAG is missing or invalid in $ENV_FILE" >&2
-  echo "Set it to the last known-good pre-M1 Agent image before deploying." >&2
   exit 1
 fi
 
-restore_old_tag() {
+restore_old_tags() {
   sed -i.bak "s|^IMAGE_TAG=.*|IMAGE_TAG=$old_tag|" "$ENV_FILE"
+  sed -i.bak "s|^AGENT_IMAGE_TAG=.*|AGENT_IMAGE_TAG=$old_agent_tag|" "$ENV_FILE"
   rm -f -- "$ENV_FILE.bak"
 }
 
 cd "$PROJECT_ROOT"
 sed -i.bak "s|^IMAGE_TAG=.*|IMAGE_TAG=$new_tag|" "$ENV_FILE"
+sed -i.bak "s|^AGENT_IMAGE_TAG=.*|AGENT_IMAGE_TAG=$new_tag|" "$ENV_FILE"
 rm -f -- "$ENV_FILE.bak"
 
 if ! ./scripts/deploy/check-production-config.sh "$ENV_FILE"; then
-  restore_old_tag
-  echo "Validation failed; IMAGE_TAG was restored to $old_tag." >&2
+  restore_old_tags
+  echo "Validation failed; application image tags were restored." >&2
   exit 1
 fi
 
 if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull; then
-  restore_old_tag
-  echo "Image pull failed; IMAGE_TAG was restored to $old_tag." >&2
+  restore_old_tags
+  echo "Image pull failed; application image tags were restored." >&2
   exit 1
 fi
 
@@ -81,8 +81,8 @@ if ! docker compose \
   --env-file "$ENV_FILE" \
   -f "$COMPOSE_FILE" \
   up -d --wait --wait-timeout 900; then
-  restore_old_tag
-  echo "Release startup failed; IMAGE_TAG was restored to $old_tag." >&2
+  restore_old_tags
+  echo "Release startup failed; application image tags were restored." >&2
   echo "Restoring containers from the previous application release..." >&2
   if docker compose \
     --env-file "$ENV_FILE" \
@@ -98,5 +98,5 @@ fi
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -a
 echo "Production release completed: $new_tag"
-echo "Previous release: $old_tag"
-echo "Pinned Agent release (unchanged): $agent_tag"
+echo "Previous Spring/Web release: $old_tag"
+echo "Previous Agent release: $old_agent_tag"

@@ -96,7 +96,7 @@ exit 0
         self.assertIn("AGENT_IMAGE_TAG is missing or invalid", result.stderr)
         self.assertEqual(self._environment_values()["IMAGE_TAG"], f"sha-{OLD_SHA}")
 
-    def test_success_updates_application_tag_and_preserves_agent_tag(self) -> None:
+    def test_success_updates_all_application_tags(self) -> None:
         self._write_environment()
 
         result = self._run_update()
@@ -104,10 +104,10 @@ exit 0
         self.assertEqual(result.returncode, 0, result.stderr)
         values = self._environment_values()
         self.assertEqual(values["IMAGE_TAG"], f"sha-{NEW_SHA}")
-        self.assertEqual(values["AGENT_IMAGE_TAG"], f"sha-{AGENT_SHA}")
-        self.assertIn(f"Pinned Agent release (unchanged): sha-{AGENT_SHA}", result.stdout)
+        self.assertEqual(values["AGENT_IMAGE_TAG"], f"sha-{NEW_SHA}")
+        self.assertIn(f"Previous Agent release: sha-{AGENT_SHA}", result.stdout)
 
-    def test_failed_startup_restores_application_tag_only(self) -> None:
+    def test_failed_startup_restores_all_application_tags(self) -> None:
         self._write_environment()
 
         result = self._run_update(fail_up=True)

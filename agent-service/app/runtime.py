@@ -111,6 +111,7 @@ class AgentRuntime:
                     index_batch_size=settings.rag_index_batch_size,
                     dataset_sha256=dataset_sha256,
                     retrieval_version=settings.retrieval_version,
+                    sync_mode=settings.rag_sync_mode,
                     allow_sparse_fallback=_embedding_sparse_fallback_enabled(settings),
                 )
                 if settings.rag_data_directory is not None:

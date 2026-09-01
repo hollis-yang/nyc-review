@@ -204,6 +204,7 @@ async def test_runtime_injects_and_idempotently_closes_query_rewriter(
     rewriter = _FakeQueryRewriter()
     candidate = object()
     injected = {}
+    rag_kwargs = {}
 
     monkeypatch.setattr(runtime_module, "_build_shop_service", lambda _settings: object())
     monkeypatch.setattr(
@@ -217,7 +218,11 @@ async def test_runtime_injects_and_idempotently_closes_query_rewriter(
         lambda _location, *, api_key="": qdrant,
     )
     monkeypatch.setattr(runtime_module, "_build_embedding_service", lambda _settings: embedding)
-    monkeypatch.setattr(runtime_module, "QdrantRagService", lambda **_kwargs: _FakeRagService())
+    def build_rag(**kwargs):
+        rag_kwargs.update(kwargs)
+        return _FakeRagService()
+
+    monkeypatch.setattr(runtime_module, "QdrantRagService", build_rag)
     monkeypatch.setattr(runtime_module, "_build_query_rewriter", lambda _settings: rewriter)
 
     def build_discovery(*_args, **kwargs):
@@ -233,12 +238,14 @@ async def test_runtime_injects_and_idempotently_closes_query_rewriter(
         _global_settings(
             tmp_path,
             openai_embedding_api_key="unused",
+            rag_sync_mode="verify",
         )
     )
 
     assert runtime.query_rewriter is rewriter
     assert runtime.candidate_discovery is candidate
     assert injected["query_rewriter"] is rewriter
+    assert rag_kwargs["sync_mode"] == "verify"
 
     await runtime.close()
     await runtime.close()

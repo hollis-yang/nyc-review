@@ -1,6 +1,8 @@
 # RAG v2 Optimization Roadmap
 
-状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成；M3 工程与 Dev 质量验收完成但延迟门禁未通过；M4 工程与冻结 Dev 隔离实验已完成，但质量、置信区间和 token 门禁未通过。生产继续使用 legacy RAG，M2–M4 开关保持关闭
+评测冻结状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成；M3 工程与 Dev 质量验收完成但延迟门禁未通过；M4 工程与冻结 Dev 隔离实验已完成，但质量、置信区间和 token 门禁未通过。
+
+发布决策（2026-09-01）：项目所有者选择“最佳质量优先”，明确接受 M3 已测得的延迟代价并授权发布 M3 quality profile；M4 learned reranker 仍保持关闭。该产品决策不会追溯改写冻结 Eval 的失败结论，也不等同于通过新的 hidden holdout。生产迁移使用 checksum-pinned Qdrant 1.19 snapshot、只读 corpus verification、真实 Provider canary 和完整 legacy volume/config 回滚。
 
 范围：`agent-service` 的 Embedding、候选召回、查询扩展、重排、评测与生产发布
 

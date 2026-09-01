@@ -11,7 +11,12 @@ from app.rag.embeddings import (
     EmbeddingUsage,
 )
 from app.rag.models import RagDocument
-from app.rag.qdrant_store import QdrantRagService
+from app.rag.qdrant_store import (
+    REQUIRED_PAYLOAD_INDEXES,
+    QdrantRagService,
+    _point_id,
+    _with_content_hash,
+)
 
 
 class RecordingEmbeddingService:
@@ -53,6 +58,89 @@ class RecordingEmbeddingService:
 
     async def aclose(self) -> None:
         await self._delegate.aclose()
+
+
+class VerifyOnlyQdrantClient:
+    init_options = {"url": "http://qdrant:6333"}
+
+    def __init__(
+        self,
+        records=(),
+        *,
+        collection_exists: bool = True,
+        payload_schema=None,
+    ):
+        self.records = list(records)
+        self.collection_is_present = collection_exists
+        self.payload_schema = (
+            dict(REQUIRED_PAYLOAD_INDEXES) if payload_schema is None else payload_schema
+        )
+        self.write_calls: list[str] = []
+
+    async def collection_exists(self, _collection_name):
+        return self.collection_is_present
+
+    async def get_collection(self, _collection_name):
+        return SimpleNamespace(
+            config=SimpleNamespace(
+                params=SimpleNamespace(
+                    vectors={
+                        "dense": models.VectorParams(
+                            size=64,
+                            distance=models.Distance.COSINE,
+                        )
+                    },
+                    sparse_vectors={
+                        "lexical": models.SparseVectorParams(modifier=models.Modifier.IDF)
+                    },
+                )
+            ),
+            payload_schema=self.payload_schema,
+        )
+
+    async def scroll(self, **_kwargs):
+        return self.records, None
+
+    async def create_collection(self, **_kwargs):
+        self._reject_write("create_collection")
+
+    async def create_payload_index(self, **_kwargs):
+        self._reject_write("create_payload_index")
+
+    async def delete_collection(self, _collection_name):
+        self._reject_write("delete_collection")
+
+    async def upsert(self, **_kwargs):
+        self._reject_write("upsert")
+
+    async def delete(self, **_kwargs):
+        self._reject_write("delete")
+
+    def _reject_write(self, operation: str) -> None:
+        self.write_calls.append(operation)
+        raise AssertionError(f"verify mode attempted Qdrant write: {operation}")
+
+
+def _verify_record(
+    document: RagDocument,
+    embeddings: RecordingEmbeddingService,
+    *,
+    dataset_sha256: str | None = None,
+    retrieval_version: str = "p12-rag-v1",
+):
+    bound = (
+        document
+        if dataset_sha256 is None or document.dataset_sha256 == dataset_sha256
+        else document.model_copy(update={"dataset_sha256": dataset_sha256})
+    )
+    normalized = _with_content_hash(bound)
+    return SimpleNamespace(
+        id=_point_id(normalized, embeddings.metadata.identity, retrieval_version),
+        payload={
+            "content_sha256": normalized.content_sha256,
+            "document_id": normalized.document_id,
+        },
+    )
 
 
 async def test_qdrant_rag_filters_by_shop_and_returns_traceable_citations():
@@ -302,6 +390,152 @@ async def test_qdrant_sync_does_not_delete_stale_points_when_embedding_fails():
 
     assert (await client.count("test_safe_stale_deletion", exact=True)).count == 2
     await client.close()
+
+
+async def test_qdrant_verify_accepts_an_exact_corpus_without_embeddings_or_writes():
+    embeddings = RecordingEmbeddingService()
+    embeddings.fail_documents = True
+    dataset_sha256 = "e" * 64
+    documents = [
+        RagDocument(
+            document_id=f"review:verify:{index}",
+            shop_id=200 + index,
+            content_type="shop_review_thread",
+            source_id=f"shop_review_thread:verify:{index}",
+            text=f"Verified review thread {index}",
+            data_version="nyc-real-v1",
+        )
+        for index in range(2)
+    ]
+    client = VerifyOnlyQdrantClient(
+        [
+            _verify_record(
+                document,
+                embeddings,
+                dataset_sha256=dataset_sha256,
+            )
+            for document in documents
+        ]
+    )
+    rag = QdrantRagService(
+        client=client,
+        embeddings=embeddings,
+        collection_name="prebuilt_verified_content",
+        dataset_sha256=dataset_sha256,
+        sync_mode="verify",
+    )
+
+    stats = await rag.sync(documents, data_version="nyc-real-v1")
+
+    assert stats.as_metadata() == {
+        "total": 2,
+        "upserted": 0,
+        "unchanged": 2,
+        "deleted": 0,
+    }
+    assert embeddings.document_batches == []
+    assert client.write_calls == []
+
+
+@pytest.mark.parametrize(
+    ("case_name", "expected_mismatch"),
+    [
+        ("missing", "missing=1"),
+        ("changed", "changed=1"),
+        ("stale", "stale=1"),
+    ],
+)
+async def test_qdrant_verify_fails_closed_for_corpus_drift_without_embeddings_or_writes(
+    case_name,
+    expected_mismatch,
+):
+    embeddings = RecordingEmbeddingService()
+    embeddings.fail_documents = True
+    indexed_documents = [
+        RagDocument(
+            document_id=f"review:drift:{index}",
+            shop_id=300 + index,
+            content_type="shop_review_thread",
+            source_id=f"shop_review_thread:drift:{index}",
+            text=f"Indexed review thread {index}",
+            data_version="nyc-real-v1",
+        )
+        for index in range(2)
+    ]
+    desired_documents = list(indexed_documents)
+    if case_name == "missing":
+        desired_documents.append(
+            RagDocument(
+                document_id="review:drift:missing",
+                shop_id=399,
+                content_type="shop_review_thread",
+                source_id="shop_review_thread:drift:missing",
+                text="This desired point is missing from Qdrant.",
+                data_version="nyc-real-v1",
+            )
+        )
+    elif case_name == "changed":
+        desired_documents[0] = desired_documents[0].model_copy(
+            update={"text": "This desired content changed after indexing."}
+        )
+    else:
+        desired_documents.pop()
+
+    client = VerifyOnlyQdrantClient(
+        [_verify_record(document, embeddings) for document in indexed_documents]
+    )
+    rag = QdrantRagService(
+        client=client,
+        embeddings=embeddings,
+        collection_name="drifted_prebuilt_content",
+        sync_mode="verify",
+    )
+
+    with pytest.raises(ValueError, match=expected_mismatch):
+        await rag.sync(desired_documents, data_version="nyc-real-v1")
+
+    assert embeddings.document_batches == []
+    assert client.write_calls == []
+
+
+@pytest.mark.parametrize("schema_failure", ["collection", "payload_index"])
+async def test_qdrant_verify_requires_prebuilt_collection_and_payload_indexes_without_writes(
+    schema_failure,
+):
+    payload_schema = dict(REQUIRED_PAYLOAD_INDEXES)
+    if schema_failure == "payload_index":
+        payload_schema.pop("shop_id")
+    client = VerifyOnlyQdrantClient(
+        collection_exists=schema_failure != "collection",
+        payload_schema=payload_schema,
+    )
+    rag = QdrantRagService(
+        client=client,
+        embeddings=RecordingEmbeddingService(),
+        collection_name="required_prebuilt_content",
+        sync_mode="verify",
+    )
+    expected = "already exist" if schema_failure == "collection" else "payload index 'shop_id'"
+
+    with pytest.raises(ValueError, match=expected):
+        await rag.sync([], data_version="nyc-real-v1")
+
+    assert client.write_calls == []
+
+
+async def test_qdrant_verify_rejects_direct_indexing_before_any_qdrant_call():
+    client = VerifyOnlyQdrantClient()
+    rag = QdrantRagService(
+        client=client,
+        embeddings=RecordingEmbeddingService(),
+        collection_name="read_only_content",
+        sync_mode="verify",
+    )
+
+    with pytest.raises(RuntimeError, match="read-only"):
+        await rag.index([])
+
+    assert client.write_calls == []
 
 
 async def test_qdrant_sync_scopes_payload_and_reuse_by_embedding_identity():

@@ -331,7 +331,7 @@ uv run python -m evals.rag_v2.compare_m3 \
 
 质量、安全、完整性、请求、token 与费用子门禁全部通过：hard-constraint satisfaction 和 evidence coverage 均为 100%，security/version/citation mismatch、hard-negative、重复 merchant、第 3 个同品牌结果、rewrite fallback、Provider retry/failure 均为 0。规则已覆盖子集 nDCG 只变化 `-0.0133pp`，否定表达 nDCG 提升 `18.81pp`。
 
-批处理将 treatment 的 Qwen 网络请求从首轮的 468 降至 147，较 control 只增加 67，低于 +320 上限；最终 capture + formal 协议的 OpenAI rewrite 与 Qwen query 估算费用合计 `$0.05784`，没有产生 document embedding 成本。但 Total P95 的冻结上限是 1.25×，最终实测为 4.920×；独立 comparator 因此只保留一项失败并拒绝晋级。生产 Compose 继续固定关闭 Global Retrieval 与 Query Rewrite，后续必须换用显著更低延迟的 rewrite provider/本地模型并通过同一 gate，再建立新的 hidden holdout。
+批处理将 treatment 的 Qwen 网络请求从首轮的 468 降至 147，较 control 只增加 67，低于 +320 上限；最终 capture + formal 协议的 OpenAI rewrite 与 Qwen query 估算费用合计 `$0.05784`，没有产生 document embedding 成本。但 Total P95 的冻结上限是 1.25×，最终实测为 4.920×；独立 comparator 因此只保留一项失败并拒绝晋级。该冻结结论不变。项目所有者随后于 2026-09-01 选择“最佳质量优先”，明确接受已测延迟并授权以独立 `m3-quality-v1` profile 发布；这是一项显式产品取舍，不表示延迟 gate 或 hidden holdout 已通过。M4 learned reranker 继续关闭。
 
 ## M4：共享候选池的 Cross-Encoder 重排序
 

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     qdrant_collection: str = "nyc_review_content_v2"
     retrieval_version: str = "p12-rag-v1"
     rag_data_directory: Path | None = None
+    rag_sync_mode: Literal["sync", "verify"] = "sync"
     rag_index_batch_size: int = Field(default=128, ge=1, le=2_048)
     embedding_provider: Literal["hash", "openai", "qwen"] = "hash"
     embedding_base_url: str = "https://api.openai.com/v1"
@@ -149,6 +150,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def reject_unapproved_production_hash_embeddings(self) -> Settings:
+        if self.rag_sync_mode == "verify":
+            if self.rag_adapter != "qdrant":
+                raise ValueError("RAG verify mode requires rag_adapter=qdrant.")
+            if self.rag_data_directory is None:
+                raise ValueError(
+                    "RAG verify mode requires rag_data_directory so the desired corpus can be verified."
+                )
         if (
             self.environment.strip().casefold() in {"production", "prod", "staging"}
             and self.embedding_provider == "hash"

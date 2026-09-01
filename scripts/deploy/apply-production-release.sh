@@ -174,9 +174,10 @@ if [[ ${#change_ids[@]} -eq 0 ]]; then
   exit 1
 fi
 
-echo "Pre-pulling target Spring/Web and pinned Agent images before database changes..."
+echo "Pre-pulling target Spring, Agent, and Web images before database changes..."
 (
   export IMAGE_TAG="sha-$raw_sha"
+  export AGENT_IMAGE_TAG="sha-$raw_sha"
   compose pull spring web agent-service
 )
 

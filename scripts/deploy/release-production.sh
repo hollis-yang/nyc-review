@@ -74,6 +74,10 @@ release_input_paths=(
   scripts/deploy/check-production-config.sh
   scripts/deploy/apply-production-release.sh
   scripts/deploy/update-production.sh
+  scripts/deploy/stage-m3-qdrant.sh
+  scripts/deploy/promote-m3-production.sh
+  scripts/deploy/verify-m3-qdrant.py
+  scripts/deploy/verify-m3-runtime.py
   src/main/resources/db
 )
 
@@ -115,9 +119,9 @@ echo "Uploading release files to $SSH_TARGET..."
 scp -i "$SSH_KEY" "$bundle" "$database_archive" "$SSH_TARGET:/tmp/"
 
 printf -v remote_command \
-  'set -e; tar -xzf %q -C %q; chmod +x %q/scripts/deploy/check-production-config.sh %q/scripts/deploy/update-production.sh %q/scripts/deploy/apply-production-release.sh; cd %q; ./scripts/deploy/apply-production-release.sh %q %q; rm -f %q %q' \
+  'set -e; tar -xzf %q -C %q; chmod +x %q/scripts/deploy/check-production-config.sh %q/scripts/deploy/update-production.sh %q/scripts/deploy/apply-production-release.sh %q/scripts/deploy/stage-m3-qdrant.sh %q/scripts/deploy/promote-m3-production.sh %q/scripts/deploy/verify-m3-qdrant.py %q/scripts/deploy/verify-m3-runtime.py; cd %q; ./scripts/deploy/apply-production-release.sh %q %q; rm -f %q %q' \
   "$remote_bundle" "$REMOTE_ROOT" \
-  "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" \
+  "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" "$REMOTE_ROOT" \
   "$raw_sha" "$remote_database_archive" \
   "$remote_bundle" "$remote_database_archive"
 

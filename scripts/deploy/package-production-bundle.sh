@@ -17,6 +17,10 @@ tar -czf "$OUTPUT" \
   scripts/deploy/check-production-config.sh \
   scripts/deploy/apply-production-release.sh \
   scripts/deploy/update-production.sh \
+  scripts/deploy/stage-m3-qdrant.sh \
+  scripts/deploy/promote-m3-production.sh \
+  scripts/deploy/verify-m3-qdrant.py \
+  scripts/deploy/verify-m3-runtime.py \
   src/main/resources/db
 
 echo "Created production bundle: $OUTPUT"

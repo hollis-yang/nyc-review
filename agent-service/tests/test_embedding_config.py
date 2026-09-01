@@ -38,6 +38,19 @@ def test_production_hash_requires_explicit_override():
         Settings(environment=" Production ", embedding_provider="hash")
 
 
+def test_rag_verify_mode_defaults_to_sync_and_requires_a_qdrant_corpus(tmp_path, monkeypatch):
+    assert Settings().rag_sync_mode == "sync"
+
+    monkeypatch.setenv("NYC_REVIEW_AGENT_RAG_SYNC_MODE", "verify")
+    settings = Settings(rag_adapter="qdrant", rag_data_directory=tmp_path)
+    assert settings.rag_sync_mode == "verify"
+
+    with pytest.raises(ValueError, match="requires rag_adapter=qdrant"):
+        Settings(rag_data_directory=tmp_path)
+    with pytest.raises(ValueError, match="requires rag_data_directory"):
+        Settings(rag_adapter="qdrant")
+
+
 def test_qwen_model_and_dimensions_are_validated_before_any_provider_call():
     with pytest.raises(ValueError, match="requires embedding_model"):
         Settings(embedding_provider="qwen", embedding_model="text-embedding-3-small")

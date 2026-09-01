@@ -116,7 +116,7 @@ NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE=128 \
 uv run uvicorn app.main:app --port 8090
 ```
 
-启动时会校验 `manifest.json` 与 `import_manifest.json`：`merchantIdentityMode` 必须为 `REAL_ONLY`、`mockShops` 必须为 `0`、六个分类都必须存在，shopId、`dataVersion` 与数据集 SHA-256 也必须一致。完整数据集 SHA 会进入 Qdrant payload、point ID、同步 scope 和检索 filter。索引按批次流式读取，不再删除并完整重建 Collection；相同内容哈希会跳过，只批量 upsert 新增或变化文档，并在成功后清理当前数据集 scope 的陈旧文档。批大小由 `NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE` 控制，健康检查和 Run metadata 中的 `ragIndexStats` 可查看 total、upserted、unchanged 和 deleted 数量。
+启动时会校验 `manifest.json` 与 `import_manifest.json`：`merchantIdentityMode` 必须为 `REAL_ONLY`、`mockShops` 必须为 `0`、六个分类都必须存在，shopId、`dataVersion` 与数据集 SHA-256 也必须一致。完整数据集 SHA 会进入 Qdrant payload、point ID、同步 scope 和检索 filter。索引按批次流式读取，不再删除并完整重建 Collection；相同内容哈希会跳过，只批量 upsert 新增或变化文档，并在成功后清理当前数据集 scope 的陈旧文档。批大小由 `NYC_REVIEW_AGENT_RAG_INDEX_BATCH_SIZE` 控制，健康检查和 Run metadata 中的 `ragIndexStats` 可查看 total、upserted、unchanged 和 deleted 数量。生产快照可设置 `NYC_REVIEW_AGENT_RAG_SYNC_MODE=verify`：此模式要求 Collection 与 payload indexes 已存在，并逐条核对 point ID、document ID、content hash 与 scope；任何 missing/changed/stale 文档都会阻止启动，且不会创建索引、调用文档 Embedding、upsert 或 delete。
 
 RAG 将每个根评论及其一、二级回复组合成一份 `shop_review_thread` 文档，并继续索引商户介绍、博客与博客评论。Payload 分开保留商户身份来源和记录自身的内容来源；这些字段用于审计和数据隔离，不会拼进用户可见的 citation excerpt。Loader 会拒绝来源类型或 `dataVersion` 不符合 real-only 契约的数据。营业时间优先采用 OSM `opening_hours`，缺失时使用类别默认值；价格与稀疏发现标签采用稳定估算；评分来自根评论聚合。Verifier 会尊重 Discovery 明确记录的约束放宽，避免把同一缺失标签再按候选逐条报告为失败。
 

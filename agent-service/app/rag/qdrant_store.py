@@ -8,6 +8,7 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 from qdrant_client import AsyncQdrantClient, models
 
@@ -78,10 +79,13 @@ class QdrantRagService:
         index_batch_size: int = 128,
         dataset_sha256: str | None = None,
         retrieval_version: str = "p12-rag-v1",
+        sync_mode: Literal["sync", "verify"] = "sync",
         allow_sparse_fallback: bool = True,
     ):
         if index_batch_size < 1:
             raise ValueError("index_batch_size must be positive")
+        if sync_mode not in {"sync", "verify"}:
+            raise ValueError("sync_mode must be either 'sync' or 'verify'")
         self._client = client
         self._embeddings = embeddings
         self._collection_name = collection_name
@@ -89,6 +93,7 @@ class QdrantRagService:
         self._index_batch_size = index_batch_size
         self._dataset_sha256 = dataset_sha256
         self._retrieval_version = retrieval_version
+        self._sync_mode = sync_mode
         self._allow_sparse_fallback = allow_sparse_fallback
         self._embedding_identity = embeddings.metadata.identity
         self._collection_ready = False
@@ -97,7 +102,12 @@ class QdrantRagService:
     async def ensure_collection(self) -> None:
         if self._collection_ready:
             return
-        if not await self._client.collection_exists(self._collection_name):
+        collection_exists = await self._client.collection_exists(self._collection_name)
+        if self._sync_mode == "verify" and not collection_exists:
+            raise ValueError(
+                f"Qdrant verify mode requires collection {self._collection_name!r} to already exist."
+            )
+        if not collection_exists:
             await self._client.create_collection(
                 collection_name=self._collection_name,
                 vectors_config={
@@ -112,6 +122,10 @@ class QdrantRagService:
             )
         info = await self._client.get_collection(self._collection_name)
         self._validate_vector_schema(info)
+        if self._sync_mode == "verify":
+            self._validate_payload_schema(info)
+            self._collection_ready = True
+            return
         await self._ensure_payload_indexes()
         if self._requires_payload_schema_validation():
             info = await self._client.get_collection(self._collection_name)
@@ -188,6 +202,8 @@ class QdrantRagService:
     async def index(self, documents: Iterable[RagDocument], *, replace: bool = False) -> int:
         """Batch index documents while preserving the legacy integer return contract."""
 
+        if self._sync_mode == "verify":
+            raise RuntimeError("Qdrant verify mode is read-only and cannot index documents.")
         if replace and await self._client.collection_exists(self._collection_name):
             await self._client.delete_collection(self._collection_name)
             self._collection_ready = False
@@ -220,6 +236,12 @@ class QdrantRagService:
             self._retrieval_version,
         )
         existing = await self._existing_points(scope)
+        if self._sync_mode == "verify":
+            return self._verify_corpus(
+                documents,
+                data_version=data_version,
+                existing=existing,
+            )
         desired_ids: set[str] = set()
         upserted = 0
         unchanged = 0
@@ -268,6 +290,78 @@ class QdrantRagService:
             upserted_documents=upserted,
             unchanged_documents=unchanged,
             deleted_documents=len(stale_ids),
+        )
+
+    def _verify_corpus(
+        self,
+        documents: Iterable[RagDocument],
+        *,
+        data_version: str | None,
+        existing: Mapping[str, dict],
+    ) -> RagIndexStats:
+        """Validate an existing scope without embedding documents or mutating Qdrant."""
+
+        desired_ids: set[str] = set()
+        missing_count = 0
+        changed_count = 0
+        missing_samples: list[str] = []
+        changed_samples: list[str] = []
+
+        for batch in _batched(documents, self._index_batch_size):
+            for document in batch:
+                if data_version is not None and document.data_version != data_version:
+                    raise ValueError(
+                        f"RAG document {document.document_id} does not match data version {data_version}."
+                    )
+                item = _with_content_hash(self._bind_dataset_identity(document))
+                point_id = _point_id(
+                    item,
+                    self._embedding_identity,
+                    self._retrieval_version,
+                )
+                if point_id in desired_ids:
+                    raise ValueError(f"Duplicate RAG document ID: {item.document_id}")
+                desired_ids.add(point_id)
+                if point_id not in existing:
+                    missing_count += 1
+                    if len(missing_samples) < 3:
+                        missing_samples.append(item.document_id)
+                elif (
+                    existing[point_id].get("content_sha256") != item.content_sha256
+                    or existing[point_id].get("document_id") != item.document_id
+                ):
+                    changed_count += 1
+                    if len(changed_samples) < 3:
+                        changed_samples.append(item.document_id)
+
+            processed = len(desired_ids)
+            if processed % 5_000 < len(batch):
+                LOGGER.info(
+                    "RAG verify progress: processed=%s missing=%s changed=%s",
+                    processed,
+                    missing_count,
+                    changed_count,
+                )
+
+        stale_ids = sorted(set(existing) - desired_ids)
+        if missing_count or changed_count or stale_ids:
+            stale_documents = [
+                str(existing[point_id].get("document_id") or point_id)
+                for point_id in stale_ids[:3]
+            ]
+            raise ValueError(
+                "Qdrant RAG corpus verification failed: "
+                f"missing={missing_count}, "
+                f"changed={changed_count}, "
+                f"stale={len(stale_ids)}; "
+                f"missing_samples={missing_samples!r}, "
+                f"changed_samples={changed_samples!r}, "
+                f"stale_samples={stale_documents!r}."
+            )
+
+        return RagIndexStats(
+            total_documents=len(desired_ids),
+            unchanged_documents=len(desired_ids),
         )
 
     def _bind_dataset_identity(self, document: RagDocument) -> RagDocument:
