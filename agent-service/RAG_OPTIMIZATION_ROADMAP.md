@@ -1,6 +1,6 @@
 # RAG v2 Optimization Roadmap
 
-状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成；M3 工程与 Dev 质量验收完成，但 1.25× 延迟门禁未通过。生产开关继续关闭
+状态：M0 已完成；M1 工程与实验已完成但原 policy holdout 未通过；M2 工程与有界 Dev gate 已完成；M3 工程与 Dev 质量验收完成但延迟门禁未通过；M4 工程与冻结 Dev 隔离实验已完成，但质量、置信区间和 token 门禁未通过。生产继续使用 legacy RAG，M2–M4 开关保持关闭
 
 范围：`agent-service` 的 Embedding、候选召回、查询扩展、重排、评测与生产发布
 
@@ -723,19 +723,41 @@ class Reranker(Protocol):
 
 ### 9.6 测试
 
-- [ ] Reranker 提升相关候选顺序但不能引入 hard-constraint violation。
-- [ ] Provider 返回缺失、重复或 NaN 分数时拒绝该批结果并 fallback。
-- [ ] Timeout/circuit open 时保留 Fusion 顺序。
-- [ ] 输入构建不会包含 security-test 文档或跨用户数据。
-- [ ] 长 Evidence 能按确定规则截断。
-- [ ] 结果可追踪到 reranker model/version 与输入文档 ID。
+- [x] Reranker 可改变相关候选顺序，但 pre/post hard-constraint validation 禁止恢复不合格候选。
+- [x] Provider 返回缺失、重复、未知 ID 或 NaN 分数时拒绝该批结果并 fallback。
+- [x] Timeout、连续失败或 circuit open 时保留 M3 Fusion 顺序。
+- [x] 输入构建拒绝 security-test、错误 data version/dataset SHA、citation owner/external ID/source mismatch。
+- [x] 长 Evidence、excerpt 数量和 merchant 文本按确定规则截断。
+- [x] Trace 记录 reranker provider/model/version、instruction/input fingerprint、候选数、延迟、usage 与 fallback。
+- [x] schema-v5 replay 对完整 QueryRewritePlan、Top-30 CandidateSet、exact reranker input、EvidencePack 和 heuristic Top-10 做分层 SHA 校验。
 
 ### 9.7 验收标准
 
-- Precision@5、MRR 或 nDCG@5 相对 M3 有明确增益。
-- Recall@10 和 hard-constraint satisfaction 不回归。
-- P95、资源使用和 provider cost 满足 M0 Gate。
-- 关闭 Reranker Feature Flag 后能立即恢复 M3 行为。
+- [x] nDCG@5 点估计至少提升 0.005；实测 `+0.010691`。
+- [ ] paired-bootstrap nDCG@5 95% CI 下界不小于 0；实测 `[-0.020192, 0.041560]`。
+- [ ] Recall@10 不下降；实测从 `0.695140` 降至 `0.670851`。
+- [ ] Precision@5 与 nDCG@10 回归不超过各自阈值；实测分别下降 `0.020000` 和 `0.017908`。
+- [x] Hard constraints、evidence、security、version、citation、hard-negative、merchant/brand diversity 门禁全部通过。
+- [ ] Treatment scored token 不超过 500,000；实测 926,873。80 次请求的 retry/failure/fallback 均为 0，`$0.104172` 费用低于 `$0.50` cap。
+- [x] 关闭 Reranker Feature Flag 或在线 fallback 时能恢复 M3 行为；正式 Eval 对任何 fallback fail-closed。
+- [ ] 生产 P95 与资源预算通过。当前经授权仅观测 reranker-isolation latency，不执行 latency gate，也不允许表述为 online E2E。
+
+### 9.8 完成记录（2026-09-01）
+
+M4 已实现 `DisabledReranker`、M3 heuristic fallback 与 DashScope `qwen3-rerank` Adapter，并加入确定性 `MerchantRerankText`、Top-30 单批请求、timeout、并发限制、缓存、费用上限、retry policy、circuit breaker、输入输出 fail-closed 校验、trace/metrics 和生产 Feature Flag。生产 Compose 与部署校验仍固定 `RERANKER_PROVIDER=disabled`。
+
+为了只隔离 reranker，clean Git `4a4e4d9b21976ef2a003fd9706d265fa97580a93` 首先运行一次完整 M3 capture，冻结每条 query 的 QueryRewritePlan、完整候选对象、exact reranker query/text/provenance、全候选 EvidencePack 和 heuristic 最终顺序。正式 control/treatment 随后共享同一 schema-v5 replay artifact，均绕过 Query Rewrite、Embedding、Qdrant retrieval、aggregation 与 fusion；Qdrant 只执行 index/server identity check。suite 共 80 条 query、1,453 个候选 pair，完整 Top-30 judgment 无 unjudged return；它仍是带 M3 selection leakage 的 pooled Dev，而非 hidden holdout。
+
+| 指标 | Frozen M3 heuristic | Qwen3 reranker | 变化 |
+| --- | ---: | ---: | ---: |
+| Recall@10 | 69.5140% | 67.0851% | -2.4289pp |
+| Precision@5 | 93.7500% | 91.7500% | -2.0000pp |
+| nDCG@5 | 87.6359% | 88.7050% | +1.0691pp |
+| nDCG@10 | 92.2116% | 90.4208% | -1.7908pp |
+| MRR@10 | 98.7500% | 99.3750% | +0.6250pp |
+| 中文 nDCG@5 | 85.5130% | 86.5716% | +1.0586pp |
+
+点估计有 Top-5 增益，但 bootstrap CI 跨零，Recall@10、Precision@5、nDCG@10 回归，且 scored token 超过上限，因此独立 comparator 返回五项失败，M4 不晋级。Qwen reranker P95 为 `534.175 ms`，只属于冻结 replay 隔离观测；最终 capture + control + treatment 估算费用为 `$0.132783`。冻结 suite 位于 `evals/rag_v2/m4/`，全部 source/suite/replay/report SHA、门槛与成本见 `evals/rag_v2/m4_results.json`。
 
 ## 10. M5：生产可观测性、Shadow 与发布
 
@@ -912,20 +934,20 @@ Switch back to previous Qdrant Collection
 RAG v2 只有在满足以下条件后才算完成：
 
 - [ ] 正式配置不再使用 Hash Embedding。
-- [ ] Eval 报告记录真实 Embedding provider/model/dimensions/version。
-- [ ] Qdrant 能在全局 scope 中恢复 Structured 分支漏掉的正确商户。
-- [ ] Original、rule-expanded 和 rewritten queries 的贡献可以独立追踪。
-- [ ] Cross-Encoder 失败不会让整个 Agent Run 失败。
-- [ ] Security leakage、version mismatch 和 duplicate merchant 均为零。
+- [x] Eval 报告记录真实 Embedding provider/model/dimensions/version。
+- [x] Qdrant 能在全局 scope 中恢复 Structured 分支漏掉的正确商户。
+- [x] Original、rule-expanded 和 rewritten queries 的贡献可以独立追踪。
+- [x] Cross-Encoder 失败不会让整个 Agent Run 失败；正式 Eval 则对 fallback fail-closed。
+- [x] 当前 M2–M4 Dev 报告中的 security leakage、version mismatch 和 duplicate merchant 均为零。
 - [ ] Hidden test 的 nDCG/Precision 有可复现增益，Recall 与 hard constraints 不回归。
 - [ ] P95、资源和费用满足冻结 Gate。
 - [ ] 新 Collection 已通过 Shadow 和 Canary，旧 Collection 可一键回滚。
-- [ ] README、环境变量示例、部署文档和测试命令同步更新。
-- [ ] 所有简历指标均能对应到已保存的机器可读报告。
+- [x] README、环境变量示例、部署保护和测试命令已同步；生产开关仍保持关闭。
+- [x] 当前 M0–M4 简历候选指标均能对应到已保存的机器可读报告。
 
 ## 18. 简历表述门禁
 
-M3 之后可以声明已经实现并在 80 条中英 Dev query 上评测真实多语言 Embedding、全局 Hybrid Retrieval、受约束 LLM Multi-Query 与 merchant-level RRF，但必须明确这是 pooled Dev 结果，且不能声称已晋级生产、通过 hidden test 或满足延迟目标。Cross-Encoder 仍未实现，不得写入当前简历版本。
+M4 之后可以声明已经实现真实多语言 Embedding、全局 Hybrid Retrieval、受约束 LLM Multi-Query、merchant-level RRF，以及带 fallback/circuit breaker 的可插拔 Qwen reranker，并在冻结候选与证据上完成 80 条中英 pooled-Dev 隔离评测。但不能声称 Cross-Encoder 已带来可复现的整体质量提升：其 nDCG@5 点估计提升 1.07pp，bootstrap CI 跨零，同时 Recall@10、Precision@5、nDCG@10 和 token 门禁失败。也不能声称已晋级生产、通过 hidden test 或得到 online E2E 延迟结果。
 
 当前可验证的模板为：
 
@@ -936,4 +958,4 @@ improved pooled-Dev nDCG@10 by 8.64 points and Recall@10 by 4.21 points
 across 80 bilingual queries while preserving 100% hard-constraint satisfaction.
 ```
 
-若需要写入生产效果、P95 达标或最终 RAG v2 指标，仍必须等待 M4/M5、同一冻结性能门禁和新的 hidden-test 报告；不能把当前 `4.920×` 的失败延迟省略后表述成“低延迟”。
+若希望在简历中加入 M4，更稳妥的表述是“implemented and evaluated a guarded Qwen reranker with exact frozen-candidate replay and zero provider retries/failures/fallbacks”，而不是宣称质量提升。生产效果、P95 达标或最终 RAG v2 指标仍必须等待 M5、新的 hidden-test 报告，以及生产环境 latency/resource gate；不能把 M3 的 `4.920×` 延迟失败或 M4 的 latency waiver 省略后表述成“低延迟”。

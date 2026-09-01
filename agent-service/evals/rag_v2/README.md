@@ -1,4 +1,4 @@
-# RAG Eval v2（M0 基线 + M1 Embedding + M2 全局召回 + M3 Multi-Query）
+# RAG Eval v2（M0 基线 + M1 Embedding + M2 全局召回 + M3 Multi-Query + M4 Cross-Encoder）
 
 该目录是在不修改 P12 冻结套件的前提下，为 RAG 优化建立的可复现基线。它评测当前真实链路：
 
@@ -411,6 +411,24 @@ uv run python -m evals.rag_v2.compare_m4 \
 
 主门槛是 `nDCG@5` 至少提升 0.5pp 且 paired bootstrap 95% CI 下界不小于 0；Recall@10 不得下降，Precision@5、MRR@10、nDCG@10、中文 nDCG@5、安全与完整性指标受独立约束。报告的 `performanceScope` 固定为 `reranker-isolation-with-frozen-candidates-and-evidence`。按已批准的 latency waiver，Total 和 Reranker P95 继续记录但不参与本地质量判定；其中 Total 只代表 frozen replay harness 加当前 reranker/evidence slicing 的耗时，禁止表述为 online end-to-end latency。该 Dev 结果也不是 hidden-holdout 或生产晋级证据。
 
+### M4 Dev 结果（2026-09-01）
+
+M4 工程与冻结 Dev 隔离实验已完成，但 Qwen treatment 未通过预先固定的晋级门槛。正式实验对应 clean Git `4a4e4d9b21976ef2a003fd9706d265fa97580a93`：schema-v5 suite 含 80 条中英查询、1,453 个完整 Top-30 候选 pair 和 1,187 个 binary-relevant pair；两臂共享完全相同的 QueryRewritePlan、候选、reranker 输入与 EvidencePack。正式 control/treatment 的 Query Rewrite、Embedding、Qdrant retrieval、aggregation 和 fusion 调用均为 0。
+
+| 指标 | Frozen M3 heuristic | Qwen3 reranker | 变化 |
+| --- | ---: | ---: | ---: |
+| Recall@10 | 69.5140% | 67.0851% | -2.4289pp |
+| Precision@5 | 93.7500% | 91.7500% | -2.0000pp |
+| nDCG@5 | 87.6359% | 88.7050% | +1.0691pp |
+| nDCG@10 | 92.2116% | 90.4208% | -1.7908pp |
+| MRR@10 | 98.7500% | 99.3750% | +0.6250pp |
+| 中文 nDCG@5 | 85.5130% | 86.5716% | +1.0586pp |
+| Reranker P95 | 0 ms | 534.175 ms | 仅观测 |
+
+`nDCG@5` 点估计超过 `+0.5pp` 门槛，但 paired-bootstrap 95% CI 为 `[-2.0192pp, +4.1560pp]`，下界未达到 0；同时 Recall@10、Precision@5、nDCG@10 回归。Qwen 的 80/80 次请求全部成功，retry/failure/fallback 均为 0，hard-constraint satisfaction、evidence coverage 均为 100%，security/version/citation mismatch、hard negative、重复 merchant 和第 3 个同品牌结果均为 0；但 scored token 为 926,873，超过 500,000 上限。treatment 含 warmup 的估算费用为 `$0.104172`，最终 capture + control + treatment 协议估算费用为 `$0.132783`。
+
+因此 comparator 返回 `quality-gate-failed`，没有放宽既定阈值，也没有启用生产 Reranker。冻结 suite 位于 `evals/rag_v2/m4/`，完整结论、报告 SHA、成本和生产状态见 `m4_results.json`。这些延迟只属于 frozen reranker replay，不是 online E2E；该 pooled Dev suite 使用 deterministic-derived labels，继承 M3 selection leakage，也不是新的 hidden holdout。
+
 ## 指标和报告
 
 质量指标包括 Recall@5/10、Precision@5、nDCG@5/10、MRR@10、硬约束满足率、证据覆盖率、未标注率、hard-negative final-return rate，以及 citation owner、merchant identity、source、security、data version 和 dataset SHA 完整性。品牌指标分为从同品牌第 2 个结果起计算的 `duplicateBrandRate`，以及只惩罚第 3 个及以后结果的 `excessiveBrandRate`。
@@ -422,7 +440,7 @@ uv run python -m evals.rag_v2.compare_m4 \
 - Structured Search、Candidate Ranking、Evidence Retrieval 和 Total：Eval 外层 wall clock；
 - Embedding：记录 logical query/document calls、Provider HTTP requests、cache hit、token、retry、failure、总时长和按冻结单价估算的费用；索引与查询 usage 分开保存。
 
-M0/M1 历史报告仍无法从旧接口拆分 Query Planning、Qdrant 与 Fusion；M2/M3 的统一 Candidate Discovery 接口会直接暴露 global dense/sparse、Embedding、merchant aggregation、hydration、fusion 与 rewrite timing，不使用总时长差值伪造阶段耗时。Learned reranker 仍为 disabled。正式 M1–M3 Eval 对 Provider、rewrite/retrieval fallback、variant failure 与未标注商户 fail-closed；在线 Runtime 才允许带 metadata 的受控降级。
+M0/M1 历史报告仍无法从旧接口拆分 Query Planning、Qdrant 与 Fusion；M2/M3 的统一 Candidate Discovery 接口会直接暴露 global dense/sparse、Embedding、merchant aggregation、hydration、fusion 与 rewrite timing，不使用总时长差值伪造阶段耗时。M4 已实现可选 learned reranker，但生产配置仍为 `disabled`。正式 M1–M4 Eval 对 Provider、rewrite/retrieval/reranker fallback、variant failure 与未标注商户 fail-closed；在线 Runtime 才允许带 metadata 的受控降级。
 
 ## M0 Hash/64 本地基线
 
