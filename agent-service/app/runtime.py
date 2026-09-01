@@ -28,6 +28,11 @@ from app.rag.embeddings import (
 from app.rag.global_retrieval import GlobalRetrievalScope, QdrantGlobalDocumentRetriever
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import QdrantRagService
+from app.rag.query_rewriter import (
+    DisabledQueryRewriter,
+    OpenAICompatibleQueryRewriter,
+    QueryRewriteProvider,
+)
 from app.runs.manager import AgentRunManager
 from app.runs.store import SQLiteRunStore
 from app.security import SlidingWindowRateLimiter
@@ -63,6 +68,7 @@ class AgentRuntime:
     rag_service: Any = None
     itinerary_service: Any = None
     embedding_service: EmbeddingService | None = None
+    query_rewriter: QueryRewriteProvider | None = None
     candidate_discovery: CandidateDiscovery | None = None
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -78,6 +84,7 @@ class AgentRuntime:
         source_counts: dict[str, int] = {}
         rag_index_stats: dict[str, int] = {}
         embedding_service: EmbeddingService | None = None
+        query_rewriter: QueryRewriteProvider | None = None
         if settings.rag_data_directory is not None:
             data_version, dataset_sha256, source_counts = _validate_data_directory(
                 settings.rag_data_directory.resolve()
@@ -134,6 +141,7 @@ class AgentRuntime:
                     scope,
                     document_limit=settings.global_retrieval_document_limit,
                 )
+                query_rewriter = _build_query_rewriter(settings)
                 candidate_discovery = GlobalHybridCandidateDiscovery(
                     shops,
                     rag,
@@ -146,6 +154,7 @@ class AgentRuntime:
                     documents_per_merchant=settings.global_retrieval_documents_per_merchant,
                     rrf_k=settings.global_retrieval_rrf_k,
                     brand_cap=settings.global_retrieval_brand_cap,
+                    query_rewriter=query_rewriter,
                 )
             else:
                 candidate_discovery = LegacyCandidateDiscovery(shops, rag)
@@ -188,6 +197,7 @@ class AgentRuntime:
                 rag_service=rag,
                 itinerary_service=itinerary,
                 embedding_service=embedding_service,
+                query_rewriter=query_rewriter,
                 candidate_discovery=candidate_discovery,
             )
             model_gateway = _build_model_gateway(settings)
@@ -207,6 +217,8 @@ class AgentRuntime:
                 callbacks.append(run_manager.close)
             elif run_store is not None:
                 callbacks.append(run_store.close)
+            if query_rewriter is not None:
+                callbacks.append(query_rewriter.aclose)
             if embedding_service is not None:
                 callbacks.append(embedding_service.aclose)
             if qdrant_client is not None:
@@ -221,6 +233,8 @@ class AgentRuntime:
         callbacks: list[Callable[[], Awaitable[None]]] = []
         if self.run_manager is not None:
             callbacks.append(self.run_manager.close)
+        if self.query_rewriter is not None:
+            callbacks.append(self.query_rewriter.aclose)
         if self.embedding_service is not None:
             callbacks.append(self.embedding_service.aclose)
         if self.qdrant_client is not None:
@@ -324,6 +338,43 @@ def _build_embedding_service(settings: Settings):
     return DeterministicHashEmbeddingService(
         dimensions=settings.embedding_dimensions,
         version=settings.embedding_version or "hash-v1",
+    )
+
+
+def _build_query_rewriter(settings: Settings) -> QueryRewriteProvider | None:
+    """Build M3 rewriting only when its explicit feature flag is enabled."""
+
+    provider = settings.query_rewrite_provider
+    if provider == "disabled":
+        return None
+
+    fallback = DisabledQueryRewriter(
+        prompt_version=settings.query_rewrite_prompt_version,
+    )
+    dedicated_key = settings.query_rewrite_api_key.get_secret_value()
+    if provider == "openai":
+        base_url = settings.query_rewrite_base_url or "https://api.openai.com/v1"
+        api_key = dedicated_key or settings.openai_embedding_api_key.get_secret_value()
+        model = settings.query_rewrite_model or "gpt-4o-mini-2024-07-18"
+    else:
+        base_url = settings.query_rewrite_base_url or settings.model_base_url
+        api_key = dedicated_key or settings.model_api_key
+        model = settings.query_rewrite_model or settings.model_name
+
+    return OpenAICompatibleQueryRewriter(
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        fallback=fallback,
+        prompt_version=settings.query_rewrite_prompt_version,
+        max_queries=settings.query_rewrite_max_queries,
+        timeout_seconds=settings.query_rewrite_timeout_seconds,
+        max_concurrency=settings.query_rewrite_max_concurrency,
+        cache_size=settings.query_rewrite_cache_size,
+        cache_ttl_seconds=settings.query_rewrite_cache_ttl_seconds,
+        max_input_characters=settings.query_rewrite_max_input_characters,
+        max_output_tokens=settings.query_rewrite_max_output_tokens,
     )
 
 

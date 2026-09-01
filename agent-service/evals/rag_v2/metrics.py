@@ -40,6 +40,7 @@ LATENCY_STAGES = (
     "merchantAggregation",
     "hydration",
     "fusion",
+    "queryRewrite",
     "evidenceRetrieval",
     "embedding",
     "total",
@@ -286,6 +287,19 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         scenario: _summarize_group([item for item in results if item["scenario"] == scenario])
         for scenario in scenarios
     }
+    semantic_rule_coverage = sorted(
+        {
+            str(item["semanticRuleCoverage"])
+            for item in results
+            if item.get("semanticRuleCoverage") is not None
+        }
+    )
+    by_semantic_rule_coverage = {
+        coverage: _summarize_group(
+            [item for item in results if item.get("semanticRuleCoverage") == coverage]
+        )
+        for coverage in semantic_rule_coverage
+    }
     integrity = {
         "securityLeakageCount": sum(item["integrity"]["securityLeakageCount"] for item in results),
         "versionMismatchCount": sum(item["integrity"]["versionMismatchCount"] for item in results),
@@ -310,10 +324,15 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "hardNegativeReturnCount": sum(item["integrity"]["hardNegativeReturnCount"] for item in results),
         "emptyResultCount": sum(bool(item["integrity"]["emptyResult"]) for item in results),
     }
-    return {
+    summary = {
         "overall": overall,
         "byLanguage": by_language,
         "byScenario": by_scenario,
+        **(
+            {"bySemanticRuleCoverage": by_semantic_rule_coverage}
+            if by_semantic_rule_coverage
+            else {}
+        ),
         "integrity": integrity,
         "structuredMissRescue": _summarize_structured_misses(results),
         "latencyMs": _summarize_latencies(results),
@@ -343,6 +362,35 @@ def summarize_results(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "rerankerRequests": sum(item["requests"]["rerankerRequests"] for item in results),
         },
     }
+    if any("rewriteProviderUsage" in item["requests"] for item in results):
+        usage_fields = {
+            "rewriteProviderNetworkRequests": "network_requests",
+            "rewriteProviderTokens": "total_tokens",
+            "rewriteProviderRetries": "retry_count",
+            "rewriteProviderFailures": "failure_count",
+            "rewriteCacheHits": "query_cache_hits",
+        }
+        summary["requestCounts"].update(
+            {
+                output: sum(
+                    (item["requests"].get("rewriteProviderUsage") or {}).get(source, 0)
+                    for item in results
+                )
+                for output, source in usage_fields.items()
+            }
+        )
+        summary["costUsd"] = {
+            "queryRewrite": sum(
+                float(
+                    (item["requests"].get("rewriteProviderUsage") or {}).get(
+                        "estimated_cost_usd",
+                        0.0,
+                    )
+                )
+                for item in results
+            )
+        }
+    return summary
 
 
 def latency_percentiles(values: Sequence[float]) -> dict[str, float]:

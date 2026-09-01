@@ -46,6 +46,7 @@ async def health() -> dict[str, str]:
         "adapter": settings.adapter,
         "rag": settings.rag_adapter,
         "globalRetrieval": "enabled" if settings.global_retrieval_enabled else "disabled",
+        "queryRewrite": settings.query_rewrite_provider,
         "model": settings.model_provider,
         "mcp": "enabled" if settings.mcp_enabled else "disabled",
     }

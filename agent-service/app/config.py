@@ -91,6 +91,18 @@ class Settings(BaseSettings):
     global_retrieval_documents_per_merchant: int = Field(default=3, ge=1, le=10)
     global_retrieval_rrf_k: int = Field(default=60, ge=1, le=1_000)
     global_retrieval_brand_cap: int = Field(default=2, ge=1, le=10)
+    query_rewrite_provider: Literal["disabled", "openai", "deepseek"] = "disabled"
+    query_rewrite_base_url: str = ""
+    query_rewrite_api_key: SecretStr = SecretStr("")
+    query_rewrite_model: str = ""
+    query_rewrite_prompt_version: str = "m3-query-rewrite-v1"
+    query_rewrite_max_queries: int = Field(default=3, ge=1, le=3)
+    query_rewrite_timeout_seconds: float = Field(default=8.0, gt=0, le=60)
+    query_rewrite_max_concurrency: int = Field(default=2, ge=1, le=8)
+    query_rewrite_cache_size: int = Field(default=512, ge=0, le=10_000)
+    query_rewrite_cache_ttl_seconds: float = Field(default=900.0, ge=0, le=86_400)
+    query_rewrite_max_input_characters: int = Field(default=2_000, ge=1, le=2_000)
+    query_rewrite_max_output_tokens: int = Field(default=300, ge=64, le=2_000)
     max_agent_steps: int = Field(default=12, ge=3, le=50)
     max_parallel_agents: int = Field(default=2, ge=1, le=4)
     max_recovery_attempts: int = Field(default=2, ge=0, le=5)
@@ -154,6 +166,8 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Global retrieval requires documents_per_merchant <= document_limit."
                 )
+        if self.query_rewrite_provider != "disabled" and not self.global_retrieval_enabled:
+            raise ValueError("Query rewrite requires global retrieval to be enabled.")
         return self
 
 

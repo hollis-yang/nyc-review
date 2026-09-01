@@ -9,9 +9,20 @@ from typing import Any, Protocol
 from app.domain.business_hours import is_shop_open
 from app.domain.models import CandidateSet, ShopCandidate, UserConstraints
 from app.rag.candidate_fusion import CandidateFusionResult, fuse_candidates
-from app.rag.global_retrieval import GlobalRetrievalResult, RetrievalChannel
-from app.rag.merchant_aggregation import MerchantAggregationResult, aggregate_merchants
+from app.rag.global_retrieval import (
+    GlobalQueryVariant,
+    GlobalRetrievalResult,
+    MultiQueryGlobalRetrievalResult,
+    QueryVariantSource,
+    RetrievalChannel,
+)
+from app.rag.merchant_aggregation import (
+    MerchantAggregationResult,
+    aggregate_merchants,
+    aggregate_query_variant_merchants,
+)
 from app.rag.query_plan import build_retrieval_plan
+from app.rag.query_rewriter import QueryRewritePlan, QueryRewriteProvider
 from app.tools.services import (
     HARD_DESIRED_TAGS,
     RagService,
@@ -45,6 +56,16 @@ class GlobalDocumentRetriever(Protocol):
         neighborhood: str | None = None,
     ) -> GlobalRetrievalResult: ...
 
+    async def search_query_variants(
+        self,
+        variants: list[GlobalQueryVariant],
+        *,
+        document_limit: int | None = None,
+        category: str | None = None,
+        neighborhood: str | None = None,
+        variant_timeout_seconds: float = 10.0,
+    ) -> MultiQueryGlobalRetrievalResult: ...
+
 
 class CandidateDiscoveryError(RuntimeError):
     """Raised when neither candidate-discovery branch can return a safe result."""
@@ -56,6 +77,13 @@ class _BranchOutcome:
     error: Exception | None
     reason: str | None
     latency_ms: float
+
+
+@dataclass(frozen=True)
+class _GlobalBranchValue:
+    result: GlobalRetrievalResult
+    rewrite_plan: QueryRewritePlan | None = None
+    rewrite_error: str | None = None
 
 
 class LegacyCandidateDiscovery:
@@ -97,6 +125,7 @@ class GlobalHybridCandidateDiscovery:
         documents_per_merchant: int = 3,
         rrf_k: int = 60,
         brand_cap: int = 2,
+        query_rewriter: QueryRewriteProvider | None = None,
     ) -> None:
         if document_limit < 1:
             raise ValueError("Global document limit must be positive.")
@@ -128,6 +157,7 @@ class GlobalHybridCandidateDiscovery:
         self._documents_per_merchant = documents_per_merchant
         self._rrf_k = rrf_k
         self._brand_cap = brand_cap
+        self._query_rewriter = query_rewriter
 
     async def discover(
         self,
@@ -155,12 +185,7 @@ class GlobalHybridCandidateDiscovery:
         )
         global_task = asyncio.create_task(
             _run_branch(
-                self._global.search_documents(
-                    plan.expanded_query,
-                    document_limit=self._document_limit,
-                    category=constraints.category,
-                    neighborhood=constraints.neighborhood,
-                ),
+                self._search_global(constraints, rule_query=plan.expanded_query),
                 timeout_seconds=self._branch_timeout_seconds,
             )
         )
@@ -195,11 +220,19 @@ class GlobalHybridCandidateDiscovery:
             else None
         )
         structured_external_ids = _structured_branch_external_ids(structured_pool)
-        global_result = (
+        global_branch = (
             global_outcome.value
-            if isinstance(global_outcome.value, GlobalRetrievalResult)
+            if isinstance(global_outcome.value, _GlobalBranchValue)
             else None
         )
+        global_result = global_branch.result if global_branch is not None else None
+        rewrite_plan = global_branch.rewrite_plan if global_branch is not None else None
+        rewrite_metadata = _query_rewrite_metadata(
+            rewrite_plan,
+            enabled=self._query_rewriter is not None,
+            error=global_branch.rewrite_error if global_branch is not None else None,
+        )
+        excluded_tags = rewrite_plan.excluded_tags if rewrite_plan is not None else ()
         global_available = bool(
             global_result is not None
             and (global_result.dense.available or global_result.sparse.available)
@@ -214,6 +247,7 @@ class GlobalHybridCandidateDiscovery:
                 constraints,
                 required_data_version=scope.data_version,
                 expected_external_ids=None,
+                excluded_tags=excluded_tags,
             )
             safe_structured_pool = structured_pool.model_copy(
                 update={
@@ -238,13 +272,22 @@ class GlobalHybridCandidateDiscovery:
                     global_result=global_result,
                     hard_filter_stats=hard_filter_stats,
                     structured_external_ids=structured_external_ids,
+                    query_metadata=rewrite_metadata,
                 ),
             )
 
         aggregation_started = time.perf_counter()
-        aggregation = aggregate_merchants(
-            global_result,
-            documents_per_merchant=self._documents_per_merchant,
+        aggregation = (
+            aggregate_query_variant_merchants(
+                global_result,
+                documents_per_merchant=self._documents_per_merchant,
+                rrf_k=self._rrf_k,
+            )
+            if isinstance(global_result, MultiQueryGlobalRetrievalResult)
+            else aggregate_merchants(
+                global_result,
+                documents_per_merchant=self._documents_per_merchant,
+            )
         )
         aggregation_latency_ms = _elapsed_ms(aggregation_started)
 
@@ -266,6 +309,7 @@ class GlobalHybridCandidateDiscovery:
             constraints,
             required_data_version=scope.data_version,
             expected_external_ids=expected_external_ids,
+            excluded_tags=excluded_tags,
         )
         safe_structured_pool = (
             structured_pool.model_copy(
@@ -314,6 +358,7 @@ class GlobalHybridCandidateDiscovery:
                     hard_filter_stats=structured_filter_stats,
                     reason="hydration-error",
                     structured_external_ids=structured_external_ids,
+                    query_metadata=rewrite_metadata,
                 ),
             )
         hydration_latency_ms = _elapsed_ms(hydration_started)
@@ -327,6 +372,7 @@ class GlobalHybridCandidateDiscovery:
             constraints,
             required_data_version=scope.data_version,
             expected_external_ids=expected_external_ids,
+            excluded_tags=excluded_tags,
         )
         filtered_global_by_id = {candidate.shop_id: candidate for candidate in filtered_global}
         hard_filter_stats = _merge_counts(structured_filter_stats, global_filter_stats)
@@ -358,6 +404,7 @@ class GlobalHybridCandidateDiscovery:
                     hard_filter_stats=hard_filter_stats,
                     reason="fusion-error",
                     structured_external_ids=structured_external_ids,
+                    query_metadata=rewrite_metadata,
                 ),
             )
         fusion_latency_ms = _elapsed_ms(fusion_started)
@@ -377,13 +424,59 @@ class GlobalHybridCandidateDiscovery:
             fusion_latency_ms=fusion_latency_ms,
             total_latency_ms=_elapsed_ms(started),
             structured_external_ids=structured_external_ids,
+            query_metadata=rewrite_metadata,
         )
+        ranking_constraints = _ranking_constraints(constraints, rewrite_plan)
         return await self._rank_fusion_pool(
-            constraints,
+            ranking_constraints,
             fusion_pool,
             limit=limit,
             discovery_started=started,
         )
+
+    async def _search_global(
+        self,
+        constraints: UserConstraints,
+        *,
+        rule_query: str,
+    ) -> _GlobalBranchValue:
+        if self._query_rewriter is None:
+            result = await self._global.search_documents(
+                rule_query,
+                document_limit=self._document_limit,
+                category=constraints.category,
+                neighborhood=constraints.neighborhood,
+            )
+            return _GlobalBranchValue(result=result)
+
+        try:
+            rewrite_plan = await self._query_rewriter.rewrite(
+                constraints,
+                rule_query=rule_query,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            result = await self._global.search_documents(
+                rule_query,
+                document_limit=self._document_limit,
+                category=constraints.category,
+                neighborhood=constraints.neighborhood,
+            )
+            return _GlobalBranchValue(
+                result=result,
+                rewrite_error="rewriter-error",
+            )
+
+        variants = _global_query_variants(rewrite_plan)
+        result = await self._global.search_query_variants(
+            variants,
+            document_limit=self._document_limit,
+            category=constraints.category,
+            neighborhood=constraints.neighborhood,
+            variant_timeout_seconds=self._branch_timeout_seconds,
+        )
+        return _GlobalBranchValue(result=result, rewrite_plan=rewrite_plan)
 
     async def _rank_fusion_pool(
         self,
@@ -565,6 +658,7 @@ class GlobalHybridCandidateDiscovery:
         fusion_latency_ms: float,
         total_latency_ms: float,
         structured_external_ids: list[str | None],
+        query_metadata: Mapping[str, Any],
     ) -> CandidateSet:
         candidates = list(fusion.candidates)
         desired_tags = set(constraints.desired_tags)
@@ -625,10 +719,12 @@ class GlobalHybridCandidateDiscovery:
             "candidateRankingFallbackReason": None,
             "exactCandidateIds": exact_candidate_ids,
             **_global_trace_metadata(global_result),
+            **query_metadata,
             "globalEmbeddingLatencyMs": round(global_result.embedding_latency_ms, 3),
             "candidateDiscoveryLatencyMs": {
                 "structured": round(structured_outcome.latency_ms, 3),
                 "global": round(global_outcome.latency_ms, 3),
+                "queryRewrite": float(query_metadata.get("queryRewriteLatencyMs") or 0.0),
                 "aggregation": round(aggregation_latency_ms, 3),
                 "hydration": round(hydration_latency_ms, 3),
                 "fusion": round(fusion_latency_ms, 3),
@@ -716,6 +812,7 @@ def _fallback_metadata(
     hard_filter_stats: Mapping[str, int] | None = None,
     reason: str | None = None,
     structured_external_ids: list[str | None] | None = None,
+    query_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     structured_external_ids = list(structured_external_ids or [])
     dense_reason = global_result.dense.fallback_reason if global_result else None
@@ -729,6 +826,7 @@ def _fallback_metadata(
         "globalFallback": True,
         "globalFallbackReason": reason or global_outcome.reason or dense_reason or sparse_reason,
         **_global_trace_metadata(global_result),
+        **dict(query_metadata or {}),
         "globalEmbeddingLatencyMs": round(
             global_result.embedding_latency_ms if global_result is not None else 0.0,
             3,
@@ -745,6 +843,9 @@ def _fallback_metadata(
         "candidateDiscoveryLatencyMs": {
             "structured": round(structured_outcome.latency_ms, 3),
             "global": round(global_outcome.latency_ms, 3),
+            "queryRewrite": float(
+                (query_metadata or {}).get("queryRewriteLatencyMs") or 0.0
+            ),
             "total": round(total_latency_ms, 3),
         },
     }
@@ -758,6 +859,104 @@ def _structured_branch_external_ids(
     if candidate_pool is None:
         return []
     return [candidate.external_id for candidate in candidate_pool.candidates]
+
+
+def _global_query_variants(plan: QueryRewritePlan) -> list[GlobalQueryVariant]:
+    variants = (plan.original, plan.rule, *plan.rewrites)
+    mapped_sources = {
+        "original": QueryVariantSource.ORIGINAL,
+        "rule": QueryVariantSource.RULES,
+        "llm": QueryVariantSource.LLM,
+    }
+    source_counters = {"original": 0, "rule": 0, "llm": 0}
+    seen_queries: set[str] = set()
+    result: list[GlobalQueryVariant] = []
+    for variant in variants:
+        normalized = " ".join(variant.text.split()).casefold()
+        if normalized in seen_queries:
+            continue
+        seen_queries.add(normalized)
+        source_counters[variant.source] += 1
+        if variant.source == "original":
+            variant_id = "original"
+        elif variant.source == "rule":
+            variant_id = "rules"
+        else:
+            variant_id = f"llm-{source_counters['llm']}"
+        result.append(
+            GlobalQueryVariant(
+                variant_id=variant_id,
+                source=mapped_sources[variant.source],
+                query=variant.text,
+            )
+        )
+    return result
+
+
+def _query_rewrite_metadata(
+    plan: QueryRewritePlan | None,
+    *,
+    enabled: bool,
+    error: str | None,
+) -> dict[str, Any]:
+    if not enabled:
+        return {}
+    if plan is None:
+        return {
+            "queryRewriteEnabled": True,
+            "queryRewriteProvider": "unknown",
+            "queryRewriteModel": "unknown",
+            "queryRewriteLanguage": "unknown",
+            "queryRewriteCount": 0,
+            "queryRewriteNetworkRequests": 0,
+            "queryRewriteInputTokens": 0,
+            "queryRewriteOutputTokens": 0,
+            "queryRewriteCacheHit": False,
+            "queryRewriteFallback": True,
+            "queryRewriteFallbackReason": error or "rewriter-unavailable",
+            "queryRewriteLatencyMs": 0.0,
+            "queryRewriteSemanticTags": [],
+            "queryRewriteExcludedTags": [],
+        }
+    trace = plan.trace
+    return {
+        "queryRewriteEnabled": True,
+        "queryRewriteProvider": trace.requested_provider,
+        "queryRewriteEffectiveProvider": trace.provider,
+        "queryRewriteModel": trace.requested_model,
+        "queryRewriteEffectiveModel": trace.model,
+        "queryRewritePromptVersion": trace.prompt_version,
+        "queryRewriteLanguage": plan.language,
+        "queryRewriteCount": trace.rewrite_count,
+        "queryRewriteNetworkRequests": trace.network_requests,
+        "queryRewriteInputTokens": trace.input_tokens,
+        "queryRewriteOutputTokens": trace.output_tokens,
+        "queryRewriteCacheHit": trace.cache_hit,
+        "queryRewriteFallback": trace.fallback_used or error is not None,
+        "queryRewriteFallbackReason": error or trace.fallback_reason,
+        "queryRewriteLatencyMs": round(trace.latency_ms, 3),
+        "queryRewriteSemanticTags": list(plan.semantic_tags),
+        "queryRewriteExcludedTags": list(plan.excluded_tags),
+    }
+
+
+def _ranking_constraints(
+    constraints: UserConstraints,
+    rewrite_plan: QueryRewritePlan | None,
+) -> UserConstraints:
+    if rewrite_plan is None:
+        return constraints
+    explicit_tags = list(constraints.desired_tags)
+    inferred_tags = [
+        tag
+        for tag in rewrite_plan.semantic_tags
+        if tag not in rewrite_plan.excluded_tags and tag not in explicit_tags
+    ][: max(0, 20 - len(explicit_tags))]
+    if not inferred_tags:
+        return constraints
+    return constraints.model_copy(
+        update={"desired_tags": [*explicit_tags, *inferred_tags]}
+    )
 
 
 def _global_trace_metadata(
@@ -776,7 +975,7 @@ def _global_trace_metadata(
             "globalDenseRejectedPoints": 0,
             "globalSparseRejectedPoints": 0,
         }
-    return {
+    metadata = {
         "globalDenseAvailable": result.dense.available,
         "globalSparseAvailable": result.sparse.available,
         "globalDenseFallbackReason": result.dense.fallback_reason,
@@ -788,6 +987,47 @@ def _global_trace_metadata(
         "globalDenseRejectedPoints": result.dense.rejected_points,
         "globalSparseRejectedPoints": result.sparse.rejected_points,
     }
+    if not isinstance(result, MultiQueryGlobalRetrievalResult):
+        return metadata
+
+    provenance_by_shop: dict[int, dict[str, set[str]]] = {}
+    for hit in result.provenance:
+        variants = provenance_by_shop.setdefault(hit.shop_id, {})
+        variants.setdefault(hit.variant_id, set()).add(hit.channel.value)
+    variant_source = {
+        item.variant.variant_id: item.variant.source.value for item in result.variants
+    }
+    merchant_provenance = {
+        str(shop_id): [
+            {
+                "variantId": variant_id,
+                "source": variant_source[variant_id],
+                "channels": sorted(channels),
+            }
+            for variant_id, channels in sorted(variants.items())
+        ]
+        for shop_id, variants in sorted(provenance_by_shop.items())
+    }
+    return {
+        **metadata,
+        "globalQueryVariantCount": len(result.variants),
+        "globalQueryVariants": [
+            {
+                "variantId": item.variant.variant_id,
+                "source": item.variant.source.value,
+                "status": item.status.value,
+                "fallbackReason": item.fallback_reason,
+            }
+            for item in result.variants
+        ],
+        "globalQueryVariantCompletedIds": list(result.trace.completed_variant_ids),
+        "globalQueryVariantPartialFailureIds": list(
+            result.trace.partial_failure_variant_ids
+        ),
+        "globalQueryVariantTimedOutIds": list(result.trace.timed_out_variant_ids),
+        "globalQueryVariantFailedIds": list(result.trace.failed_variant_ids),
+        "merchantQueryVariantProvenance": merchant_provenance,
+    }
 
 
 def _hard_filter_candidates(
@@ -796,6 +1036,7 @@ def _hard_filter_candidates(
     *,
     required_data_version: str | None,
     expected_external_ids: Mapping[int, str | None] | None,
+    excluded_tags: tuple[str, ...] | list[str] = (),
 ) -> tuple[list[ShopCandidate], dict[str, int]]:
     retained: list[ShopCandidate] = []
     rejected: dict[str, int] = {}
@@ -805,6 +1046,7 @@ def _hard_filter_candidates(
         else None
     )
     hard_tags = set(constraints.desired_tags) & HARD_DESIRED_TAGS
+    forbidden_tags = set(excluded_tags)
     for candidate in candidates:
         reason = None
         if candidate.business_status != "OPERATIONAL":
@@ -824,6 +1066,8 @@ def _hard_filter_candidates(
             reason = "budget"
         elif not hard_tags.issubset(candidate.tags):
             reason = "requiredTags"
+        elif forbidden_tags.intersection(candidate.tags):
+            reason = "excludedTags"
         elif constraints.visit_time and (
             not candidate.business_hours
             or not is_shop_open(candidate, constraints.visit_time)

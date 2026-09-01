@@ -36,8 +36,15 @@ from app.rag.embeddings import (
     QwenNativeEmbeddingService,
 )
 from app.rag.global_retrieval import GlobalRetrievalScope, QdrantGlobalDocumentRetriever
+from app.rag.lexical import canonical_tags
 from app.rag.nyc_loader import iter_generated_documents
 from app.rag.qdrant_store import REQUIRED_PAYLOAD_INDEXES, QdrantRagService
+from app.rag.query_rewriter import (
+    PROMPT_VERSION,
+    DisabledQueryRewriter,
+    OpenAICompatibleQueryRewriter,
+    QueryRewriteProvider,
+)
 from app.runtime import _validate_data_directory
 from app.tools.services import GeneratedNycShopToolService
 from evals.rag_v2.build_m2_cases import (
@@ -47,6 +54,17 @@ from evals.rag_v2.build_m2_cases import (
     capture_candidate_universe,
     frozen_m1_dev_source_identity,
     validate_frozen_m1_dev_source_suite,
+)
+from evals.rag_v2.build_m3_cases import (
+    FROZEN_M2_DEV_SUITE_PATH,
+    M3_CANDIDATE_UNIVERSE_FILENAME,
+    M3_JUDGMENT_POLICY_VERSION,
+    M3_SELECTION_LEAKAGE_WARNING,
+    M3_SUITE_NAME,
+    m3_candidate_universe_sha256,
+    m3_experiment_fingerprint,
+    rewrite_config_fingerprint,
+    validate_frozen_m2_dev_source_suite,
 )
 from evals.rag_v2.compare_m1 import (
     EXPECTED_PROFILES,
@@ -78,6 +96,8 @@ INDEX_BUILD_VERSION = "rag-document-transform-v3-m1"
 FROZEN_QUALITY_GATE_PATH = EVAL_DIRECTORY / "quality_gate.json"
 FROZEN_HASH_BASELINE_PATH = EVAL_DIRECTORY / "baseline.hash64.local.json"
 M2_QUALITY_GATE_PATH = EVAL_DIRECTORY / "m2_quality_gate.json"
+M3_QUALITY_GATE_PATH = EVAL_DIRECTORY / "m3_quality_gate.json"
+M3_PRICING_SNAPSHOT_DATE = "2026-09-01"
 INDEX_BUILD_SOURCE_PATHS = (
     "agent-service/app/rag/embeddings.py",
     "agent-service/app/rag/lexical.py",
@@ -109,6 +129,25 @@ EVAL_SOURCE_PATHS = (
     "agent-service/evals/rag_v2/m2_quality_gate.json",
     "agent-service/evals/rag_v2/quality_gate.json",
     "agent-service/evals/rag_v2/run_eval.py",
+)
+M3_EVAL_SOURCE_PATHS = (
+    *EVAL_SOURCE_PATHS,
+    "agent-service/app/rag/query_rewriter.py",
+    "agent-service/evals/rag_v2/build_m3_cases.py",
+    "agent-service/evals/rag_v2/compare_m3.py",
+    "agent-service/evals/rag_v2/m3_quality_gate.json",
+)
+_M3_REWRITE_SAFETY_REASONS = frozenset(
+    {
+        "hard-constraint-mismatch",
+        "input-too-long",
+        "invalid-response",
+        "language-mismatch",
+        "negation-mismatch",
+        "negation-not-preserved",
+        "required-tag-mismatch",
+        "too-many-rewrites",
+    }
 )
 
 
@@ -173,8 +212,8 @@ class TimedEmbeddingService:
 def load_suite(path: Path, data_directory: Path, *, expected_split: str | None = None) -> tuple[dict, dict]:
     suite = json.loads(path.read_text(encoding="utf-8"))
     schema_version = int(suite.get("schemaVersion") or 0)
-    if schema_version not in {2, 3}:
-        raise ValueError("RAG v2 suite must use schemaVersion=2 or schemaVersion=3.")
+    if schema_version not in {2, 3, 4}:
+        raise ValueError("RAG v2 suite must use schemaVersion=2, 3, or 4.")
     if expected_split and suite.get("split") != expected_split:
         raise ValueError(
             f"Eval suite split={suite.get('split')!r} does not match requested {expected_split!r}."
@@ -193,6 +232,8 @@ def load_suite(path: Path, data_directory: Path, *, expected_split: str | None =
     _validate_cases(suite)
     if schema_version == 3:
         _validate_m2_judgment_contract(path.parent, suite)
+    elif schema_version == 4:
+        _validate_m3_judgment_contract(path.parent, suite)
 
     validated_data_version, validated_dataset_sha, _ = _validate_data_directory(data_directory)
     if suite.get("dataVersion") != validated_data_version:
@@ -216,6 +257,7 @@ async def evaluate_case(
     *,
     candidate_limit: int,
     capture_only: bool = False,
+    allow_unjudged: bool = False,
 ) -> dict:
     constraints = UserConstraints.model_validate(case["constraints"])
     runtime.embedding_service.reset()
@@ -269,6 +311,17 @@ async def evaluate_case(
     evidence_ms = (time.perf_counter() - started) * 1_000
     total_ms = (time.perf_counter() - total_started) * 1_000
     embedding = runtime.embedding_service.snapshot()
+    m3_enabled = bool(getattr(runtime, "m3_enabled", False))
+    rewrite_usage = _rewrite_case_usage(
+        discovery_metadata,
+        enabled=m3_enabled,
+        input_price_usd_per_million_tokens=float(
+            getattr(runtime, "rewrite_input_price_usd_per_million_tokens", 0.0)
+        ),
+        output_price_usd_per_million_tokens=float(
+            getattr(runtime, "rewrite_output_price_usd_per_million_tokens", 0.0)
+        ),
+    )
 
     external_ids = [candidate.external_id for candidate in ranked.candidates]
     judgments = {str(item["externalId"]): item for item in case["judgments"]}
@@ -276,9 +329,13 @@ async def evaluate_case(
         {str(external_id) for external_id in external_ids if str(external_id) not in judgments}
     )
     judgment_contract = suite.get("judgmentContract") or {}
-    if judgment_contract.get("unjudgedReturnedPolicy") == "fail-closed" and unjudged_external_ids:
+    if (
+        judgment_contract.get("unjudgedReturnedPolicy") == "fail-closed"
+        and unjudged_external_ids
+        and not allow_unjudged
+    ):
         raise ValueError(
-            f"M2 case {case['id']} returned merchants outside its bounded judgment union: "
+            f"Bounded Eval case {case['id']} returned merchants outside its judgment union: "
             + ", ".join(unjudged_external_ids[:5])
             + ". Recapture the treatment universe and rebuild the Dev suite; these merchants "
             "must never be assigned relevance=0 implicitly."
@@ -304,6 +361,7 @@ async def evaluate_case(
         hard_negatives=case.get("hardNegatives") or [],
     )
     case_metadata = case.get("metadata") or {}
+    semantic_rule_coverage = _semantic_rule_coverage(case)
     if "structuredCandidateExternalIds" in case_metadata:
         structured_ids = {
             str(item) for item in (case_metadata.get("structuredCandidateExternalIds") or [])
@@ -339,6 +397,7 @@ async def evaluate_case(
         "split": case["split"],
         "language": case["language"],
         "scenario": case["scenario"],
+        "semanticRuleCoverage": semantic_rule_coverage,
         "query": case["query"],
         "candidatePoolSize": int(
             structured_candidate_count if structured_candidate_count is not None else len(structured_ids)
@@ -398,6 +457,11 @@ async def evaluate_case(
                 "fusion",
                 "fusionLatencyMs",
             ),
+            "queryRewrite": _timing_value(
+                discovery_metadata,
+                "queryRewrite",
+                "queryRewriteLatencyMs",
+            ),
             "evidenceRetrieval": evidence_ms,
             "embedding": embedding["embeddingLatencyMs"],
             "total": total_ms,
@@ -407,9 +471,10 @@ async def evaluate_case(
             "queryEmbeddingCalls": embedding["queryEmbeddingCalls"],
             "documentEmbeddingCalls": embedding["documentEmbeddingCalls"],
             "embeddedTexts": embedding["embeddedTexts"],
-            "rewriteRequests": 0,
+            "rewriteRequests": int(getattr(runtime, "query_rewriter", None) is not None),
             "rerankerRequests": 0,
             "providerUsage": embedding["providerUsage"],
+            **({"rewriteProviderUsage": rewrite_usage} if m3_enabled else {}),
         },
         "orderedCandidates": ordered,
         "retrievalTrace": _retrieval_trace(
@@ -448,6 +513,19 @@ def _timing_value(metadata: Mapping[str, Any], *names: str) -> float | None:
     return None
 
 
+def _semantic_rule_coverage(case: Mapping[str, Any]) -> str | None:
+    """Separate true rule misses from semantic queries already helped by aliases."""
+
+    if case.get("scenario") != "semantic_alias_composition":
+        return None
+    query = str(case.get("query") or "")
+    preference_tags = {
+        str(tag) for tag in (case.get("preferenceTags") or []) if isinstance(tag, str)
+    }
+    recognized = set(canonical_tags(query)) & preference_tags
+    return "ruleCovered" if recognized else "outOfDictionary"
+
+
 def _metadata_count(metadata: Mapping[str, Any], *names: str) -> int | None:
     containers = [metadata, metadata.get("counts") or {}, metadata.get("trace") or {}]
     for container in containers:
@@ -458,6 +536,46 @@ def _metadata_count(metadata: Mapping[str, Any], *names: str) -> int | None:
             if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                 return value
     return None
+
+
+def _rewrite_case_usage(
+    metadata: Mapping[str, Any],
+    *,
+    enabled: bool,
+    input_price_usd_per_million_tokens: float,
+    output_price_usd_per_million_tokens: float,
+) -> dict[str, int | float]:
+    if not enabled:
+        return {
+            "network_requests": 0,
+            "total_tokens": 0,
+            "retry_count": 0,
+            "failure_count": 0,
+            "query_cache_hits": 0,
+            "estimated_cost_usd": 0.0,
+        }
+
+    def counter(name: str) -> int:
+        value = metadata.get(name, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"M3 retrieval metadata {name} must be a non-negative integer.")
+        return value
+
+    network_requests = counter("queryRewriteNetworkRequests")
+    input_tokens = counter("queryRewriteInputTokens")
+    output_tokens = counter("queryRewriteOutputTokens")
+    estimated_cost = (
+        input_tokens * input_price_usd_per_million_tokens
+        + output_tokens * output_price_usd_per_million_tokens
+    ) / 1_000_000
+    return {
+        "network_requests": network_requests,
+        "total_tokens": input_tokens + output_tokens,
+        "retry_count": 0,
+        "failure_count": int(bool(metadata.get("queryRewriteFallback", False))),
+        "query_cache_hits": int(bool(metadata.get("queryRewriteCacheHit", False))),
+        "estimated_cost_usd": float(estimated_cost),
+    }
 
 
 def _retrieval_trace(
@@ -519,6 +637,18 @@ def _retrieval_trace(
         "globalFallbackReason": metadata.get("globalFallbackReason"),
         "candidateRankingFallback": bool(metadata.get("candidateRankingFallback")),
         "candidateRankingFallbackReason": metadata.get("candidateRankingFallbackReason"),
+        "globalQueryVariantPartialFailureIds": list(
+            metadata.get("globalQueryVariantPartialFailureIds") or []
+        ),
+        "globalQueryVariantTimedOutIds": list(
+            metadata.get("globalQueryVariantTimedOutIds") or []
+        ),
+        "globalQueryVariantFailedIds": list(
+            metadata.get("globalQueryVariantFailedIds") or []
+        ),
+        "queryRewriteEnabled": bool(metadata.get("queryRewriteEnabled")),
+        "queryRewriteFallback": bool(metadata.get("queryRewriteFallback")),
+        "queryRewriteFallbackReason": metadata.get("queryRewriteFallbackReason"),
     }
 
 
@@ -538,6 +668,33 @@ def _m2_retrieval_safety_issues(results: list[dict[str, Any]]) -> dict[str, int]
     }
 
 
+def _raise_m3_case_runtime_failure(result: Mapping[str, Any]) -> None:
+    """Abort immediately so a broken provider contract cannot consume the full budget."""
+
+    trace = result.get("retrievalTrace") or {}
+    if trace.get("queryRewriteFallback"):
+        reason = trace.get("queryRewriteFallbackReason") or "unknown"
+        raise ValueError(
+            f"M3 case {result.get('id')} used query rewrite fallback ({reason}); aborting."
+        )
+    failed_variants = sorted(
+        {
+            str(variant_id)
+            for field in (
+                "globalQueryVariantPartialFailureIds",
+                "globalQueryVariantTimedOutIds",
+                "globalQueryVariantFailedIds",
+            )
+            for variant_id in (trace.get(field) or [])
+        }
+    )
+    if failed_variants:
+        raise ValueError(
+            f"M3 case {result.get('id')} had incomplete query variants: "
+            + ", ".join(failed_variants)
+        )
+
+
 async def run(args: argparse.Namespace) -> tuple[dict, bool]:
     _apply_embedding_profile(args)
     _validate_feature_configuration(args)
@@ -549,19 +706,35 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
     gate = json.loads(args.quality_gate.read_text(encoding="utf-8"))
     resolved_config = _resolved_config(args, suite)
     runtime_environment = _runtime_environment_snapshot()
-    m2_run = int(suite.get("schemaVersion") or 0) == 3 or (
+    schema_version = int(suite.get("schemaVersion") or 0)
+    m3_run = bool(getattr(args, "m3_capture_arm", None) or schema_version == 4)
+    m2_run = not m3_run and (schema_version == 3 or (
         int(suite.get("schemaVersion") or 0) == 2
         and args.global_retrieval_mode == "global-hybrid"
+    ))
+    initial_scoped_source = (
+        _m3_scoped_source_snapshot(repository)
+        if m3_run
+        else (_scoped_source_snapshot(repository) if m2_run else None)
     )
-    initial_m2_source = _scoped_source_snapshot(repository) if m2_run else None
-    capture_only = _validate_m2_run_configuration(
-        args,
-        suite=suite,
-        resolved_config=resolved_config,
-        repository=repository,
-        scoped_source=initial_m2_source,
-        runtime_environment=runtime_environment,
-    )
+    if m3_run:
+        capture_only = _validate_m3_run_configuration(
+            args,
+            suite=suite,
+            resolved_config=resolved_config,
+            repository=repository,
+            scoped_source=initial_scoped_source,
+            runtime_environment=runtime_environment,
+        )
+    else:
+        capture_only = _validate_m2_run_configuration(
+            args,
+            suite=suite,
+            resolved_config=resolved_config,
+            repository=repository,
+            scoped_source=initial_scoped_source,
+            runtime_environment=runtime_environment,
+        )
     _validate_holdout_authorization(args, resolved_config, suite=suite)
     corpus_preflight = None
     if args.embedding_provider != "hash":
@@ -633,15 +806,25 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
         cases = list(suite["cases"])
         if args.limit_cases is not None:
             cases = cases[: args.limit_cases]
+        allow_unjudged_capture = bool(
+            capture_only and getattr(args, "m3_capture_arm", None) == "treatment"
+        )
+        warmup_results = []
         for warmup_case in cases[: args.warmup_cases]:
-            await evaluate_case(
+            warmup_results.append(await evaluate_case(
                 runtime,
                 warmup_case,
                 suite,
                 candidate_limit=args.candidate_limit,
                 capture_only=capture_only,
-            )
+                allow_unjudged=allow_unjudged_capture,
+            ))
+        warmup_rewrite_cost = _rewrite_cost_from_results(warmup_results)
         runtime.embedding_service.clear_query_cache()
+        query_rewriter = getattr(runtime, "query_rewriter", None)
+        if query_rewriter is not None:
+            query_rewriter.clear_cache()
+            query_rewriter.reset()
 
         results = []
         for index, case in enumerate(cases, start=1):
@@ -651,8 +834,15 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 suite,
                 candidate_limit=args.candidate_limit,
                 capture_only=capture_only,
+                allow_unjudged=allow_unjudged_capture,
             )
             results.append(result)
+            if m3_run:
+                _raise_m3_case_runtime_failure(result)
+                _require_rewrite_cost_within_cap(
+                    warmup_rewrite_cost + _rewrite_cost_from_results(results),
+                    resolved_config,
+                )
             if capture_only:
                 print(
                     f"[{index:03d}/{len(cases):03d}] {case['id']} "
@@ -667,6 +857,12 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                     f"hard={result['integrity']['hardConstraintSatisfaction']:.3f}"
                 )
 
+        # Formal M3 evidence is serialized at six decimals. Freeze result rows
+        # before aggregation so repeated per-case cost/metric rounding cannot
+        # accumulate into a summary that the comparator cannot reproduce.
+        if m3_run:
+            results = rounded(results)
+
         if capture_only:
             summary = _candidate_capture_summary(results)
             quality_gate = {
@@ -674,7 +870,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 "failures": [],
                 "warnings": [
                     "Candidate-universe capture is intentionally not scored; build the "
-                    "schema-v3 Dev suite before comparing quality."
+                    f"schema-{'v4' if m3_run else 'v3'} Dev suite before comparing quality."
                 ],
                 "relativeStatus": "not-applicable-candidate-capture",
                 "thresholds": {},
@@ -710,54 +906,116 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             if (result.get("retrievalTrace") or {}).get("globalRetrievalEnabled")
             for name in ("globalDenseAvailable", "globalSparseAvailable")
         )
+        query_variant_failure_count = sum(
+            len(
+                {
+                    str(variant_id)
+                    for field in (
+                        "globalQueryVariantPartialFailureIds",
+                        "globalQueryVariantTimedOutIds",
+                        "globalQueryVariantFailedIds",
+                    )
+                    for variant_id in ((result.get("retrievalTrace") or {}).get(field) or [])
+                }
+            )
+            for result in results
+        )
+        retrieval_fallback_count += query_variant_failure_count
         identity_conflict_count = sum(
             int((result.get("retrievalTrace") or {}).get("identityConflicts") or 0) for result in results
         )
         retrieval_safety_issues = _m2_retrieval_safety_issues(results)
         retrieval_safety_rejection_count = sum(retrieval_safety_issues.values())
+        rewrite_fallback_count = sum(
+            bool((result.get("retrievalTrace") or {}).get("queryRewriteFallback"))
+            for result in results
+        )
+        rewrite_safety_rejection_count = sum(
+            (result.get("retrievalTrace") or {}).get("queryRewriteFallbackReason")
+            in _M3_REWRITE_SAFETY_REASONS
+            for result in results
+        )
         if args.embedding_provider != "hash" and fallback_count:
             quality_gate["failures"].append(
                 f"Formal embedding evaluation observed {fallback_count} sparse fallbacks."
             )
             quality_gate["passed"] = False
-        if (capture_only or int(suite.get("schemaVersion") or 0) == 3) and retrieval_fallback_count:
+        bounded_run = capture_only or schema_version in {3, 4}
+        if bounded_run and retrieval_fallback_count:
             quality_gate["failures"].append(
-                f"M2 observed {retrieval_fallback_count} retrieval/ranking fallbacks."
+                f"Bounded Eval observed {retrieval_fallback_count} retrieval/ranking fallbacks."
             )
             quality_gate["passed"] = False
-        if (capture_only or int(suite.get("schemaVersion") or 0) == 3) and identity_conflict_count:
+        if bounded_run and identity_conflict_count:
             quality_gate["failures"].append(
-                f"M2 rejected {identity_conflict_count} merchants with conflicting identities."
+                f"Bounded Eval rejected {identity_conflict_count} merchants with conflicting identities."
             )
             quality_gate["passed"] = False
-        if (
-            capture_only or int(suite.get("schemaVersion") or 0) == 3
-        ) and retrieval_safety_rejection_count:
+        if bounded_run and retrieval_safety_rejection_count:
             quality_gate["failures"].append(
-                "M2 observed incomplete hydration, identity mismatches, or rejected global "
+                "Bounded Eval observed incomplete hydration, identity mismatches, rejected global "
                 f"points: {retrieval_safety_issues}."
+            )
+            quality_gate["passed"] = False
+        if m3_run and rewrite_fallback_count:
+            quality_gate["failures"].append(
+                f"M3 observed {rewrite_fallback_count} query rewrite fallbacks."
+            )
+            quality_gate["passed"] = False
+        if m3_run and rewrite_safety_rejection_count:
+            quality_gate["failures"].append(
+                f"M3 observed {rewrite_safety_rejection_count} rewrite safety rejections."
             )
             quality_gate["passed"] = False
         if capture_only and not quality_gate["passed"]:
             raise ValueError(
-                "M2 candidate capture observed a fallback, identity problem, incomplete "
+                "Candidate capture observed a fallback, identity problem, incomplete "
                 "hydration, or rejected global point; refusing to freeze an incomplete "
                 "judgment universe."
             )
-        final_scoped_source = _scoped_source_snapshot(repository)
-        if initial_m2_source is not None and not _same_scoped_source_snapshot(
-            initial_m2_source,
+        final_scoped_source = (
+            _m3_scoped_source_snapshot(repository)
+            if m3_run
+            else _scoped_source_snapshot(repository)
+        )
+        if initial_scoped_source is not None and not _same_scoped_source_snapshot(
+            initial_scoped_source,
             final_scoped_source,
         ):
             raise ValueError(
-                "M2 Eval/retrieval source changed while the run was in progress; refusing "
+                "Eval/retrieval source changed while the run was in progress; refusing "
                 "to freeze or compare results from mixed source revisions."
             )
-        scoped_source = initial_m2_source or final_scoped_source
+        scoped_source = initial_scoped_source or final_scoped_source
         config_fingerprint = _fingerprint(resolved_config)
-        experiment_fingerprint = _m2_experiment_fingerprint(resolved_config)
+        experiment_fingerprint = (
+            m3_experiment_fingerprint(resolved_config)
+            if m3_run
+            else _m2_experiment_fingerprint(resolved_config)
+        )
+        rewrite_fingerprint = (
+            rewrite_config_fingerprint(resolved_config) if m3_run else None
+        )
+        prompt_fingerprint = (
+            (resolved_config.get("queryRewrite") or {}).get("promptFingerprint")
+            if m3_run
+            else None
+        )
+        scored_rewrite_cost = _rewrite_cost_from_results(results)
+        rewrite_provider_cost = {
+            "scoredEstimatedCostUsd": float(scored_rewrite_cost),
+            "warmupEstimatedCostUsd": float(warmup_rewrite_cost),
+            "estimatedCostUsd": float(scored_rewrite_cost + warmup_rewrite_cost),
+            "hardCostCapUsd": float(
+                (resolved_config.get("queryRewrite") or {}).get(
+                    "maxProviderCostUsd",
+                    0.0,
+                )
+            ),
+        }
+        git_snapshot = _git_snapshot(repository)
         candidate_universe = None
-        if capture_only:
+        if capture_only and not m3_run:
             candidate_universe = capture_candidate_universe(
                 source_suite=suite,
                 results=results,
@@ -789,20 +1047,33 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 "adjudicationStatus",
             )
         }
-        if int(suite.get("schemaVersion") or 0) == 3:
+        if schema_version in {3, 4}:
             suite_report["judgmentContractSha256"] = sha256_json(suite["judgmentContract"])
             suite_report["judgmentContract"] = suite["judgmentContract"]
         report = {
-            "schemaVersion": (3 if capture_only or int(suite.get("schemaVersion") or 0) == 3 else 2),
+            "schemaVersion": (3 if capture_only and not m3_run else schema_version),
             "generatedAt": datetime.now(UTC).isoformat(),
-            "mode": "m2-candidate-universe-capture" if capture_only else "evaluation",
+            "mode": (
+                f"m3-candidate-universe-capture-{args.m3_capture_arm}"
+                if m3_run and capture_only
+                else ("m2-candidate-universe-capture" if capture_only else "evaluation")
+            ),
             "suite": suite_report,
             "run": {
-                "git": _git_snapshot(repository),
+                "git": git_snapshot,
                 "scopedSource": scoped_source,
                 "runtimeEnvironment": runtime_environment,
                 "configFingerprint": config_fingerprint,
-                "m2ExperimentFingerprint": experiment_fingerprint,
+                **(
+                    {
+                        "m3ExperimentFingerprint": experiment_fingerprint,
+                        "rewriteConfigFingerprint": rewrite_fingerprint,
+                        "promptFingerprint": prompt_fingerprint,
+                        "rewriteProviderCost": rewrite_provider_cost,
+                    }
+                    if m3_run
+                    else {"m2ExperimentFingerprint": experiment_fingerprint}
+                ),
                 "latencyProfileFingerprint": _latency_profile_fingerprint(resolved_config),
                 "resolvedConfig": resolved_config,
                 "stageAvailability": _stage_availability(resolved_config, results=results),
@@ -814,6 +1085,14 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 "retrievalIdentityConflictCount": identity_conflict_count,
                 "retrievalSafetyRejectionCount": retrieval_safety_rejection_count,
                 "retrievalSafetyIssues": retrieval_safety_issues,
+                **(
+                    {
+                        "rewriteFallbackCount": rewrite_fallback_count,
+                        "rewriteSafetyRejectionCount": rewrite_safety_rejection_count,
+                    }
+                    if m3_run
+                    else {}
+                ),
             },
             "evaluationManifest": _evaluation_manifest(
                 suite=suite,
@@ -821,6 +1100,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
                 config_fingerprint=config_fingerprint,
                 experiment_fingerprint=experiment_fingerprint,
                 scoped_source=scoped_source,
+                source_git=git_snapshot,
                 runtime_environment=runtime_environment,
                 index_report=runtime.index_report,
                 candidate_universe=candidate_universe,
@@ -856,7 +1136,7 @@ async def run(args: argparse.Namespace) -> tuple[dict, bool]:
             "summary": report["summary"],
         }
         print(json.dumps(concise, indent=2, ensure_ascii=False))
-        frozen_m2_artifact = capture_only or int(suite.get("schemaVersion") or 0) == 3
+        frozen_m2_artifact = capture_only or schema_version in {3, 4}
         if args.output:
             (_write_json_exclusive if frozen_m2_artifact else _write_json)(args.output, report)
         if args.summary_output:
@@ -1070,18 +1350,18 @@ async def _build_runtime(
             "qdrantServer": current_qdrant_server,
             "preflight": preflight,
         }
-        if int(suite.get("schemaVersion") or 0) == 3:
+        if int(suite.get("schemaVersion") or 0) in {3, 4}:
             expected_manifest = suite["judgmentContract"].get(
                 "captureIndexManifestFingerprint"
             )
             if index_report["manifestFingerprint"] != expected_manifest:
                 raise ValueError(
-                    "M2 index manifest differs from the one used to capture its bounded "
+                    "Bounded Eval index manifest differs from the one used to capture its "
                     "candidate universe."
                 )
             if suite["judgmentContract"].get("captureQdrantServer") != current_qdrant_server:
                 raise ValueError(
-                    "M2 Qdrant Server metadata differs from candidate capture; recapture "
+                    "Qdrant Server metadata differs from candidate capture; recapture "
                     "the bounded Dev suite."
                 )
     except BaseException:
@@ -1094,15 +1374,21 @@ async def _build_runtime(
         raise
 
     closed = False
+    query_rewriter: QueryRewriteProvider | None = None
 
     async def close() -> None:
         nonlocal closed
         if closed:
             return
         closed = True
-        await _close_eval_resources(embedding, client)
+        await _close_eval_resources(
+            embedding,
+            client,
+            query_rewriter=query_rewriter,
+        )
 
     try:
+        query_rewriter = _query_rewriter(args, resolved_config)
         shop_service = GeneratedNycShopToolService(
             data_directory,
             max_candidates=args.discovery_pool_size,
@@ -1133,11 +1419,17 @@ async def _build_runtime(
                 documents_per_merchant=args.global_documents_per_merchant,
                 rrf_k=args.fusion_rrf_k,
                 brand_cap=args.brand_cap,
+                query_rewriter=query_rewriter,
             )
         else:
             candidate_discovery = LegacyCandidateDiscovery(shop_service, rag)
     except BaseException:
-        await _close_eval_resources(embedding, client, suppress_errors=True)
+        await _close_eval_resources(
+            embedding,
+            client,
+            query_rewriter=query_rewriter,
+            suppress_errors=True,
+        )
         raise
 
     return SimpleNamespace(
@@ -1145,6 +1437,23 @@ async def _build_runtime(
         rag_service=rag,
         candidate_discovery=candidate_discovery,
         embedding_service=embedding,
+        query_rewriter=query_rewriter,
+        m3_enabled=bool(
+            getattr(args, "m3_capture_arm", None)
+            or int(suite.get("schemaVersion") or 0) == 4
+        ),
+        rewrite_input_price_usd_per_million_tokens=float(
+            (resolved_config.get("queryRewrite") or {}).get(
+                "inputPriceUsdPerMillionTokens",
+                0.0,
+            )
+        ),
+        rewrite_output_price_usd_per_million_tokens=float(
+            (resolved_config.get("queryRewrite") or {}).get(
+                "outputPriceUsdPerMillionTokens",
+                0.0,
+            )
+        ),
         index_report=index_report,
         prior_provider_usage=prior_provider_usage,
         close=close,
@@ -1155,10 +1464,14 @@ async def _close_eval_resources(
     embedding: TimedEmbeddingService,
     client: AsyncQdrantClient,
     *,
+    query_rewriter: QueryRewriteProvider | None = None,
     suppress_errors: bool = False,
 ) -> None:
     errors: list[BaseException] = []
-    for close in (embedding.aclose, client.close):
+    closes = [embedding.aclose, client.close]
+    if query_rewriter is not None:
+        closes.insert(0, query_rewriter.aclose)
+    for close in closes:
         try:
             await close()
         except BaseException as exc:
@@ -1672,6 +1985,42 @@ def _embedding_service(args: argparse.Namespace, config: dict) -> EmbeddingServi
     )
 
 
+def _query_rewriter(
+    args: argparse.Namespace,
+    config: dict[str, Any],
+) -> QueryRewriteProvider | None:
+    rewrite = config.get("queryRewrite") or {}
+    if rewrite.get("enabled") is not True:
+        return None
+    settings = _eval_settings()
+    provider = str(rewrite["provider"])
+    dedicated_key = settings.query_rewrite_api_key.get_secret_value()
+    if provider == "openai":
+        api_key = dedicated_key or settings.openai_embedding_api_key.get_secret_value()
+    else:
+        api_key = dedicated_key or settings.model_api_key
+    if not api_key.strip():
+        raise ValueError(f"M3 {provider} query rewrite requires a configured API key.")
+    fallback = DisabledQueryRewriter(prompt_version=str(rewrite["promptVersion"]))
+    runtime = rewrite["runtime"]
+    base_url, _ = _query_rewrite_provider_values(args)
+    return OpenAICompatibleQueryRewriter(
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        model=str(rewrite["model"]),
+        fallback=fallback,
+        prompt_version=str(rewrite["promptVersion"]),
+        max_queries=int(rewrite["maxQueries"]),
+        timeout_seconds=float(runtime["timeoutSeconds"]),
+        max_concurrency=int(runtime["maxConcurrency"]),
+        cache_size=int(runtime["cacheSize"]),
+        cache_ttl_seconds=float(runtime["cacheTtlSeconds"]),
+        max_input_characters=int(runtime["maxInputCharacters"]),
+        max_output_tokens=int(runtime["maxOutputTokens"]),
+    )
+
+
 def _prior_index_provider_usage(args: argparse.Namespace) -> EmbeddingUsage:
     if getattr(args, "embedding_provider", "hash") == "hash":
         return EmbeddingUsage()
@@ -1687,9 +2036,125 @@ def _prior_index_provider_usage(args: argparse.Namespace) -> EmbeddingUsage:
     return _usage_from_dict(value.get("cumulativeProviderUsage") or {})
 
 
+def _query_rewrite_provider_values(args: argparse.Namespace) -> tuple[str, str]:
+    provider = str(getattr(args, "query_rewrite_provider", "disabled"))
+    if provider == "disabled":
+        return "", "disabled"
+    settings = _eval_settings()
+    configured_base = str(getattr(args, "query_rewrite_base_url", "") or "")
+    configured_model = str(getattr(args, "query_rewrite_model", "") or "")
+    if provider == "openai":
+        return (
+            configured_base or settings.query_rewrite_base_url or "https://api.openai.com/v1",
+            configured_model or settings.query_rewrite_model or "gpt-4o-mini-2024-07-18",
+        )
+    return (
+        configured_base or settings.query_rewrite_base_url or settings.model_base_url,
+        configured_model or settings.query_rewrite_model or settings.model_name,
+    )
+
+
+def _resolved_query_rewrite_config(
+    args: argparse.Namespace,
+    repository: Path,
+) -> dict[str, Any]:
+    provider = str(getattr(args, "query_rewrite_provider", "disabled"))
+    enabled = provider != "disabled"
+    if not enabled:
+        return {
+            "enabled": False,
+            "provider": "disabled",
+            "model": "disabled",
+            "endpointFingerprint": None,
+            "promptVersion": "disabled",
+            "promptFingerprint": None,
+            "maxQueries": 0,
+            "inputPriceUsdPerMillionTokens": 0.0,
+            "outputPriceUsdPerMillionTokens": 0.0,
+            "pricingSnapshotDate": M3_PRICING_SNAPSHOT_DATE,
+            "maxProviderCostUsd": float(
+                getattr(args, "query_rewrite_max_provider_cost_usd", 0.1)
+            ),
+            "runtime": {
+                "timeoutSeconds": float(
+                    getattr(args, "query_rewrite_timeout_seconds", 8.0)
+                ),
+                "maxConcurrency": int(
+                    getattr(args, "query_rewrite_max_concurrency", 2)
+                ),
+                "cacheSize": int(getattr(args, "query_rewrite_cache_size", 512)),
+                "cacheTtlSeconds": float(
+                    getattr(args, "query_rewrite_cache_ttl_seconds", 900.0)
+                ),
+                "maxInputCharacters": int(
+                    getattr(args, "query_rewrite_max_input_characters", 2_000)
+                ),
+                "maxOutputTokens": int(
+                    getattr(args, "query_rewrite_max_output_tokens", 300)
+                ),
+            },
+        }
+
+    base_url, model = _query_rewrite_provider_values(args)
+    prompt_version = str(
+        getattr(args, "query_rewrite_prompt_version", PROMPT_VERSION)
+    ).strip()
+    prompt_source = repository / "agent-service/app/rag/query_rewriter.py"
+    prompt_fingerprint = _fingerprint(
+        {
+            "promptVersion": prompt_version,
+            "queryRewriterSourceSha256": _file_sha256(prompt_source),
+        }
+    )
+    return {
+        "enabled": True,
+        "provider": provider,
+        "model": model,
+        "endpointFingerprint": _endpoint_fingerprint(base_url),
+        "promptVersion": prompt_version,
+        "promptFingerprint": prompt_fingerprint,
+        "maxQueries": int(getattr(args, "query_rewrite_max_queries", 3)),
+        "inputPriceUsdPerMillionTokens": float(
+            getattr(args, "query_rewrite_input_price_usd_per_million_tokens", 0.0)
+        ),
+        "outputPriceUsdPerMillionTokens": float(
+            getattr(args, "query_rewrite_output_price_usd_per_million_tokens", 0.0)
+        ),
+        "pricingSnapshotDate": M3_PRICING_SNAPSHOT_DATE,
+        "maxProviderCostUsd": float(
+            getattr(args, "query_rewrite_max_provider_cost_usd", 0.1)
+        ),
+        "runtime": {
+            "timeoutSeconds": float(
+                getattr(args, "query_rewrite_timeout_seconds", 8.0)
+            ),
+            "maxConcurrency": int(
+                getattr(args, "query_rewrite_max_concurrency", 2)
+            ),
+            "cacheSize": int(getattr(args, "query_rewrite_cache_size", 512)),
+            "cacheTtlSeconds": float(
+                getattr(args, "query_rewrite_cache_ttl_seconds", 900.0)
+            ),
+            "maxInputCharacters": int(
+                getattr(args, "query_rewrite_max_input_characters", 2_000)
+            ),
+            "maxOutputTokens": int(
+                getattr(args, "query_rewrite_max_output_tokens", 300)
+            ),
+        },
+    }
+
+
 def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
     _apply_embedding_profile(args)
     repository = Path(__file__).resolve().parents[3]
+    m3_context = bool(
+        getattr(args, "m3_capture_arm", None)
+        or int(suite.get("schemaVersion") or 0) == 4
+    )
+    query_rewrite_config = (
+        _resolved_query_rewrite_config(args, repository) if m3_context else None
+    )
     selected = _selected_profile(args)
     if args.embedding_provider == "hash":
         model = args.embedding_model or "deterministic-token-sha256"
@@ -1805,6 +2270,24 @@ def _resolved_config(args: argparse.Namespace, suite: dict) -> dict[str, Any]:
             "latencyMode": "outer-wall-clock-sequential",
         },
     }
+    if query_rewrite_config is not None:
+        resolved["queryRewrite"] = query_rewrite_config
+        resolved["features"].update(
+            {
+                "queryRewriteEnabled": query_rewrite_config["enabled"],
+                "queryRewritePromptVersion": (
+                    query_rewrite_config["promptVersion"]
+                    if query_rewrite_config["enabled"]
+                    else None
+                ),
+                "queryRewritePromptFingerprint": query_rewrite_config[
+                    "promptFingerprint"
+                ],
+                "queryRewriteConfigFingerprint": rewrite_config_fingerprint(
+                    resolved
+                ),
+            }
+        )
     if selected is not None and selected.provider != "hash":
         control = {
             "retrieval": resolved["retrieval"],
@@ -1839,6 +2322,8 @@ def _stage_availability(
 ) -> dict[str, Any]:
     real_embedding = resolved_config["embedding"]["provider"] != "hash"
     global_enabled = bool((resolved_config.get("features") or {}).get("globalRetrievalEnabled"))
+    rewrite_enabled = bool((resolved_config.get("features") or {}).get("queryRewriteEnabled"))
+    m3_configured = isinstance(resolved_config.get("queryRewrite"), dict)
     availability = {
         "structuredSearch": {"available": True, "source": "eval-outer-timer"},
         "candidateRanking": {"available": True, "source": "eval-outer-timer"},
@@ -1877,7 +2362,17 @@ def _stage_availability(
             "available": global_enabled,
             "source": "candidate-discovery-metadata" if global_enabled else "disabled-control",
         },
-        "rewrite": {"available": False, "reason": "disabled in M0 baseline"},
+        "rewrite": (
+            {
+                "available": True,
+                "source": "candidate-discovery-metadata",
+            }
+            if rewrite_enabled
+            else {
+                "available": False,
+                "reason": "disabled M3 control" if m3_configured else "disabled in M0 baseline",
+            }
+        ),
         "reranker": {"available": False, "reason": "no learned reranker in M0 baseline"},
         "providerUsage": {
             "available": real_embedding,
@@ -1915,6 +2410,18 @@ def _stage_availability(
                 availability[stage] = {
                     "available": False,
                     "reason": "service did not expose this isolated stage timer",
+                    "samples": 0,
+                }
+        if rewrite_enabled:
+            rewrite_samples = sum(
+                (item.get("latencyMs") or {}).get("queryRewrite") is not None
+                for item in results
+            )
+            availability["rewrite"]["samples"] = rewrite_samples
+            if rewrite_samples == 0:
+                availability["rewrite"] = {
+                    "available": False,
+                    "reason": "service did not expose the rewrite timer",
                     "samples": 0,
                 }
     return availability
@@ -2272,16 +2779,46 @@ def _validate_feature_configuration(args: argparse.Namespace) -> None:
         if args.split == "test" and not (args.preflight_only or args.provider_smoke):
             if action != "reuse":
                 raise ValueError("The M1 policy holdout must reuse the selected Dev index.")
-    supported = {
-        "query_rewrite_provider": (args.query_rewrite_provider, "disabled"),
-        "reranker_provider": (args.reranker_provider, "heuristic-multi-signal"),
-    }
-    for name, (actual, expected) in supported.items():
-        if actual != expected:
-            raise ValueError(
-                f"M0 accepts {name} in the config snapshot but only supports {expected!r}; "
-                f"received {actual!r}. Implement the stage before benchmarking it."
-            )
+    rewrite_provider = str(args.query_rewrite_provider)
+    if rewrite_provider not in {"disabled", "openai", "deepseek"}:
+        raise ValueError(
+            "M0 accepts query_rewrite_provider in the config snapshot but only supports "
+            f"'disabled' outside the implemented M3 providers; received {rewrite_provider!r}."
+        )
+    if rewrite_provider != "disabled":
+        if not expected_enabled or args.split != "dev":
+            raise ValueError("M3 query rewrite requires Dev global-hybrid retrieval.")
+        if not 1 <= args.query_rewrite_max_queries <= 3:
+            raise ValueError("--query-rewrite-max-queries must be between 1 and 3.")
+        if not 0 < args.query_rewrite_timeout_seconds <= 60:
+            raise ValueError("--query-rewrite-timeout-seconds must be in (0, 60].")
+        if not 1 <= args.query_rewrite_max_concurrency <= 8:
+            raise ValueError("--query-rewrite-max-concurrency must be between 1 and 8.")
+        if args.query_rewrite_cache_size < 0 or args.query_rewrite_cache_ttl_seconds < 0:
+            raise ValueError("M3 query rewrite cache bounds cannot be negative.")
+        if args.query_rewrite_max_input_characters < 1:
+            raise ValueError("--query-rewrite-max-input-characters must be positive.")
+        if not 64 <= args.query_rewrite_max_output_tokens <= 2_000:
+            raise ValueError("--query-rewrite-max-output-tokens must be between 64 and 2000.")
+        for name in (
+            "query_rewrite_input_price_usd_per_million_tokens",
+            "query_rewrite_output_price_usd_per_million_tokens",
+        ):
+            value = getattr(args, name)
+            if value is None or not math.isfinite(value) or value <= 0:
+                raise ValueError(
+                    "Enabled M3 rewrite requires explicit positive input/output token prices."
+                )
+        cap = args.query_rewrite_max_provider_cost_usd
+        if not math.isfinite(cap) or not 0 < cap <= 0.1:
+            raise ValueError("M3 rewrite provider cost cap must be in (0, 0.10] USD.")
+        if not args.query_rewrite_prompt_version.strip():
+            raise ValueError("M3 rewrite prompt version cannot be blank.")
+    if args.reranker_provider != "heuristic-multi-signal":
+        raise ValueError(
+            "M0 accepts reranker_provider in the config snapshot but only supports "
+            f"'heuristic-multi-signal'; received {args.reranker_provider!r}."
+        )
 
 
 def _validate_m1_policy_artifacts(
@@ -2397,6 +2934,86 @@ def _validate_m2_run_configuration(
         )
     if not global_mode and args.baseline_report is not None:
         raise ValueError("M2 candidate-filtered control must not use a baseline report.")
+    return False
+
+
+def _validate_m3_run_configuration(
+    args: argparse.Namespace,
+    *,
+    suite: dict[str, Any],
+    resolved_config: dict[str, Any],
+    repository: Path,
+    scoped_source: dict[str, Any],
+    runtime_environment: dict[str, str],
+) -> bool:
+    schema_version = int(suite.get("schemaVersion") or 0)
+    capture_arm = getattr(args, "m3_capture_arm", None)
+    if capture_arm is None and schema_version != 4:
+        if args.query_rewrite_provider != "disabled":
+            raise ValueError("Query rewrite may run only in an explicit M3 capture or schema-v4 Eval.")
+        return False
+    if suite.get("split") != "dev" or args.split != "dev":
+        raise ValueError("M3 is Dev-only and permanently forbids the consumed M1 Test holdout.")
+    if _file_sha256(args.quality_gate) != _file_sha256(M3_QUALITY_GATE_PATH):
+        raise ValueError("M3 capture and formal Eval must use committed m3_quality_gate.json.")
+    if _index_action(args) != "reuse":
+        raise ValueError("M3 capture and formal Eval must reuse the exact frozen M1 index.")
+    if args.global_retrieval_mode != "global-hybrid" or not args.global_retrieval_enabled:
+        raise ValueError("M3 requires explicitly enabled global-hybrid retrieval in both arms.")
+    if args.output is None:
+        raise ValueError("M3 capture and formal Eval require an explicit --output path.")
+    if args.limit_cases is not None:
+        raise ValueError("M3 capture and formal Eval must run all frozen Dev cases.")
+    if args.baseline_report is not None or args.candidate_universe_output is not None:
+        raise ValueError("M3 uses paired reports; baseline and M2 candidate output flags are forbidden.")
+    protected = [path for path in (args.output, args.summary_output) if path is not None]
+    if len({path.resolve() for path in protected}) != len(protected):
+        raise ValueError("M3 report and summary paths must be distinct.")
+    for path in protected:
+        if path.exists():
+            raise FileExistsError(f"Refusing to overwrite frozen M3 output: {path}")
+    if scoped_source.get("dirty") is not False:
+        raise ValueError("M3 requires a clean scoped Eval/retrieval/rewrite source snapshot.")
+    git = _git_snapshot(repository)
+    if git.get("dirty") is not False or not git.get("sha"):
+        raise ValueError("M3 requires a clean Git source identity.")
+
+    config_fingerprint = _fingerprint(resolved_config)
+    experiment_fingerprint = m3_experiment_fingerprint(resolved_config)
+    rewrite_fingerprint = rewrite_config_fingerprint(resolved_config)
+    rewrite = resolved_config["queryRewrite"]
+    treatment = args.query_rewrite_provider != "disabled"
+    if capture_arm is not None:
+        if schema_version != 3:
+            raise ValueError("--m3-capture-arm requires the frozen schema-v3 M2 Dev suite.")
+        expected_treatment = capture_arm == "treatment"
+        if treatment is not expected_treatment:
+            raise ValueError(
+                "M3 control capture must disable rewrite and treatment capture must enable it."
+            )
+        return True
+
+    contract = suite["judgmentContract"]
+    expected_arm = "treatment" if treatment else "control"
+    expected_config = contract[f"{expected_arm}ConfigFingerprint"]
+    expected_rewrite = contract[f"{expected_arm}RewriteConfigFingerprint"]
+    if config_fingerprint != expected_config or rewrite_fingerprint != expected_rewrite:
+        raise ValueError("M3 formal runtime differs from its captured arm configuration.")
+    if experiment_fingerprint != contract["experimentFingerprint"]:
+        raise ValueError("M3 formal runtime differs outside the isolated rewrite configuration.")
+    if int(contract["candidateLimit"]) != args.candidate_limit:
+        raise ValueError("M3 candidate limit differs from its bounded judgment contract.")
+    if scoped_source["sha256"] != contract["captureScopedSourceSha256"]:
+        raise ValueError("M3 scoped source changed after candidate capture.")
+    if runtime_environment != contract["captureRuntimeEnvironment"]:
+        raise ValueError("M3 runtime environment changed after candidate capture.")
+    if git["sha"] != contract["captureSourceGitSha"]:
+        raise ValueError("M3 Git identity changed after candidate capture.")
+    if treatment and (
+        rewrite["promptVersion"] != contract["treatmentPromptVersion"]
+        or rewrite["promptFingerprint"] != contract["treatmentPromptFingerprint"]
+    ):
+        raise ValueError("M3 treatment prompt changed after candidate capture.")
     return False
 
 
@@ -2777,6 +3394,166 @@ def _validate_m2_judgment_contract(
         raise ValueError("M2 suite must document avoidance of the full corpus Cartesian product.")
 
 
+def _validate_m3_judgment_contract(directory: Path, suite: dict[str, Any]) -> None:
+    if suite.get("suite") != M3_SUITE_NAME or suite.get("split") != "dev":
+        raise ValueError("Schema-v4 M3 evaluation is Dev-only and uses the dedicated M3 suite.")
+    contract = suite.get("judgmentContract") or {}
+    if (
+        contract.get("policyVersion") != M3_JUDGMENT_POLICY_VERSION
+        or contract.get("unjudgedReturnedPolicy") != "fail-closed"
+        or contract.get("sourceSplit") != "dev"
+        or contract.get("m1PolicyHoldoutUsed") is not False
+        or contract.get("m1PolicyHoldoutForbidden") is not True
+        or contract.get("selectionLeakageWarning") != M3_SELECTION_LEAKAGE_WARNING
+    ):
+        raise ValueError("M3 suite violates its Dev-only fail-closed judgment policy.")
+    if (suite.get("evaluationDesign") or {}).get("m1PolicyHoldoutUsed") is not False:
+        raise ValueError("M3 suite may not use the consumed M1 Test holdout.")
+
+    source_suite = json.loads(FROZEN_M2_DEV_SUITE_PATH.read_text(encoding="utf-8"))
+    validate_frozen_m2_dev_source_suite(
+        source_suite,
+        trusted_source_suite=source_suite,
+    )
+    source_identity = {
+        "sourceSuite": source_suite["suite"],
+        "sourceSuiteSchemaVersion": 3,
+        "sourceSuiteCaseSha256": source_suite["caseSha256"],
+        "sourceSuiteContractSha256": source_suite["suiteContractSha256"],
+        "sourceJudgmentContractSha256": sha256_json(source_suite["judgmentContract"]),
+    }
+    if any(contract.get(field) != value for field, value in source_identity.items()):
+        raise ValueError("M3 judgment contract is not derived from frozen M2 Dev.")
+
+    fixture_name = contract.get("candidateUniverseFixture")
+    if (
+        fixture_name != M3_CANDIDATE_UNIVERSE_FILENAME
+        or Path(str(fixture_name)).name != fixture_name
+    ):
+        raise ValueError("M3 suite references an invalid candidate-universe fixture.")
+    fixture_path = directory / fixture_name
+    if not fixture_path.is_file():
+        raise ValueError(f"M3 suite requires its sibling {fixture_name} fixture.")
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    fixture_sha = m3_candidate_universe_sha256(fixture)
+    if (
+        fixture.get("fixtureSha256") != fixture_sha
+        or contract.get("candidateUniverseFixtureSha256") != fixture_sha
+    ):
+        raise ValueError("M3 candidate-universe fixture SHA does not match the suite contract.")
+    expected_fixture = {
+        "split": "dev",
+        **source_identity,
+        "dataVersion": suite["dataVersion"],
+        "datasetSha256": suite["datasetSha256"],
+        "candidateLimit": contract.get("candidateLimit"),
+        "experimentFingerprint": contract.get("experimentFingerprint"),
+        "controlConfigFingerprint": contract.get("controlConfigFingerprint"),
+        "treatmentConfigFingerprint": contract.get("treatmentConfigFingerprint"),
+        "controlResultFingerprint": contract.get("controlResultFingerprint"),
+        "treatmentResultFingerprint": contract.get("treatmentResultFingerprint"),
+        "indexManifestFingerprint": contract.get("captureIndexManifestFingerprint"),
+        "scopedSourceSha256": contract.get("captureScopedSourceSha256"),
+        "sourceGitSha": contract.get("captureSourceGitSha"),
+        "runtimeEnvironment": contract.get("captureRuntimeEnvironment"),
+        "runtimeEnvironmentFingerprint": contract.get(
+            "captureRuntimeEnvironmentFingerprint"
+        ),
+        "qdrantServer": contract.get("captureQdrantServer"),
+        "qdrantServerFingerprint": contract.get("captureQdrantServerFingerprint"),
+        "embeddingIdentity": contract.get("embeddingIdentity"),
+        "controlRewriteConfigFingerprint": contract.get(
+            "controlRewriteConfigFingerprint"
+        ),
+        "treatmentRewriteConfigFingerprint": contract.get(
+            "treatmentRewriteConfigFingerprint"
+        ),
+        "treatmentPromptVersion": contract.get("treatmentPromptVersion"),
+        "treatmentPromptFingerprint": contract.get("treatmentPromptFingerprint"),
+        "selectionLeakageWarning": M3_SELECTION_LEAKAGE_WARNING,
+        "caseCount": int(suite["caseCount"]),
+    }
+    if any(fixture.get(field) != value for field, value in expected_fixture.items()):
+        raise ValueError("M3 candidate-universe fixture differs from its judgment contract.")
+
+    universe_cases = fixture.get("cases")
+    expected_ids = [str(case["id"]) for case in suite["cases"]]
+    if not isinstance(universe_cases, list) or [
+        str(case.get("id")) for case in universe_cases
+    ] != expected_ids:
+        raise ValueError("M3 candidate-universe case order/IDs differ from the suite.")
+    universe_by_id = {str(case["id"]): case for case in universe_cases}
+    counts = {"structured": 0, "control": 0, "treatment": 0, "bounded": 0}
+    treatment_only = 0
+    relevant_treatment_only = 0
+    threshold = int(suite["binaryRelevanceThreshold"])
+    for case in suite["cases"]:
+        case_id = str(case["id"])
+        universe = universe_by_id[case_id]
+
+        def external_ids(
+            field: str,
+            *,
+            current_universe: dict[str, Any] = universe,
+            current_case_id: str = case_id,
+        ) -> list[str]:
+            value = current_universe.get(field)
+            if (
+                not isinstance(value, list)
+                or any(not isinstance(item, str) or not item for item in value)
+                or len(value) != len(set(value))
+            ):
+                raise ValueError(
+                    f"M3 candidate universe {current_case_id} has invalid {field}."
+                )
+            return value
+
+        structured = external_ids("structuredBranchExternalIds")
+        control = external_ids("m2ControlReturnedExternalIds")
+        treatment = external_ids("m3TreatmentReturnedExternalIds")
+        if len(control) > int(contract["candidateLimit"]) or len(treatment) > int(
+            contract["candidateLimit"]
+        ):
+            raise ValueError(f"M3 candidate universe {case_id} exceeds its Top-K bound.")
+        judged = {str(item["externalId"]): item for item in case.get("judgments") or []}
+        bounded_ids = set(structured) | set(control) | set(treatment)
+        if set(judged) != bounded_ids:
+            raise ValueError(f"M3 case {case_id} is not complete for its bounded union.")
+        metadata = case.get("metadata") or {}
+        expected_metadata = {
+            "structuredCandidateExternalIds": structured,
+            "m2ControlReturnedExternalIds": control,
+            "m3TreatmentReturnedExternalIds": treatment,
+            "boundedJudgmentCount": len(judged),
+        }
+        if any(metadata.get(field) != value for field, value in expected_metadata.items()):
+            raise ValueError(f"M3 case {case_id} metadata differs from candidate capture.")
+        new_ids = set(treatment) - set(structured) - set(control)
+        treatment_only += len(new_ids)
+        relevant_treatment_only += sum(
+            int(judged[external_id]["relevance"]) >= threshold for external_id in new_ids
+        )
+        counts["structured"] += len(structured)
+        counts["control"] += len(control)
+        counts["treatment"] += len(treatment)
+        counts["bounded"] += len(judged)
+
+    expected_counts = {
+        "structuredJudgmentPairs": counts["structured"],
+        "m2ControlObservedPairs": counts["control"],
+        "m3TreatmentObservedPairs": counts["treatment"],
+        "boundedJudgmentPairs": counts["bounded"],
+        "m3TreatmentOnlyJudgmentPairs": treatment_only,
+        "binaryRelevantM3TreatmentOnlyPairs": relevant_treatment_only,
+    }
+    for field, expected in expected_counts.items():
+        value = contract.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value != expected:
+            raise ValueError(f"M3 judgment contract {field} is inconsistent.")
+    if treatment_only < 1 or relevant_treatment_only < 1:
+        raise ValueError("M3 suite does not exercise a relevant treatment-only rescue.")
+
+
 def _load_baseline(path: Path | None, *, split: str) -> dict | None:
     if path is None:
         return None
@@ -3018,6 +3795,21 @@ def _scoped_source_snapshot(repository: Path) -> dict[str, Any]:
     }
 
 
+def _m3_scoped_source_snapshot(repository: Path) -> dict[str, Any]:
+    snapshot = _file_set_fingerprint(repository, M3_EVAL_SOURCE_PATHS)
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--", *M3_EVAL_SOURCE_PATHS],
+        cwd=repository,
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    return {
+        **snapshot,
+        "dirty": bool(status),
+    }
+
+
 def _same_scoped_source_snapshot(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
@@ -3087,13 +3879,18 @@ def _evaluation_manifest(
     config_fingerprint: str,
     experiment_fingerprint: str,
     scoped_source: dict[str, Any],
+    source_git: dict[str, Any],
     runtime_environment: dict[str, str],
     index_report: dict[str, Any],
     candidate_universe: dict[str, Any] | None,
 ) -> dict[str, Any]:
     judgment_contract = suite.get("judgmentContract")
-    return {
-        "version": "rag-v2-eval-manifest-v2",
+    m3_run = int(suite.get("schemaVersion") or 0) == 4 or isinstance(
+        resolved_config.get("queryRewrite"),
+        dict,
+    )
+    manifest = {
+        "version": "rag-v2-eval-manifest-v3" if m3_run else "rag-v2-eval-manifest-v2",
         "suiteSchemaVersion": int(suite["schemaVersion"]),
         "suiteContractSha256": suite["suiteContractSha256"],
         "caseSha256": suite["caseSha256"],
@@ -3104,7 +3901,6 @@ def _evaluation_manifest(
             else (judgment_contract or {}).get("candidateUniverseFixtureSha256")
         ),
         "configFingerprint": config_fingerprint,
-        "m2ExperimentFingerprint": experiment_fingerprint,
         "scopedSourceSha256": scoped_source.get("sha256"),
         "runtimeEnvironmentFingerprint": _fingerprint(runtime_environment),
         "indexManifestFingerprint": index_report.get("manifestFingerprint"),
@@ -3113,6 +3909,24 @@ def _evaluation_manifest(
         "retrievalMode": (resolved_config.get("retrieval") or {}).get("mode"),
         "globalRetrievalEnabled": (resolved_config.get("features") or {}).get("globalRetrievalEnabled"),
     }
+    if m3_run:
+        features = resolved_config.get("features") or {}
+        rewrite = resolved_config["queryRewrite"]
+        manifest.update(
+            {
+                "m3ExperimentFingerprint": experiment_fingerprint,
+                "sourceGitSha": source_git.get("sha"),
+                "queryRewriteProvider": features.get("queryRewriteProvider"),
+                "queryRewriteEnabled": features.get("queryRewriteEnabled"),
+                "promptFingerprint": rewrite.get("promptFingerprint"),
+                "rewriteConfigFingerprint": rewrite_config_fingerprint(
+                    resolved_config
+                ),
+            }
+        )
+    else:
+        manifest["m2ExperimentFingerprint"] = experiment_fingerprint
+    return manifest
 
 
 def _candidate_capture_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -3126,6 +3940,37 @@ def _candidate_capture_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
         }
     }
+
+
+def _rewrite_cost_from_results(results: list[dict[str, Any]]) -> float:
+    cost = 0.0
+    for result in results:
+        value = (
+            ((result.get("requests") or {}).get("rewriteProviderUsage") or {}).get(
+                "estimated_cost_usd",
+                0.0,
+            )
+        )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("M3 rewrite cost must be numeric.")
+        value = float(value)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("M3 rewrite cost must be finite and non-negative.")
+        cost += value
+    return cost
+
+
+def _require_rewrite_cost_within_cap(
+    estimated_cost_usd: float,
+    resolved_config: dict[str, Any],
+) -> None:
+    cap = float((resolved_config.get("queryRewrite") or {}).get("maxProviderCostUsd", 0.0))
+    if not math.isfinite(estimated_cost_usd) or estimated_cost_usd < 0:
+        raise ValueError("M3 rewrite provider produced an invalid cost estimate.")
+    if estimated_cost_usd > cap + 1e-9:
+        raise ValueError(
+            f"M3 rewrite provider cost ${estimated_cost_usd:.6f} exceeded hard cap ${cap:.6f}."
+        )
 
 
 def _fingerprint(value: Any) -> str:
@@ -3212,7 +4057,35 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--provider-smoke", action="store_true")
     parser.add_argument("--qdrant-ready-timeout-seconds", type=float, default=1_800.0)
-    parser.add_argument("--query-rewrite-provider", default="disabled")
+    parser.add_argument(
+        "--query-rewrite-provider",
+        choices=("disabled", "openai", "deepseek"),
+        default="disabled",
+    )
+    parser.add_argument("--query-rewrite-base-url", default="")
+    parser.add_argument("--query-rewrite-model", default="")
+    parser.add_argument("--query-rewrite-prompt-version", default=PROMPT_VERSION)
+    parser.add_argument("--query-rewrite-max-queries", type=int, default=3)
+    parser.add_argument("--query-rewrite-timeout-seconds", type=float, default=8.0)
+    parser.add_argument("--query-rewrite-max-concurrency", type=int, default=2)
+    parser.add_argument("--query-rewrite-cache-size", type=int, default=512)
+    parser.add_argument("--query-rewrite-cache-ttl-seconds", type=float, default=900.0)
+    parser.add_argument("--query-rewrite-max-input-characters", type=int, default=2_000)
+    parser.add_argument("--query-rewrite-max-output-tokens", type=int, default=300)
+    parser.add_argument(
+        "--query-rewrite-input-price-usd-per-million-tokens",
+        type=float,
+    )
+    parser.add_argument(
+        "--query-rewrite-output-price-usd-per-million-tokens",
+        type=float,
+    )
+    parser.add_argument("--query-rewrite-max-provider-cost-usd", type=float, default=0.1)
+    parser.add_argument(
+        "--m3-capture-arm",
+        choices=("control", "treatment"),
+        help="Run a complete, non-scoring schema-v3 M3 candidate capture arm.",
+    )
     parser.add_argument(
         "--global-retrieval-mode",
         choices=("candidate-filtered", "global-hybrid"),
