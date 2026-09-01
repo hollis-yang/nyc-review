@@ -1901,6 +1901,8 @@ async def test_m2_eval_fails_closed_instead_of_scoring_unjudged_global_merchants
                 retrieval_metadata={
                     "globalRetrievalEnabled": True,
                     "candidateDiscoveryMode": "global-hybrid",
+                    "structuredBranchCandidates": 1,
+                    "structuredBranchExternalIds": ["structured:1"],
                     "globalDenseLatencyMs": 1.25,
                     "globalSparseLatencyMs": 0.75,
                     "candidateDiscoveryLatencyMs": {
@@ -1942,6 +1944,9 @@ async def test_m2_eval_fails_closed_instead_of_scoring_unjudged_global_merchants
     assert captured["orderedCandidates"][0]["relevance"] is None
     assert captured["metrics"]["status"] == "not-scored-candidate-universe-capture"
     assert captured["candidatePoolSize"] == 0
+    assert captured["retrievalTrace"]["structuredBranchExternalIds"] == [
+        "structured:1"
+    ]
     assert captured["latencyMs"]["globalRetrieval"] == 2.0
     assert captured["latencyMs"]["globalDenseRetrieval"] == 1.25
     assert captured["latencyMs"]["globalSparseRetrieval"] == 0.75
@@ -1980,6 +1985,9 @@ def test_m2_bounded_builder_labels_observed_qdrant_only_merchants(tmp_path):
             {
                 "id": "dev-en-001",
                 "orderedCandidates": [{"externalId": "global:2"}],
+                "retrievalTrace": {
+                    "structuredBranchExternalIds": ["structured:1"],
+                },
             }
         ],
         resolved_config=resolved,
@@ -2001,9 +2009,15 @@ def test_m2_bounded_builder_labels_observed_qdrant_only_merchants(tmp_path):
     judgments = {item["externalId"]: item for item in suite["cases"][0]["judgments"]}
 
     assert set(judgments) == {"structured:1", "global:2"}
+    assert "unused:3" not in judgments
     assert judgments["global:2"]["relevance"] == 3
     assert judgments["global:2"]["judgmentOrigin"] == "observed-global-treatment-output"
     assert suite["judgmentContract"]["boundedJudgmentPairs"] == 2
+    assert suite["judgmentContract"]["structuredJudgmentPairs"] == 1
+    assert universe["cases"][0]["structuredBranchExternalIds"] == [
+        "structured:1"
+    ]
+    assert universe["structuredCandidatePairCount"] == 1
     assert suite["judgmentContract"]["fullCartesianPairsAvoided"] == 1
     assert suite["judgmentContract"]["m1PolicyHoldoutUsed"] is False
 
@@ -2036,6 +2050,81 @@ def test_m2_capture_rejects_a_schema2_dev_suite_with_uncommitted_identity():
             qdrant_server={"mode": "server", "version": "1.19.0"},
             candidate_limit=10,
         )
+
+
+@pytest.mark.parametrize(
+    ("structured_external_ids", "message"),
+    [
+        (None, "external IDs must be a list"),
+        (["structured:1", "structured:1"], "duplicate external IDs"),
+        (["outside:9"], "outside the committed M1 Dev judgments"),
+    ],
+)
+def test_m2_capture_rejects_an_invalid_actual_structured_branch(
+    structured_external_ids,
+    message,
+):
+    source_suite = _minimal_source_suite()
+    resolved = _resolved_config_fixture()
+    resolved["retrieval"]["mode"] = "global-hybrid"
+    resolved["features"].update(
+        {"globalRetrievalMode": "global-hybrid", "globalRetrievalEnabled": True}
+    )
+
+    with pytest.raises(ValueError, match=message):
+        capture_candidate_universe(
+            source_suite=source_suite,
+            results=[
+                {
+                    "id": "dev-en-001",
+                    "orderedCandidates": [{"externalId": "global:2"}],
+                    "retrievalTrace": {
+                        "structuredBranchExternalIds": structured_external_ids,
+                    },
+                }
+            ],
+            resolved_config=resolved,
+            config_fingerprint="a" * 64,
+            experiment_fingerprint="b" * 64,
+            index_manifest_fingerprint="1" * 64,
+            scoped_source_sha256="c" * 64,
+            runtime_environment=rag_v2_runner._runtime_environment_snapshot(),
+            qdrant_server={"mode": "server", "version": "1.19.0"},
+            candidate_limit=10,
+            trusted_source_suite=source_suite,
+        )
+
+
+def test_m2_capture_preserves_a_legitimate_empty_structured_branch():
+    source_suite = _minimal_source_suite()
+    resolved = _resolved_config_fixture()
+    resolved["retrieval"]["mode"] = "global-hybrid"
+    resolved["features"].update(
+        {"globalRetrievalMode": "global-hybrid", "globalRetrievalEnabled": True}
+    )
+
+    universe = capture_candidate_universe(
+        source_suite=source_suite,
+        results=[
+            {
+                "id": "dev-en-001",
+                "orderedCandidates": [{"externalId": "global:2"}],
+                "retrievalTrace": {"structuredBranchExternalIds": []},
+            }
+        ],
+        resolved_config=resolved,
+        config_fingerprint="a" * 64,
+        experiment_fingerprint="b" * 64,
+        index_manifest_fingerprint="1" * 64,
+        scoped_source_sha256="c" * 64,
+        runtime_environment=rag_v2_runner._runtime_environment_snapshot(),
+        qdrant_server={"mode": "server", "version": "1.19.0"},
+        candidate_limit=10,
+        trusted_source_suite=source_suite,
+    )
+
+    assert universe["cases"][0]["structuredBranchExternalIds"] == []
+    assert universe["structuredCandidatePairCount"] == 0
 
 
 def test_m2_compare_enforces_paired_quality_performance_and_rescue_gates(tmp_path):
@@ -2220,7 +2309,16 @@ def _minimal_source_suite():
                 "hardConstraintViolations": [],
                 "hardConstraintUnknowns": [],
                 "negativeType": "partial-preference-match",
-            }
+            },
+            {
+                "shopId": 3,
+                "externalId": "unused:3",
+                "relevance": 0,
+                "matchedPreferences": [],
+                "hardConstraintViolations": [],
+                "hardConstraintUnknowns": [],
+                "negativeType": "no-preference-match",
+            },
         ],
         structured_ids=[],
     )
@@ -2232,7 +2330,7 @@ def _minimal_source_suite():
                 "templateId": "m2-test",
                 "labelPolicyVersion": "derived-merchant-attributes-v1",
                 "judgmentCompleteness": "complete-for-structured-candidate-pool",
-                "candidatePoolSize": 1,
+                "candidatePoolSize": 2,
                 "codeSwitchTerms": [],
             },
         }

@@ -42,6 +42,7 @@ class GlobalDocumentRetriever(Protocol):
         *,
         document_limit: int | None = None,
         category: str | None = None,
+        neighborhood: str | None = None,
     ) -> GlobalRetrievalResult: ...
 
 
@@ -150,6 +151,7 @@ class GlobalHybridCandidateDiscovery:
                     plan.expanded_query,
                     document_limit=self._document_limit,
                     category=constraints.category,
+                    neighborhood=constraints.neighborhood,
                 ),
                 timeout_seconds=self._branch_timeout_seconds,
             )
@@ -184,6 +186,7 @@ class GlobalHybridCandidateDiscovery:
             if isinstance(structured_outcome.value, CandidateSet)
             else None
         )
+        structured_external_ids = _structured_branch_external_ids(structured_pool)
         global_result = (
             global_outcome.value
             if isinstance(global_outcome.value, GlobalRetrievalResult)
@@ -226,6 +229,7 @@ class GlobalHybridCandidateDiscovery:
                     total_latency_ms=_elapsed_ms(started),
                     global_result=global_result,
                     hard_filter_stats=hard_filter_stats,
+                    structured_external_ids=structured_external_ids,
                 ),
             )
 
@@ -301,6 +305,7 @@ class GlobalHybridCandidateDiscovery:
                     aggregation=aggregation,
                     hard_filter_stats=structured_filter_stats,
                     reason="hydration-error",
+                    structured_external_ids=structured_external_ids,
                 ),
             )
         hydration_latency_ms = _elapsed_ms(hydration_started)
@@ -344,6 +349,7 @@ class GlobalHybridCandidateDiscovery:
                     aggregation=aggregation,
                     hard_filter_stats=hard_filter_stats,
                     reason="fusion-error",
+                    structured_external_ids=structured_external_ids,
                 ),
             )
         fusion_latency_ms = _elapsed_ms(fusion_started)
@@ -362,6 +368,7 @@ class GlobalHybridCandidateDiscovery:
             hydration_latency_ms=hydration_latency_ms,
             fusion_latency_ms=fusion_latency_ms,
             total_latency_ms=_elapsed_ms(started),
+            structured_external_ids=structured_external_ids,
         )
 
     def _structured_fallback(
@@ -451,6 +458,7 @@ class GlobalHybridCandidateDiscovery:
         hydration_latency_ms: float,
         fusion_latency_ms: float,
         total_latency_ms: float,
+        structured_external_ids: list[str | None],
     ) -> CandidateSet:
         candidates = list(fusion.candidates)
         relaxed = list(structured_pool.relaxed_constraints if structured_pool else ())
@@ -473,6 +481,8 @@ class GlobalHybridCandidateDiscovery:
             "globalRetrievalEnabled": True,
             "candidateDiscoveryMode": "global-hybrid",
             "retrievalVersion": self._global.scope.retrieval_version,
+            "structuredBranchCandidates": len(structured_external_ids),
+            "structuredBranchExternalIds": structured_external_ids,
             "structuredCandidates": fusion.stats.structured_candidates,
             "globalDenseDocuments": len(global_result.dense.hits),
             "globalSparseDocuments": len(global_result.sparse.hits),
@@ -587,12 +597,16 @@ def _fallback_metadata(
     aggregation: MerchantAggregationResult | None = None,
     hard_filter_stats: Mapping[str, int] | None = None,
     reason: str | None = None,
+    structured_external_ids: list[str | None] | None = None,
 ) -> dict[str, Any]:
+    structured_external_ids = list(structured_external_ids or [])
     dense_reason = global_result.dense.fallback_reason if global_result else None
     sparse_reason = global_result.sparse.fallback_reason if global_result else None
     return {
         "globalRetrievalEnabled": True,
         "candidateDiscoveryMode": "structured-fallback",
+        "structuredBranchCandidates": len(structured_external_ids),
+        "structuredBranchExternalIds": structured_external_ids,
         "structuredFallback": structured_outcome.error is not None,
         "globalFallback": True,
         "globalFallbackReason": reason or global_outcome.reason or dense_reason or sparse_reason,
@@ -616,6 +630,16 @@ def _fallback_metadata(
             "total": round(total_latency_ms, 3),
         },
     }
+
+
+def _structured_branch_external_ids(
+    candidate_pool: CandidateSet | None,
+) -> list[str | None]:
+    """Preserve the raw structured branch pool for reproducible Eval capture."""
+
+    if candidate_pool is None:
+        return []
+    return [candidate.external_id for candidate in candidate_pool.candidates]
 
 
 def _global_trace_metadata(

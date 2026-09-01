@@ -466,6 +466,9 @@ def _retrieval_trace(
     returned_count: int,
 ) -> dict[str, Any]:
     enabled = bool(metadata.get("globalRetrievalEnabled"))
+    structured_external_ids = metadata.get("structuredBranchExternalIds")
+    if isinstance(structured_external_ids, tuple):
+        structured_external_ids = list(structured_external_ids)
 
     def count(default: int, *names: str) -> int:
         value = _metadata_count(metadata, *names)
@@ -479,6 +482,11 @@ def _retrieval_trace(
             or metadata.get("mode")
             or ("global-hybrid" if enabled else "candidate-filtered")
         ),
+        "structuredBranchCandidates": count(
+            len(structured_external_ids) if isinstance(structured_external_ids, list) else 0,
+            "structuredBranchCandidates",
+        ),
+        "structuredBranchExternalIds": structured_external_ids,
         "structuredCandidates": count(structured_count, "structuredCandidates"),
         "globalDenseDocuments": count(0, "globalDenseDocuments", "denseDocuments", "denseReturned"),
         "globalSparseDocuments": count(0, "globalSparseDocuments", "sparseDocuments", "sparseReturned"),
@@ -2646,23 +2654,74 @@ def _validate_m2_judgment_contract(
     qdrant_only_pairs = 0
     relevant_miss_pairs = 0
     threshold = int(suite["binaryRelevanceThreshold"])
+    source_dev_suite = (
+        trusted_source_suite
+        if trusted_source_suite is not None
+        else json.loads((EVAL_DIRECTORY / "cases.dev.json").read_text(encoding="utf-8"))
+    )
+    source_by_case = {str(case["id"]): case for case in source_dev_suite["cases"]}
     for case in suite["cases"]:
         metadata = case.get("metadata") or {}
-        structured = list(metadata.get("structuredCandidateExternalIds") or [])
-        treatment = list(metadata.get("treatmentReturnedExternalIds") or [])
-        fixture_treatment = list(universe_by_case[str(case["id"])]["returnedExternalIds"])
+        if "structuredCandidateExternalIds" not in metadata:
+            raise ValueError(
+                f"M2 case {case['id']} is missing its captured structured branch."
+            )
+        if not isinstance(metadata["structuredCandidateExternalIds"], list):
+            raise ValueError(
+                f"M2 case {case['id']} structured branch external IDs must be a list."
+            )
+        if not isinstance(metadata.get("treatmentReturnedExternalIds"), list):
+            raise ValueError(
+                f"M2 case {case['id']} treatment external IDs must be a list."
+            )
+        structured = list(metadata["structuredCandidateExternalIds"])
+        treatment = list(metadata["treatmentReturnedExternalIds"])
+        universe_case = universe_by_case[str(case["id"])]
+        if not isinstance(universe_case.get("structuredBranchExternalIds"), list):
+            raise ValueError(
+                f"M2 candidate universe {case['id']} is missing its captured structured branch."
+            )
+        fixture_structured = list(universe_case["structuredBranchExternalIds"])
+        fixture_treatment = list(universe_case["returnedExternalIds"])
+        if structured != fixture_structured:
+            raise ValueError(
+                f"M2 case {case['id']} differs from its captured structured branch."
+            )
         if treatment != fixture_treatment:
             raise ValueError(f"M2 case {case['id']} differs from its captured treatment output.")
-        if len(structured) != len(set(structured)) or len(treatment) != len(set(treatment)):
+        if (
+            any(not isinstance(item, str) or not item for item in structured)
+            or len(structured) != len(set(structured))
+            or any(not isinstance(item, str) or not item for item in treatment)
+            or len(treatment) != len(set(treatment))
+        ):
             raise ValueError(f"M2 case {case['id']} has duplicate candidate-universe IDs.")
+        source_judgment_ids = {
+            str(item["externalId"])
+            for item in source_by_case[str(case["id"])]["judgments"]
+        }
+        if not set(structured) <= source_judgment_ids:
+            raise ValueError(
+                f"M2 case {case['id']} structured branch is outside the committed "
+                "M1 Dev judgments."
+            )
         judged = {str(item["externalId"]): item for item in case["judgments"]}
         expected_qdrant_only = sorted(set(treatment) - set(structured))
         if not set(structured) | set(treatment) <= judged.keys():
             raise ValueError(f"M2 case {case['id']} does not label its bounded candidate union.")
+        expected_metadata_counts = {
+            "structuredCandidateCount": len(structured),
+            "treatmentReturnedCount": len(treatment),
+            "qdrantOnlyJudgmentCount": len(expected_qdrant_only),
+            "boundedJudgmentCount": len(judged),
+        }
+        for field, expected in expected_metadata_counts.items():
+            if metadata.get(field) != expected:
+                raise ValueError(
+                    f"M2 case {case['id']} has an invalid {field}."
+                )
         if metadata.get("qdrantOnlyJudgmentExternalIds") != expected_qdrant_only:
             raise ValueError(f"M2 case {case['id']} has inconsistent Qdrant-only judgments.")
-        if int(metadata.get("boundedJudgmentCount") or 0) != len(judged):
-            raise ValueError(f"M2 case {case['id']} has an invalid bounded judgment count.")
         if len(judged) > len(structured) + int(contract["candidateLimit"]):
             raise ValueError(f"M2 case {case['id']} exceeds the bounded-union contract.")
         for external_id, judgment in judged.items():
@@ -2687,6 +2746,10 @@ def _validate_m2_judgment_contract(
         "qdrantOnlyJudgmentPairs": qdrant_only_pairs,
         "binaryRelevantStructuredMissPairs": relevant_miss_pairs,
     }
+    if int(fixture.get("structuredCandidatePairCount", -1)) != structured_pairs:
+        raise ValueError(
+            "M2 candidate-universe structuredCandidatePairCount is inconsistent."
+        )
     for field, expected in expected_counts.items():
         if int(contract.get(field) or 0) != expected:
             raise ValueError(f"M2 judgment contract {field} is inconsistent.")

@@ -61,6 +61,7 @@ M2_CANDIDATE_UNIVERSE_CONTRACT_FIELDS = (
     "runtimeEnvironment",
     "qdrantServer",
     "caseCount",
+    "structuredCandidatePairCount",
     "candidatePairCount",
     "cases",
 )

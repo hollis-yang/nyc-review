@@ -74,6 +74,7 @@ def _point(
     shop_id: int,
     score: float,
     category: str = "Food & Dining",
+    neighborhood: str = "Chelsea-Hudson Yards",
     security_test: bool = False,
     dataset_sha256: str | None = None,
     shop_external_id: str | None = None,
@@ -91,6 +92,7 @@ def _point(
             "document_kind": "evidence",
             "text": f"Evidence for shop {shop_id}",
             "category": category,
+            "neighborhood": neighborhood,
             "data_version": scope.data_version,
             "dataset_sha256": dataset_sha256 or scope.dataset_sha256,
             "retrieval_version": scope.retrieval_version,
@@ -128,6 +130,13 @@ async def test_global_retriever_runs_separate_channels_with_fail_closed_scope_fi
                     score=0.7,
                     security_test=True,
                 ),
+                _point(
+                    scope,
+                    point_id="wrong-neighborhood",
+                    shop_id=105,
+                    score=0.6,
+                    neighborhood="East Village",
+                ),
             ],
             "lexical": [_point(scope, point_id="s1", shop_id=104, score=1.5)],
         }
@@ -143,13 +152,14 @@ async def test_global_retriever_runs_separate_channels_with_fail_closed_scope_fi
         "quiet vegan dinner",
         document_limit=75,
         category="Food & Dining",
+        neighborhood="Chelsea-Hudson Yards",
     )
 
     assert [hit.shop_id for hit in result.dense.hits] == [101]
     assert result.dense.hits[0].shop_external_id == "node:101"
     assert [hit.shop_id for hit in result.sparse.hits] == [104]
-    assert result.dense.returned_points == 3
-    assert result.dense.rejected_points == 2
+    assert result.dense.returned_points == 4
+    assert result.dense.rejected_points == 3
     assert result.sparse.returned_points == 1
     assert result.embedding_latency_ms >= 0
     assert result.total_latency_ms >= result.embedding_latency_ms
@@ -168,6 +178,7 @@ async def test_global_retriever_runs_separate_channels_with_fail_closed_scope_fi
             "embedding_identity": scope.embedding_identity,
             "security_test": False,
             "category": "Food & Dining",
+            "neighborhood": "Chelsea-Hudson Yards",
         }
         assert not call["query_filter"].must_not
 
@@ -326,6 +337,7 @@ async def test_global_retriever_matches_the_existing_qdrant_index_scope_contract
                 source_id="source:current",
                 text="A quiet vegan dining room.",
                 category="Food & Dining",
+                neighborhood="Chelsea-Hudson Yards",
                 data_version="nyc-real-v1",
                 shop_external_id="node:301",
             ),
@@ -336,6 +348,7 @@ async def test_global_retriever_matches_the_existing_qdrant_index_scope_contract
                 source_id="source:security",
                 text="A quiet security fixture.",
                 category="Food & Dining",
+                neighborhood="Chelsea-Hudson Yards",
                 data_version="nyc-real-v1",
                 shop_external_id="node:302",
                 security_test=True,
@@ -352,6 +365,7 @@ async def test_global_retriever_matches_the_existing_qdrant_index_scope_contract
                 source_id="source:other",
                 text="A quiet record from another corpus.",
                 category="Food & Dining",
+                neighborhood="Chelsea-Hudson Yards",
                 data_version="nyc-real-v1",
                 shop_external_id="node:303",
             )
@@ -373,6 +387,7 @@ async def test_global_retriever_matches_the_existing_qdrant_index_scope_contract
     result = await retriever.search_documents(
         "quiet vegan dining",
         category="Food & Dining",
+        neighborhood="Chelsea-Hudson Yards",
     )
 
     assert {hit.shop_id for hit in result.dense.hits} == {301}

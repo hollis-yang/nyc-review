@@ -96,6 +96,7 @@ PAYLOAD_FIELDS = (
     "document_kind",
     "text",
     "category",
+    "neighborhood",
     "data_version",
     "dataset_sha256",
     "retrieval_version",
@@ -141,6 +142,7 @@ class QdrantGlobalDocumentRetriever:
         *,
         document_limit: int | None = None,
         category: str | None = None,
+        neighborhood: str | None = None,
     ) -> GlobalRetrievalResult:
         if not isinstance(query, str) or not query.strip():
             raise ValueError("Global retrieval query cannot be empty.")
@@ -149,7 +151,11 @@ class QdrantGlobalDocumentRetriever:
             raise ValueError("Global document limit must be positive.")
 
         started = time.perf_counter()
-        query_filter = build_global_scope_filter(self._scope, category=category)
+        query_filter = build_global_scope_filter(
+            self._scope,
+            category=category,
+            neighborhood=neighborhood,
+        )
         lexical = sparse_vector(query)
 
         embedding_started = time.perf_counter()
@@ -171,6 +177,7 @@ class QdrantGlobalDocumentRetriever:
                 query_filter=query_filter,
                 limit=limit,
                 category=category,
+                neighborhood=neighborhood,
             )
             if dense_vector is not None
             else None
@@ -183,6 +190,7 @@ class QdrantGlobalDocumentRetriever:
                 query_filter=query_filter,
                 limit=limit,
                 category=category,
+                neighborhood=neighborhood,
             )
             if lexical.indices
             else None
@@ -231,6 +239,7 @@ class QdrantGlobalDocumentRetriever:
         query_filter: models.Filter,
         limit: int,
         category: str | None,
+        neighborhood: str | None,
     ) -> ChannelRetrievalResult:
         started = time.perf_counter()
         try:
@@ -263,6 +272,7 @@ class QdrantGlobalDocumentRetriever:
                 rank=rank,
                 scope=self._scope,
                 category=category,
+                neighborhood=neighborhood,
             )
             if hit is None:
                 rejected += 1
@@ -281,6 +291,7 @@ def build_global_scope_filter(
     scope: GlobalRetrievalScope,
     *,
     category: str | None = None,
+    neighborhood: str | None = None,
 ) -> models.Filter:
     """Build a fail-closed filter for the exact corpus and embedding namespace."""
 
@@ -297,6 +308,8 @@ def build_global_scope_filter(
     ]
     if category:
         must.append(_keyword_condition("category", category))
+    if neighborhood:
+        must.append(_keyword_condition("neighborhood", neighborhood))
     return models.Filter(must=must)
 
 
@@ -322,12 +335,14 @@ def _validated_hit(
     rank: int,
     scope: GlobalRetrievalScope,
     category: str | None,
+    neighborhood: str | None,
 ) -> GlobalDocumentHit | None:
     payload = getattr(point, "payload", None)
     if not isinstance(payload, Mapping) or not _payload_matches_scope(
         payload,
         scope=scope,
         category=category,
+        neighborhood=neighborhood,
     ):
         return None
     shop_id = payload.get("shop_id")
@@ -363,6 +378,7 @@ def _payload_matches_scope(
     *,
     scope: GlobalRetrievalScope,
     category: str | None,
+    neighborhood: str | None,
 ) -> bool:
     expected = {
         "index_scope": scope.index_scope,
@@ -374,6 +390,8 @@ def _payload_matches_scope(
     if any(str(payload.get(key) or "") != value for key, value in expected.items()):
         return False
     if category and str(payload.get("category") or "") != category:
+        return False
+    if neighborhood and str(payload.get("neighborhood") or "") != neighborhood:
         return False
     # Missing, nullable, or stringly-typed safety markers are malformed index
     # payloads. Only the explicit boolean false value is safe to retrieve.

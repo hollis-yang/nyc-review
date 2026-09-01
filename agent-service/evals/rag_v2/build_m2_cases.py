@@ -19,8 +19,8 @@ from evals.rag_v2.contract import (
 )
 
 M2_SUITE_NAME = "rag-v2-m2-global-retrieval-dev-v1"
-M2_GENERATOR_VERSION = "rag-v2-m2-bounded-union-v1"
-M2_JUDGMENT_POLICY_VERSION = "m2-bounded-retrieval-union-v1"
+M2_GENERATOR_VERSION = "rag-v2-m2-actual-structured-bounded-union-v2"
+M2_JUDGMENT_POLICY_VERSION = "m2-actual-structured-bounded-retrieval-union-v2"
 M2_CANDIDATE_UNIVERSE_FILENAME = "candidate_universe.m2.dev.json"
 FROZEN_M1_DEV_SUITE_PATH = Path(__file__).resolve().parent / "cases.dev.json"
 M1_DEV_IDENTITY_FIELDS = ("suite", "caseSha256", "suiteContractSha256")
@@ -110,23 +110,46 @@ def capture_candidate_universe(
     if observed_ids != expected_ids:
         raise ValueError("Candidate capture result order/IDs differ from the source suite.")
 
+    source_by_id = {str(case["id"]): case for case in source_suite["cases"]}
     cases: list[dict[str, Any]] = []
     candidate_pairs = 0
+    structured_candidate_pairs = 0
     for result in results:
-        returned = [str(item.get("externalId") or "") for item in result.get("orderedCandidates") or []]
-        if any(not external_id for external_id in returned):
-            raise ValueError(f"Candidate capture {result['id']} contains a missing external ID.")
-        if len(returned) != len(set(returned)):
-            raise ValueError(f"Candidate capture {result['id']} contains duplicate merchants.")
+        case_id = str(result["id"])
+        returned = _validated_external_ids(
+            [item.get("externalId") for item in result.get("orderedCandidates") or []],
+            label=f"Candidate capture {case_id} treatment output",
+            allow_empty=True,
+        )
         if len(returned) > candidate_limit:
             raise ValueError(
-                f"Candidate capture {result['id']} returned {len(returned)} merchants; "
+                f"Candidate capture {case_id} returned {len(returned)} merchants; "
                 f"the declared bound is {candidate_limit}."
             )
+        trace = result.get("retrievalTrace")
+        if not isinstance(trace, dict):
+            raise ValueError(f"Candidate capture {case_id} is missing its retrieval trace.")
+        structured_external_ids = _validated_external_ids(
+            trace.get("structuredBranchExternalIds"),
+            label=f"Candidate capture {case_id} structured branch",
+            allow_empty=True,
+        )
+        source_judgment_ids = {
+            str(item["externalId"])
+            for item in source_by_id[case_id]["judgments"]
+        }
+        unknown_structured = sorted(set(structured_external_ids) - source_judgment_ids)
+        if unknown_structured:
+            raise ValueError(
+                f"Candidate capture {case_id} structured branch is outside the committed "
+                f"M1 Dev judgments: {unknown_structured[:3]}"
+            )
         candidate_pairs += len(returned)
+        structured_candidate_pairs += len(structured_external_ids)
         cases.append(
             {
-                "id": str(result["id"]),
+                "id": case_id,
+                "structuredBranchExternalIds": structured_external_ids,
                 "returnedExternalIds": returned,
             }
         )
@@ -150,6 +173,7 @@ def capture_candidate_universe(
         "runtimeEnvironment": runtime_environment,
         "qdrantServer": qdrant_server,
         "caseCount": len(cases),
+        "structuredCandidatePairCount": structured_candidate_pairs,
         "candidatePairCount": candidate_pairs,
         "cases": cases,
     }
@@ -195,7 +219,10 @@ def build_m2_dev_suite(
     relevant_structured_miss_pairs = 0
     for source_case in source_suite["cases"]:
         case_id = str(source_case["id"])
-        structured_ids = {str(item["externalId"]) for item in source_case["judgments"]}
+        structured_external_ids = list(
+            universe_by_case[case_id]["structuredBranchExternalIds"]
+        )
+        structured_ids = set(structured_external_ids)
         observed_ids = list(universe_by_case[case_id]["returnedExternalIds"])
         union_ids = sorted(structured_ids | set(observed_ids))
         if len(union_ids) > len(structured_ids) + int(candidate_universe["candidateLimit"]):
@@ -235,9 +262,11 @@ def build_m2_dev_suite(
         case["metadata"] = {
             **(case.get("metadata") or {}),
             "labelPolicyVersion": LABEL_POLICY_VERSION,
-            "judgmentCompleteness": "complete-for-frozen-structured-plus-treatment-output-union",
+            "judgmentCompleteness": (
+                "complete-for-frozen-actual-structured-branch-plus-treatment-output-union"
+            ),
             "structuredCandidateCount": len(structured_ids),
-            "structuredCandidateExternalIds": sorted(structured_ids),
+            "structuredCandidateExternalIds": structured_external_ids,
             "treatmentReturnedCount": len(observed_ids),
             "treatmentReturnedExternalIds": observed_ids,
             "qdrantOnlyJudgmentCount": len(qdrant_only),
@@ -272,12 +301,12 @@ def build_m2_dev_suite(
             "evaluationDesign": {
                 **source_suite["evaluationDesign"],
                 "holdout": "m2-dev-only-new-hidden-holdout-required-for-promotion",
-                "candidateJudgments": "bounded-control-treatment-output-union",
+                "candidateJudgments": "bounded-actual-structured-and-treatment-output-union",
                 "m1PolicyHoldoutUsed": False,
             },
             "judgmentContract": {
                 "policyVersion": M2_JUDGMENT_POLICY_VERSION,
-                "scope": "frozen-structured-pool-plus-observed-treatment-top-k",
+                "scope": "frozen-actual-structured-branch-plus-observed-treatment-top-k",
                 "unjudgedReturnedPolicy": "fail-closed",
                 "sourceSplit": "dev",
                 "m1PolicyHoldoutUsed": False,
@@ -356,13 +385,61 @@ def _validate_inputs(
     if not 1 <= candidate_limit <= 10:
         raise ValueError("M2 candidate-universe candidateLimit must be between 1 and 10.")
     candidate_pairs = 0
+    structured_candidate_pairs = 0
+    source_by_id = {str(case["id"]): case for case in source_suite["cases"]}
     for case in candidate_universe["cases"]:
-        returned = list(case.get("returnedExternalIds") or [])
-        if len(returned) > candidate_limit or len(returned) != len(set(returned)):
-            raise ValueError(f"M2 candidate universe {case['id']} violates its bounded set.")
+        case_id = str(case["id"])
+        returned = _validated_external_ids(
+            case.get("returnedExternalIds"),
+            label=f"M2 candidate universe {case_id} treatment output",
+            allow_empty=True,
+        )
+        if len(returned) > candidate_limit:
+            raise ValueError(f"M2 candidate universe {case_id} violates its bounded set.")
+        structured = _validated_external_ids(
+            case.get("structuredBranchExternalIds"),
+            label=f"M2 candidate universe {case_id} structured branch",
+            allow_empty=True,
+        )
+        source_judgment_ids = {
+            str(item["externalId"])
+            for item in source_by_id[case_id]["judgments"]
+        }
+        if not set(structured) <= source_judgment_ids:
+            raise ValueError(
+                f"M2 candidate universe {case_id} structured branch is outside "
+                "the committed M1 Dev judgments."
+            )
         candidate_pairs += len(returned)
+        structured_candidate_pairs += len(structured)
     if candidate_pairs != int(candidate_universe.get("candidatePairCount") or -1):
         raise ValueError("M2 candidate-universe candidatePairCount is invalid.")
+    if structured_candidate_pairs != int(
+        candidate_universe.get("structuredCandidatePairCount", -1)
+    ):
+        raise ValueError("M2 candidate-universe structuredCandidatePairCount is invalid.")
+
+
+def _validated_external_ids(
+    value: Any,
+    *,
+    label: str,
+    allow_empty: bool,
+) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} external IDs must be a list.")
+    if not allow_empty and not value:
+        raise ValueError(f"{label} external IDs must be non-empty.")
+    if any(
+        not isinstance(external_id, str)
+        or not external_id
+        or external_id.strip() != external_id
+        for external_id in value
+    ):
+        raise ValueError(f"{label} contains a missing or invalid external ID.")
+    if len(value) != len(set(value)):
+        raise ValueError(f"{label} contains duplicate external IDs.")
+    return list(value)
 
 
 def _canonical_json(value: Any) -> str:

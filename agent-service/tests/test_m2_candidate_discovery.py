@@ -205,6 +205,7 @@ class _Global:
         *,
         document_limit: int | None = None,
         category: str | None = None,
+        neighborhood: str | None = None,
     ) -> GlobalRetrievalResult:
         self.calls += 1
         self.queries.append(query)
@@ -316,6 +317,8 @@ async def test_enabled_discovery_runs_two_branches_concurrently_without_legacy_r
     assert rag.rank_calls == 0
     assert shops.details_requests == [[2]]
     assert result.retrieval_metadata["candidateDiscoveryMode"] == "global-hybrid"
+    assert result.retrieval_metadata["structuredBranchCandidates"] == 1
+    assert result.retrieval_metadata["structuredBranchExternalIds"] == ["source:1"]
     assert result.retrieval_metadata["structuredCandidates"] == 1
     assert result.retrieval_metadata["qdrantOnlyMerchants"] == 1
     assert result.retrieval_metadata["structuredFallback"] is False
