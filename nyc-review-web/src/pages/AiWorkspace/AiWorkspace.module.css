@@ -316,37 +316,88 @@
 
 @keyframes pulse { 50% { opacity: 0.35; } }
 
-.agentFlow {
+.agentGraph {
   position: relative;
+  height: 336px;
   margin-top: 15px;
+}
+
+.graphNodes {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(6, 56px);
+  list-style: none;
 }
 
-.agentFlow::before {
+.graphLinks {
   position: absolute;
-  top: 13px;
-  left: 10%;
-  right: 10%;
-  height: 1px;
-  content: '';
-  background: #eee;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
 }
 
-.agentStep {
+.desktopGraphLinks { display: none; }
+
+.graphLink {
+  fill: none;
+  stroke: #ded7d3;
+  stroke-dasharray: 4 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+  transition: stroke 180ms ease;
+}
+
+.graphLink.running {
+  stroke: #f3a384;
+  stroke-dasharray: none;
+}
+
+.graphLink.completed {
+  stroke: #ef8a62;
+  stroke-dasharray: none;
+}
+
+.graphArrow { fill: #cfc4be; }
+
+.graphNode {
   position: relative;
   z-index: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: 2px;
   text-align: center;
 }
 
+.graphWorkflow,
+.graphSupervisorPlan,
+.graphDiscovery,
+.graphVerifier,
+.graphSupervisorFinalize {
+  grid-column: 1 / -1;
+}
+
+.graphWorkflow { grid-row: 1; }
+.graphSupervisorPlan { grid-row: 2; }
+.graphDiscovery { grid-row: 3; }
+.graphEvidence { grid-column: 1; grid-row: 4; }
+.graphItinerary { grid-column: 2; grid-row: 4; }
+.graphVerifier { grid-row: 5; }
+.graphSupervisorFinalize { grid-row: 6; }
+
 .agentDot {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border: 1px solid #e6e6e6;
@@ -370,13 +421,37 @@
   background: var(--color-primary);
 }
 
-.agentStep > span {
-  width: 100%;
-  overflow: hidden;
-  color: #777;
-  font-size: 8px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.workflowDot {
+  border-style: dashed;
+  color: #8d6d60;
+  background: #fbf8f6;
+}
+
+.workflowDot.running { border-style: dashed; }
+.workflowDot.completed { border-style: solid; }
+
+.graphNodeLabel {
+  max-width: 100%;
+  padding: 0 2px;
+  color: #665c58;
+  background: var(--color-bg-card);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.graphNodePhase {
+  max-width: 100%;
+  padding: 0 2px;
+  color: #6f6662;
+  background: var(--color-bg-card);
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveBadge i { animation: none; }
+  .graphLink { transition: none; }
 }
 
 .eventLog {
@@ -799,6 +874,33 @@
     margin: 0 auto;
     box-sizing: border-box;
   }
+
+  .agentGraph {
+    width: min(600px, 100%);
+    height: 168px;
+    margin: 15px auto 0;
+  }
+
+  .graphNodes {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(3, 56px);
+  }
+
+  .mobileGraphLinks { display: none; }
+  .desktopGraphLinks { display: block; }
+
+  .graphWorkflow { grid-column: 1; grid-row: 2; }
+  .graphSupervisorPlan { grid-column: 2; grid-row: 2; }
+  .graphDiscovery { grid-column: 3; grid-row: 2; }
+  .graphEvidence { grid-column: 4; grid-row: 1; }
+  .graphItinerary { grid-column: 4; grid-row: 3; }
+  .graphVerifier { grid-column: 5; grid-row: 2; }
+  .graphSupervisorFinalize { grid-column: 6; grid-row: 2; }
+
+  .agentDot {
+    width: 30px;
+    height: 30px;
+  }
 }
 
 @media (min-width: 1024px) {
@@ -1018,13 +1120,11 @@
     font-size: 11px;
   }
 
-  .agentFlow::before {
-    top: 16px;
-  }
-
-  .agentStep > span {
+  .graphNodeLabel {
     font-size: 10px;
   }
+
+  .graphNodePhase { font-size: 9px; }
 
   .eventLog {
     max-height: 220px;

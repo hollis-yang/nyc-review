@@ -514,9 +514,25 @@
     "safetyTitle": "You stay in control.",
     "safetyText": "Writes require approval, and flash-sale checkout always remains manual.",
     "liveRun": "LIVE RUN",
-    "collaboration": "Agent collaboration",
+    "collaboration": "Workflow & agent graph",
     "live": "Live",
     "finished": "Finished",
+    "workflow": "Workflow",
+    "workflowGraphLabel": "Workflow and agent collaboration graph; Evidence and Itinerary run in parallel before Verifier.",
+    "workflowStages": {
+      "constraints": "Constraints",
+      "plan": "Plan",
+      "search": "Retrieve",
+      "evidence": "Citations",
+      "itinerary": "Route",
+      "verify": "Check",
+      "finalize": "Finalize"
+    },
+    "workflowStatus": {
+      "waiting": "Waiting",
+      "running": "Running",
+      "completed": "Completed"
+    },
     "runFailed": "Run failed",
     "verified": "Verified result",
     "reviewNeeded": "Best available matches",
@@ -578,8 +594,8 @@
     "events": {
       "runCreated": "Run created from your request.",
       "runRecovered": "The run recovered and safely resumed.",
-      "modelStarted": "Supervisor is extracting your constraints.",
-      "modelCompleted": "Structured constraints are ready.",
+      "modelStarted": "Workflow is extracting structured constraints.",
+      "modelCompleted": "Workflow prepared structured constraints.",
       "agentCompleted": "{{agent}} completed its task.",
       "waitingConfirmation": "Recommendations are ready; optional actions need approval.",
       "runCompleted": "The run is complete.",

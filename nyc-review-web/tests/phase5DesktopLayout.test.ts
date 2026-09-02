@@ -158,6 +158,32 @@ test('AI workspace preserves run, evidence, history, and approval behavior', () 
   assert.match(page, /<FootBar activeBtn=\{5\}/);
 });
 
+test('AI collaboration separates Workflow and renders a responsive fork-join graph', () => {
+  const page = readSource('../src/pages/AiWorkspace/index.tsx');
+  const styles = readSource('../src/pages/AiWorkspace/AiWorkspace.module.css');
+
+  assert.match(page, /const MULTI_AGENTS = \['Supervisor', 'Discovery', 'Evidence', 'Itinerary', 'Verifier'\]/);
+  assert.match(page, /deriveCollaborationStatuses\(events, running\)/);
+  assert.match(page, /data-node=\{node\.id\}/);
+  assert.match(page, /data-edge=\{edge\.id\}/);
+  assert.match(page, /styles\.mobileGraphLinks/);
+  assert.match(page, /styles\.desktopGraphLinks/);
+  assert.match(page, /aria-busy=\{status === 'running' \? true : undefined\}/);
+  assert.doesNotMatch(page, /aria-current=\{status === 'running'/);
+  assert.match(page, /events\.slice\(-8\)/);
+  assert.match(page, /Math\.round\(event\.details\.durationMs\)/);
+
+  assert.match(styles, /\.agentGraph\s*\{[^}]*height:\s*336px;/s);
+  assert.match(styles, /\.graphNodes\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);[^}]*grid-template-rows:\s*repeat\(6, 56px\);/s);
+  assert.match(styles, /\.graphEvidence\s*\{\s*grid-column:\s*1;\s*grid-row:\s*4;/s);
+  assert.match(styles, /\.graphItinerary\s*\{\s*grid-column:\s*2;\s*grid-row:\s*4;/s);
+  assert.match(styles, /@media \(min-width: 700px\)[\s\S]*?\.graphNodes\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\);[^}]*grid-template-rows:\s*repeat\(3, 56px\);/s);
+  assert.match(styles, /@media \(min-width: 700px\)[\s\S]*?\.agentGraph\s*\{[^}]*width:\s*min\(600px, 100%\);/s);
+  assert.match(styles, /@media \(min-width: 700px\)[\s\S]*?\.graphEvidence\s*\{\s*grid-column:\s*4;\s*grid-row:\s*1;/s);
+  assert.match(styles, /@media \(min-width: 700px\)[\s\S]*?\.graphItinerary\s*\{\s*grid-column:\s*4;\s*grid-row:\s*3;/s);
+  assert.doesNotMatch(styles, /\.agentFlow::before/);
+});
+
 test('AI workspace switches from a centered start surface to a desktop workbench', () => {
   const page = readSource('../src/pages/AiWorkspace/index.tsx');
   const styles = readSource('../src/pages/AiWorkspace/AiWorkspace.module.css');

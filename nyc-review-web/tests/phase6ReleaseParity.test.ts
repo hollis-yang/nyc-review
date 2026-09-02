@@ -130,6 +130,10 @@ test('dynamic AI translation families cover every typed runtime value', () => {
       .map((status) => `aiGuide.runStatus.${status}`),
     ...['Supervisor', 'Discovery', 'Evidence', 'Itinerary', 'Verifier']
       .map((agent) => `aiGuide.agents.${agent}`),
+    ...['constraints', 'plan', 'search', 'evidence', 'itinerary', 'verify', 'finalize']
+      .map((stage) => `aiGuide.workflowStages.${stage}`),
+    ...['waiting', 'running', 'completed']
+      .map((status) => `aiGuide.workflowStatus.${status}`),
     ...[
       'runCreated', 'runRecovered', 'modelStarted', 'modelCompleted', 'agentCompleted',
       'waitingConfirmation', 'runCompleted', 'runFailed', 'runCancelled', 'actionApproved',

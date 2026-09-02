@@ -514,9 +514,25 @@
     "safetyTitle": "操作由你掌控。",
     "safetyText": "所有写操作都需要确认，秒杀购买始终由用户手动完成。",
     "liveRun": "实时运行",
-    "collaboration": "Agent 协作过程",
+    "collaboration": "工作流与 Agent 协作图",
     "live": "进行中",
     "finished": "已结束",
+    "workflow": "工作流",
+    "workflowGraphLabel": "工作流与 Agent 协作图；证据与行程并行执行，并在校验节点汇合。",
+    "workflowStages": {
+      "constraints": "约束提取",
+      "plan": "规划",
+      "search": "检索",
+      "evidence": "引用",
+      "itinerary": "路线",
+      "verify": "检查",
+      "finalize": "汇总"
+    },
+    "workflowStatus": {
+      "waiting": "等待中",
+      "running": "执行中",
+      "completed": "已完成"
+    },
     "runFailed": "运行失败",
     "verified": "结果已校验",
     "reviewNeeded": "当前最佳匹配",
@@ -578,8 +594,8 @@
     "events": {
       "runCreated": "已根据你的需求创建任务。",
       "runRecovered": "本次运行已恢复并安全继续。",
-      "modelStarted": "主管正在提取结构化约束。",
-      "modelCompleted": "结构化约束已准备完成。",
+      "modelStarted": "工作流正在提取结构化约束。",
+      "modelCompleted": "工作流已准备好结构化约束。",
       "agentCompleted": "{{agent}}已完成任务。",
       "waitingConfirmation": "推荐已生成，可选操作等待你的确认。",
       "runCompleted": "本次运行已完成。",

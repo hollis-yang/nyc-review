@@ -23,8 +23,68 @@ import { useAuth } from '../../hooks/useAuth';
 import { buildAuthEntryUrl } from '../../utils/authRedirect';
 import { cleanDisplayContent } from '../../utils/displayContent';
 import styles from './AiWorkspace.module.css';
+import {
+  COLLABORATION_EDGES,
+  deriveCollaborationStatuses,
+  type CollaborationEdgeId,
+  type CollaborationNodeId,
+} from './collaborationGraph';
 
 const MULTI_AGENTS = ['Supervisor', 'Discovery', 'Evidence', 'Itinerary', 'Verifier'] as const;
+type MultiAgent = (typeof MULTI_AGENTS)[number];
+type WorkflowStage =
+  | 'constraints'
+  | 'plan'
+  | 'search'
+  | 'evidence'
+  | 'itinerary'
+  | 'verify'
+  | 'finalize';
+
+const COLLABORATION_NODES: ReadonlyArray<{
+  id: CollaborationNodeId;
+  agent?: MultiAgent;
+  marker: string;
+  phase: WorkflowStage;
+}> = [
+  { id: 'workflow', marker: 'W', phase: 'constraints' },
+  { id: 'supervisor_plan', agent: MULTI_AGENTS[0], marker: '1', phase: 'plan' },
+  { id: 'discovery', agent: MULTI_AGENTS[1], marker: '2', phase: 'search' },
+  { id: 'evidence', agent: MULTI_AGENTS[2], marker: '3', phase: 'evidence' },
+  { id: 'itinerary', agent: MULTI_AGENTS[3], marker: '4', phase: 'itinerary' },
+  { id: 'verifier', agent: MULTI_AGENTS[4], marker: '5', phase: 'verify' },
+  { id: 'supervisor_finalize', agent: MULTI_AGENTS[0], marker: '1', phase: 'finalize' },
+];
+
+const GRAPH_NODE_CLASSES: Record<CollaborationNodeId, string> = {
+  workflow: styles.graphWorkflow,
+  supervisor_plan: styles.graphSupervisorPlan,
+  discovery: styles.graphDiscovery,
+  evidence: styles.graphEvidence,
+  itinerary: styles.graphItinerary,
+  verifier: styles.graphVerifier,
+  supervisor_finalize: styles.graphSupervisorFinalize,
+};
+
+const MOBILE_GRAPH_PATHS: Record<CollaborationEdgeId, string> = {
+  'workflow-to-supervisor-plan': 'M 100 28 L 100 56',
+  'supervisor-plan-to-discovery': 'M 100 84 L 100 112',
+  'discovery-to-evidence': 'M 100 140 C 100 154, 50 154, 50 168',
+  'discovery-to-itinerary': 'M 100 140 C 100 154, 150 154, 150 168',
+  'evidence-to-verifier': 'M 50 196 C 50 210, 100 210, 100 224',
+  'itinerary-to-verifier': 'M 150 196 C 150 210, 100 210, 100 224',
+  'verifier-to-supervisor-finalize': 'M 100 252 L 100 280',
+};
+
+const DESKTOP_GRAPH_PATHS: Record<CollaborationEdgeId, string> = {
+  'workflow-to-supervisor-plan': 'M 64 71 L 136 71',
+  'supervisor-plan-to-discovery': 'M 164 71 L 236 71',
+  'discovery-to-evidence': 'M 264 71 C 300 71, 300 15, 336 15',
+  'discovery-to-itinerary': 'M 264 71 C 300 71, 300 127, 336 127',
+  'evidence-to-verifier': 'M 364 15 C 400 15, 400 71, 436 71',
+  'itinerary-to-verifier': 'M 364 127 C 400 127, 400 71, 436 71',
+  'verifier-to-supervisor-finalize': 'M 464 71 L 536 71',
+};
 const ACTIVE_RUN_STATUSES = new Set<AgentRunSnapshot['status']>([
   'created',
   'planning',
@@ -159,13 +219,10 @@ export default function AiWorkspace() {
     () => visibleIssues.some((issue) => issue.code !== 'UNSUPPORTED_DESIRED_TAGS'),
     [visibleIssues],
   );
-
-  const agentStatus = (agent: string) => {
-    const matching = events.filter((event) => event.agent === agent);
-    if (matching.some((event) => event.status === 'completed')) return 'completed';
-    if (matching.some((event) => event.status === 'running')) return 'running';
-    return 'waiting';
-  };
+  const collaborationStatuses = useMemo(
+    () => deriveCollaborationStatuses(events, running),
+    [events, running],
+  );
 
   const applySnapshot = (snapshot: AgentRunSnapshot) => {
     setRunId(snapshot.run_id);
@@ -626,43 +683,120 @@ export default function AiWorkspace() {
         <div className={styles.workArea}>
           {(running || events.length > 0) && (
             <section className={styles.collaboration}>
-            <div className={styles.sectionHeading}>
-              <div>
-                <span>{t('aiGuide.liveRun')}</span>
-                <h2>{t('aiGuide.collaboration')}</h2>
-              </div>
-              <div className={running ? styles.liveBadge : styles.doneBadge}>
-                <i /> {running ? t('aiGuide.live') : t('aiGuide.finished')}
-              </div>
-            </div>
-
-            <div className={styles.agentFlow}>
-              {MULTI_AGENTS.map((agent, index) => {
-                const status = agentStatus(agent);
-                return (
-                  <div className={styles.agentStep} key={agent}>
-                    <div className={`${styles.agentDot} ${styles[status]}`}>
-                      {status === 'completed' ? '✓' : index + 1}
-                    </div>
-                    <span>{t(`aiGuide.agents.${agent}`)}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className={styles.eventLog}>
-              {events.slice(-8).map((event) => (
-                <div key={event.sequence}>
-                  <time>{new Date(event.created_at).toLocaleTimeString(isChinese ? 'zh-CN' : 'en-US', {
-                    hour: '2-digit', minute: '2-digit', second: '2-digit',
-                  })}</time>
-                  <span>{eventMessage(event)}</span>
-                  {typeof event.details.durationMs === 'number' && (
-                    <small>{Math.round(event.details.durationMs)} ms</small>
-                  )}
+              <div className={styles.sectionHeading}>
+                <div>
+                  <span>{t('aiGuide.liveRun')}</span>
+                  <h2>{t('aiGuide.collaboration')}</h2>
                 </div>
-              ))}
-            </div>
+                <div className={running ? styles.liveBadge : styles.doneBadge}>
+                  <i /> {running ? t('aiGuide.live') : t('aiGuide.finished')}
+                </div>
+              </div>
+
+              <div className={styles.agentGraph}>
+                <svg
+                  aria-hidden="true"
+                  className={`${styles.graphLinks} ${styles.mobileGraphLinks}`}
+                  preserveAspectRatio="none"
+                  viewBox="0 0 200 336"
+                >
+                  <defs>
+                    <marker
+                      id="collaboration-arrow-mobile"
+                      markerHeight="6"
+                      markerWidth="6"
+                      orient="auto"
+                      refX="7"
+                      refY="4"
+                      viewBox="0 0 8 8"
+                    >
+                      <path className={styles.graphArrow} d="M 0 0 L 8 4 L 0 8 z" />
+                    </marker>
+                  </defs>
+                  {COLLABORATION_EDGES.map((edge) => (
+                    <path
+                      className={`${styles.graphLink} ${styles[collaborationStatuses[edge.to]]}`}
+                      d={MOBILE_GRAPH_PATHS[edge.id]}
+                      data-edge={edge.id}
+                      key={edge.id}
+                      markerEnd="url(#collaboration-arrow-mobile)"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                </svg>
+                <svg
+                  aria-hidden="true"
+                  className={`${styles.graphLinks} ${styles.desktopGraphLinks}`}
+                  preserveAspectRatio="none"
+                  viewBox="0 0 600 168"
+                >
+                  <defs>
+                    <marker
+                      id="collaboration-arrow-desktop"
+                      markerHeight="6"
+                      markerWidth="6"
+                      orient="auto"
+                      refX="7"
+                      refY="4"
+                      viewBox="0 0 8 8"
+                    >
+                      <path className={styles.graphArrow} d="M 0 0 L 8 4 L 0 8 z" />
+                    </marker>
+                  </defs>
+                  {COLLABORATION_EDGES.map((edge) => (
+                    <path
+                      className={`${styles.graphLink} ${styles[collaborationStatuses[edge.to]]}`}
+                      d={DESKTOP_GRAPH_PATHS[edge.id]}
+                      data-edge={edge.id}
+                      key={edge.id}
+                      markerEnd="url(#collaboration-arrow-desktop)"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                </svg>
+                <ol
+                  aria-label={t('aiGuide.workflowGraphLabel')}
+                  className={styles.graphNodes}
+                >
+                  {COLLABORATION_NODES.map((node) => {
+                    const status = collaborationStatuses[node.id];
+                    const label = node.agent
+                      ? t(`aiGuide.agents.${node.agent}`)
+                      : t('aiGuide.workflow');
+                    const phase = t(`aiGuide.workflowStages.${node.phase}`);
+                    return (
+                      <li
+                        aria-busy={status === 'running' ? true : undefined}
+                        aria-label={`${label}, ${phase}, ${t(`aiGuide.workflowStatus.${status}`)}`}
+                        className={`${styles.graphNode} ${GRAPH_NODE_CLASSES[node.id]}`}
+                        data-node={node.id}
+                        data-status={status}
+                        key={node.id}
+                      >
+                        <div className={`${styles.agentDot} ${node.id === 'workflow' ? styles.workflowDot : ''} ${styles[status]}`}>
+                          {status === 'completed' ? '✓' : node.marker}
+                        </div>
+                        <span className={styles.graphNodeLabel}>{label}</span>
+                        <small className={styles.graphNodePhase}>{phase}</small>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+
+              <div className={styles.eventLog}>
+                {events.slice(-8).map((event) => (
+                  <div key={event.sequence}>
+                    <time>{new Date(event.created_at).toLocaleTimeString(isChinese ? 'zh-CN' : 'en-US', {
+                      hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    })}</time>
+                    <span>{eventMessage(event)}</span>
+                    {typeof event.details.durationMs === 'number' && (
+                      <small>{Math.round(event.details.durationMs)} ms</small>
+                    )}
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 
