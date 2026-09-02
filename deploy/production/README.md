@@ -1,110 +1,63 @@
-# NYC Review production deployment
+# NYC Review Production Deployment
 
-For the repeatable Chinese release checklist, see
-[`UPDATE.zh-CN.md`](./UPDATE.zh-CN.md).
+This runbook deploys NYC Review to one x86_64 Ubuntu 24.04 Lightsail instance with 4 GB RAM, 2 GB swap, Docker, and Docker Compose. Caddy is the only public entry point; application and data-service ports remain private.
 
-This deployment targets one x86_64 Ubuntu 24.04 Lightsail instance with 4 GB RAM,
-the 2 GB swap file described in the P15 plan, and Docker Compose. It runs one
-Agent Service instance. MySQL, Redis, RabbitMQ, Qdrant, Spring, and Agent ports
-are never published on the host; Caddy is the only public entry point on ports
-80 and 443.
+## Prerequisites
 
-During the RAG M1-Mx development window, production deliberately separates the
-application release from the Agent release. `IMAGE_TAG` advances Spring and Web,
-while `AGENT_IMAGE_TAG` remains pinned to the last production-verified pre-M1
-Agent image. This prevents unfinished embedding and index-layout changes from
-reaching the existing Qdrant collection.
+- Point a DNS record to the instance, or use its static IP for an HTTP smoke test.
+- Allow SSH, HTTP, and HTTPS in the Lightsail firewall.
+- Install Docker Engine and the Compose plugin.
+- Prepare the release dataset required by `.env.production.example` and the configuration checker. Make it readable by unprivileged containers.
+- Provision the matching external Qdrant volume. If RAG verification is enabled, it must already contain the configured collection.
 
-## 1. Publish application images
+## Publish images
 
-Push the production files to `main`. The `Publish production images` GitHub
-Actions workflow builds Linux/amd64 images and publishes both an immutable
-`sha-<full commit SHA>` tag and a moving `main` tag to GHCR. Deploy only the
-immutable SHA tag.
+Push the release commit to `main`. The `Publish production images` workflow publishes Spring, Agent, and Web images to GHCR with immutable `sha-<full-commit-sha>` tags. Deploy only an immutable tag, and use the same commit for all three services.
 
-If the GHCR packages are private, create a classic GitHub personal access token
-with `read:packages` only for the server. Do not put that token in
-`.env.production` or commit it.
+If the packages are private, create a GitHub token with `read:packages` only. Keep it out of `.env.production` and shell history.
 
-## 2. Prepare deployment files locally
+## Prepare the server
 
-Create a small deployment bundle that excludes source code and generated data:
+Create the deployment directory on the instance:
+
+```bash
+sudo mkdir -p /opt/nyc-review/data
+sudo chown -R "$USER":"$USER" /opt/nyc-review
+```
+
+Package the deployment files locally:
 
 ```bash
 ./scripts/deploy/package-production-bundle.sh
 ```
 
-Create the separate P13 data archive:
+Upload and extract `dist/nyc-review-production-bundle.tar.gz`, then upload the validated dataset to a directory under `/opt/nyc-review/data`. Ensure directories are mode `0755` and files are mode `0644` so the Agent container can read them.
+
+On the server:
 
 ```bash
-tar -C data/generated -czf /tmp/nyc-real-p13-full.tar.gz nyc-real-p13-full
-```
-
-Upload both archives with the Lightsail SSH key. Replace the example paths and
-static IP:
-
-```bash
-scp -i /path/to/LightsailDefaultKey-us-east-1.pem \
-  dist/nyc-review-production-bundle.tar.gz \
-  /tmp/nyc-real-p13-full.tar.gz \
-  ubuntu@YOUR_STATIC_IPV4:/tmp/
-```
-
-## 3. Prepare the server directory
-
-Run on Lightsail:
-
-```bash
-sudo mkdir -p /opt/nyc-review/data
-sudo chown -R ubuntu:ubuntu /opt/nyc-review
-tar -xzf /tmp/nyc-review-production-bundle.tar.gz -C /opt/nyc-review
-tar -xzf /tmp/nyc-real-p13-full.tar.gz -C /opt/nyc-review/data
-find /opt/nyc-review/data/nyc-real-p13-full -type d -exec chmod 0755 {} +
-find /opt/nyc-review/data/nyc-real-p13-full -type f -exec chmod 0644 {} +
 cd /opt/nyc-review
 cp .env.production.example .env.production
 chmod 600 .env.production
 ```
 
-The explicit data permissions are required because macOS archives can preserve
-owner-only modes. The Agent runs as an unprivileged container user and mounts
-the P13 dataset read-only.
-
-Edit `.env.production`. Generate a different safe value for every password and
-service token:
+Replace every placeholder. Set the site address, immutable image tags, dataset path, Qdrant volume, provider credentials, and a different random value for every service secret:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Set `IMAGE_TAG` to the exact `sha-<full commit SHA>` produced by the successful
-workflow. Keep `AGENT_IMAGE_TAG` at the production-verified pre-M1 release
-`sha-c2e712c9f5e55ac53a91024886df53ed806c371b`; this image was confirmed on the
-production host on 2026-08-31. The checker rejects every other Agent tag during
-the isolation window. For trusted HTTPS, point a DNS A record at the Lightsail
-static IPv4 and set `APP_SITE_ADDRESS` to that hostname. Caddy then obtains and
-renews the certificate automatically. A temporary IP-only smoke test can use
-`APP_SITE_ADDRESS=http://YOUR_STATIC_IPV4`.
+For automatic HTTPS, set `APP_SITE_ADDRESS` to the DNS name. For a temporary IP test, use `http://YOUR_STATIC_IPV4`.
 
-## 4. Validate without exposing secrets
+## Validate and start
 
-The checker renders Compose into a protected temporary file, verifies that no
-service is built on the server, rejects placeholders/reused short secrets,
-checks the P13 files, and confirms that only 80/443 are published:
+The checker validates secrets, image tags, dataset files, RAG settings, volume mounts, restart policies, and the public port boundary:
 
 ```bash
 ./scripts/deploy/check-production-config.sh .env.production
 ```
 
-The committed example itself can be structurally checked with:
-
-```bash
-./scripts/deploy/check-production-config.sh --example
-```
-
-## 5. Authenticate and start
-
-For private GHCR packages, log in without saving the token in shell history:
+Authenticate to GHCR without storing the token in shell history:
 
 ```bash
 read -rsp "GHCR read token: " NYC_REVIEW_GHCR_TOKEN
@@ -113,25 +66,23 @@ printf '%s' "$NYC_REVIEW_GHCR_TOKEN" | docker login ghcr.io -u hollis-yang --pas
 unset NYC_REVIEW_GHCR_TOKEN
 ```
 
-Pull and start. Do not add `--build`:
+Start the release:
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yml pull
-docker compose --env-file .env.production -f compose.production.yml up -d
+docker compose --env-file .env.production -f compose.production.yml up -d --wait --wait-timeout 900
 docker compose --env-file .env.production -f compose.production.yml ps
 ```
 
-The first start imports the 97 MB P13 SQL bundle and incrementally indexes the
-RAG dataset into Qdrant, so MySQL and Agent readiness can take several minutes.
-Follow progress without printing environment variables:
+Follow startup without printing environment variables:
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yml logs -f --tail=100 mysql agent-service
 ```
 
-## 6. Verify the public boundary
+## Verify
 
-From another computer:
+From another machine:
 
 ```bash
 curl --fail --show-error https://YOUR_DOMAIN/
@@ -139,30 +90,30 @@ curl --fail --show-error https://YOUR_DOMAIN/api/shop-type/list
 curl --fail --show-error https://YOUR_DOMAIN/agent-api/health
 ```
 
-On Lightsail, confirm resource usage and published sockets:
+On the server:
 
 ```bash
 docker stats --no-stream
 sudo ss -lntup
 ```
 
-Docker should publish only 80/tcp, 443/tcp, and 443/udp. SSH remains managed by
-the Lightsail firewall. Never publish 3306, 6379, 5672, 6333, 8081, 8090, or a
-RabbitMQ management port.
+Docker should publish only ports 80 and 443. Never publish MySQL, Redis, RabbitMQ, Qdrant, Spring Boot, or Agent ports.
 
-## Updating
+## Release updates
 
-After a later successful workflow, change only `IMAGE_TAG` to the new immutable
-SHA and run the checker, `pull`, and `up -d` again. Leave `AGENT_IMAGE_TAG`
-unchanged throughout M1-Mx development. Compose replaces Spring and Web without
-rebuilding on the server and keeps the old Agent image.
+After all image jobs succeed, run the release helper with `HEAD` and `origin/main` at the target commit. Release inputs must be clean, and every manifest-declared generated payload must exist; unrelated working-tree changes are allowed.
 
-An Agent rollout is a separate production change. Before changing
-`AGENT_IMAGE_TAG`, validate the selected embedding against a new versioned
-Qdrant collection, confirm server/client compatibility and memory capacity, and
-prepare an atomic rollback of both the Agent tag and its RAG configuration. Do
-not point a 1024-dimensional embedding at the existing 64-dimensional
-`nyc_review_content_v2` collection.
+```bash
+RELEASE_COMMIT_SHA=replace-with-full-commit-sha
 
-Do not run `docker compose down -v`; `-v` removes the persistent database,
-broker, Qdrant, upload, certificate, and Agent-run volumes.
+LIGHTSAIL_SSH_KEY=/path/to/key.pem \
+LIGHTSAIL_SSH_TARGET=ubuntu@YOUR_STATIC_IPV4 \
+NYC_REVIEW_REMOTE_ROOT=/opt/nyc-review \
+./scripts/deploy/release-production.sh "$RELEASE_COMMIT_SHA"
+```
+
+The helper verifies the commit, packages declared database changes, uploads the release, applies each change once, and updates all application images together. A failed image update restores the previous tags and containers, but it does not roll back applied MySQL or Redis changes. Back up production data before every release.
+
+Changing an embedding model, vector dimension, or collection requires a compatible prebuilt Qdrant volume and an explicit rollback plan.
+
+Never run `docker compose down -v` in production. It deletes persistent database, queue, vector, upload, certificate, and run-store volumes.

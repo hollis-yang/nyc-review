@@ -1,16 +1,16 @@
-# Project scripts
+# Project Scripts
 
-This directory contains reproducible engineering tools rather than application runtime code. Generated datasets, planning documents, caches and test reports are intentionally stored outside this directory and ignored by Git.
+This directory contains reproducible engineering tools, not application runtime code. Generated data, caches, and reports are stored elsewhere and ignored by Git.
 
-| Directory | Purpose | Keep because |
-| --- | --- | --- |
-| `db/` | Build and verify the current empty MySQL bootstrap schema | Fresh Compose environments depend on the generated schema |
-| `deploy/` | Validate, package and update the production deployment | Used by the server release workflow |
-| `mock-data-generator/` | Create the deterministic base dataset, import bundle and neighborhood projection | Required to rebuild development and Agent/RAG data |
-| `load-test/` | Run the isolated Compose, k6, Agent soak and failure-recovery suite | Provides repeatable backend performance and reliability checks |
-| `quality/` | Run lightweight cross-frontend contract checks | Protects bilingual, map and multi-Agent UI contracts |
+| Directory | Purpose |
+| --- | --- |
+| `db/` | Build and verify the empty MySQL bootstrap schema |
+| `deploy/` | Validate, package, and update production releases |
+| `mock-data-generator/` | Build deterministic datasets and import bundles |
+| `load-test/` | Run isolated load and recovery tests |
+| `quality/` | Check frontend and cross-service contracts |
 
-Common safe checks:
+Common checks:
 
 ```bash
 python3 -m unittest scripts/mock-data-generator/test_generate.py
@@ -18,11 +18,12 @@ python3 scripts/load-test/test_contracts.py
 python3 scripts/quality/frontend_contracts.py
 ```
 
-Rebuild and verify the three-part database initialization chain:
+Rebuild the empty bootstrap schema and verify the initialization chain against a generated dataset:
 
 ```bash
+export NYC_REVIEW_DATA_DIR=/absolute/path/to/dataset
 python3 scripts/db/build_bootstrap_schema.py \
-  --verify-dataset data/generated/nyc-real-p13-full
+  --verify-dataset "$NYC_REVIEW_DATA_DIR"
 ```
 
-The verification command uses an isolated, network-disabled temporary MySQL container and removes only that container when finished. Existing development and production databases are never targeted.
+The command rewrites `src/main/resources/db/bootstrap-schema.sql`. It uses a temporary, network-disabled MySQL container and never targets an existing database.
