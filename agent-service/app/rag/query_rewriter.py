@@ -654,7 +654,11 @@ def _base_plan(
     if not isinstance(expanded, str) or not expanded.strip():
         raise ValueError("Rule query cannot be empty.")
     rule_text = expanded.strip()[:MAX_QUERY_CHARACTERS].rstrip()
-    excluded = sorted(set(extract_excluded_tags(constraints.query)) | set(extract_excluded_tags(rule_text)))
+    # Negation is user-authored intent, so only the original query may create
+    # exclusions. Rule expansion appends canonical tokens after the query; if
+    # those derived tokens are scanned for negation, a nearby marker at the end
+    # of the original text can incorrectly negate an unrelated appended tag.
+    excluded = extract_excluded_tags(constraints.query)
     original_semantic = _semantic_tags(
         constraints.query,
         constraints.desired_tags,

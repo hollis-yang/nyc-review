@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.models import UserConstraints
+from app.rag.query_plan import build_retrieval_plan
 from app.rag.query_rewriter import (
     DisabledQueryRewriter,
     HardConstraintEcho,
@@ -24,6 +25,7 @@ BASE_URL = "https://models.example.test/v1"
 MODEL = "rewrite-test-model"
 SECRET = "rewrite-secret-must-not-leak"
 RULE_QUERY = "quiet dinner without outdoor seating Chelsea Restaurants quiet"
+CANARY_QUERY = "想找曼哈顿中城安静、适合约会、而且有纯素选择的餐厅，不要吵闹的酒吧"
 
 
 def _constraints(
@@ -204,6 +206,74 @@ def test_excluded_tags_are_canonical_and_bilingual():
         "late_night",
         "outdoor_seating",
     ]
+
+
+async def test_canary_rule_expansion_cannot_create_quiet_exclusion():
+    constraints = UserConstraints(
+        query=CANARY_QUERY,
+        latitude=40.7549,
+        longitude=-73.9840,
+        neighborhood="Midtown",
+        party_size=2,
+        budget_cents=12_000,
+        result_limit=5,
+    )
+    retrieval_plan = build_retrieval_plan(
+        constraints,
+        retrieval_version="p12-rag-v1",
+    )
+
+    plan = await DisabledQueryRewriter().rewrite(
+        constraints,
+        rule_query=retrieval_plan.expanded_query,
+    )
+
+    assert retrieval_plan.expanded_query.endswith(
+        "quiet vegan_options date_night food dining bars nightlife Midtown"
+    )
+    assert extract_excluded_tags(constraints.query) == []
+    assert plan.excluded_tags == []
+    assert "quiet" in plan.original.semantic_tags
+    assert "quiet" in plan.rule.semantic_tags
+
+
+async def test_canary_openai_contract_succeeds_after_rule_expansion():
+    constraints = UserConstraints(
+        query=CANARY_QUERY,
+        latitude=40.7549,
+        longitude=-73.9840,
+        neighborhood="Midtown",
+        party_size=2,
+        budget_cents=12_000,
+        result_limit=5,
+    )
+    retrieval_plan = build_retrieval_plan(
+        constraints,
+        retrieval_version="p12-rag-v1",
+    )
+    rewrite = _rewrite(
+        "曼哈顿中城安静、适合约会并提供纯素选择的餐厅",
+        semantic_tags=["date_night", "quiet", "vegan_options"],
+        excluded_tags=[],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _response(request, constraints, rewrites=[rewrite])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        service = _service(client, provider="openai")
+        plan = await service.rewrite(
+            constraints,
+            rule_query=retrieval_plan.expanded_query,
+        )
+
+    assert plan.excluded_tags == []
+    assert plan.semantic_tags == ["date_night", "quiet", "vegan_options"]
+    assert plan.trace.requested_provider == "openai"
+    assert plan.trace.provider == "openai"
+    assert plan.trace.rewrite_count == 1
+    assert plan.trace.fallback_used is False
+    assert plan.trace.fallback_reason is None
 
 
 @pytest.mark.parametrize(

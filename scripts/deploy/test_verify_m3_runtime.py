@@ -126,6 +126,184 @@ class VerifyM3RuntimeDiagnosticsTest(unittest.TestCase):
 
         self.assertNotIn("sk-invalid-json-secret", str(raised.exception))
 
+    def test_rewrite_failure_reports_allowlisted_bounded_observed_diagnostics(
+        self,
+    ) -> None:
+        secret = "sk-rewrite-secret-value-123456789"
+        health = {
+            "status": "ok",
+            "rag": "qdrant",
+            "globalRetrieval": "enabled",
+            "queryRewrite": "openai",
+            "reranker": "disabled",
+        }
+        candidates_metadata = {
+            "candidateDiscoveryMode": "global-hybrid",
+            "queryRewriteProvider": "openai",
+            "queryRewriteEffectiveProvider": "disabled",
+            "queryRewriteModel": "gpt-4o-mini-2024-07-18",
+            "queryRewriteEffectiveModel": "rules-only",
+            "queryRewriteFallback": True,
+            "queryRewriteFallbackReason": "negation-not-preserved",
+            "queryRewriteCount": 0,
+            "queryRewriteNetworkRequests": 1,
+            "queryRewriteCacheHit": False,
+            "queryRewriteLatencyMs": 123.45678,
+            "queryRewriteSemanticTags": [f"Bearer {secret}"],
+            "authorization": secret,
+        }
+        preview = {
+            "metadata": {
+                "indexedDocuments": 145_000,
+                "datasetSha256": VERIFY_M3_RUNTIME.EXPECTED_DATASET_SHA256,
+                "retrievalVersion": VERIFY_M3_RUNTIME.EXPECTED_RETRIEVAL_VERSION,
+                "ragIndexStats": {
+                    "total": 145_000,
+                    "upserted": 0,
+                    "unchanged": 145_000,
+                    "deleted": 0,
+                },
+                "retrieval": {"candidates": candidates_metadata},
+            }
+        }
+
+        with (
+            patch.object(
+                VERIFY_M3_RUNTIME,
+                "_request",
+                side_effect=[health, preview],
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "did not use the requested OpenAI rewrite provider",
+            ) as raised,
+        ):
+            VERIFY_M3_RUNTIME.verify("http://127.0.0.1:8090")
+
+        message = str(raised.exception)
+        self.assertNotIn(secret, message)
+        observed = message.split(" observedRewrite=", 1)[1]
+        self.assertLessEqual(
+            len(observed),
+            VERIFY_M3_RUNTIME.MAX_REWRITE_DIAGNOSTICS_CHARACTERS,
+        )
+        diagnostics = json.loads(observed)
+        self.assertEqual(
+            set(diagnostics),
+            set(VERIFY_M3_RUNTIME._REWRITE_DIAGNOSTIC_FIELDS),
+        )
+        self.assertEqual(
+            diagnostics,
+            {
+                "requestedProvider": "openai",
+                "effectiveProvider": "disabled",
+                "requestedModel": "gpt-4o-mini-2024-07-18",
+                "effectiveModel": "rules-only",
+                "fallback": True,
+                "fallbackReason": "negation-not-preserved",
+                "count": 0,
+                "networkRequests": 1,
+                "cacheHit": False,
+                "latencyMs": 123.457,
+            },
+        )
+
+    def test_rewrite_diagnostics_redact_and_bound_allowlisted_values(self) -> None:
+        secret = "sk-super-secret-rewrite-value-123456789"
+        metadata = {
+            "queryRewriteProvider": f"Bearer {secret}",
+            "queryRewriteEffectiveProvider": "provider " * 10_000,
+            "queryRewriteModel": secret,
+            "queryRewriteEffectiveModel": {"secret": secret},
+            "queryRewriteFallback": "true",
+            "queryRewriteFallbackReason": "authorization=" + secret,
+            "queryRewriteCount": 10**100,
+            "queryRewriteNetworkRequests": -1,
+            "queryRewriteCacheHit": False,
+            "queryRewriteLatencyMs": float("inf"),
+            "requestBody": secret,
+        }
+
+        rendered = VERIFY_M3_RUNTIME._safe_rewrite_diagnostics(metadata)
+
+        self.assertLessEqual(
+            len(rendered),
+            VERIFY_M3_RUNTIME.MAX_REWRITE_DIAGNOSTICS_CHARACTERS,
+        )
+        self.assertNotIn(secret, rendered)
+        diagnostics = json.loads(rendered)
+        self.assertEqual(
+            set(diagnostics),
+            set(VERIFY_M3_RUNTIME._REWRITE_DIAGNOSTIC_FIELDS),
+        )
+        self.assertEqual(diagnostics["requestedProvider"], "[redacted]")
+        self.assertIn("[truncated]", diagnostics["effectiveProvider"])
+        self.assertEqual(diagnostics["requestedModel"], "[redacted]")
+        self.assertIsNone(diagnostics["effectiveModel"])
+        self.assertIsNone(diagnostics["fallback"])
+        self.assertEqual(diagnostics["fallbackReason"], "[redacted]")
+        self.assertIsNone(diagnostics["count"])
+        self.assertIsNone(diagnostics["networkRequests"])
+        self.assertFalse(diagnostics["cacheHit"])
+        self.assertIsNone(diagnostics["latencyMs"])
+
+        metadata["queryRewriteLatencyMs"] = 10**400
+        overflow_rendered = VERIFY_M3_RUNTIME._safe_rewrite_diagnostics(metadata)
+        self.assertIsNone(json.loads(overflow_rendered)["latencyMs"])
+
+    def test_malformed_rewrite_count_still_reports_safe_diagnostics(self) -> None:
+        health = {
+            "status": "ok",
+            "rag": "qdrant",
+            "globalRetrieval": "enabled",
+            "queryRewrite": "openai",
+            "reranker": "disabled",
+        }
+        candidates_metadata = {
+            "candidateDiscoveryMode": "global-hybrid",
+            "queryRewriteProvider": "openai",
+            "queryRewriteEffectiveProvider": "openai",
+            "queryRewriteModel": "gpt-4o-mini-2024-07-18",
+            "queryRewriteEffectiveModel": "gpt-4o-mini-2024-07-18",
+            "queryRewriteFallback": False,
+            "queryRewriteCount": "not-an-integer",
+            "queryRewriteNetworkRequests": 1,
+            "queryRewriteCacheHit": False,
+            "queryRewriteLatencyMs": 10.0,
+        }
+        preview = {
+            "metadata": {
+                "indexedDocuments": 145_000,
+                "datasetSha256": VERIFY_M3_RUNTIME.EXPECTED_DATASET_SHA256,
+                "retrievalVersion": VERIFY_M3_RUNTIME.EXPECTED_RETRIEVAL_VERSION,
+                "ragIndexStats": {
+                    "total": 145_000,
+                    "upserted": 0,
+                    "unchanged": 145_000,
+                    "deleted": 0,
+                },
+                "retrieval": {"candidates": candidates_metadata},
+            }
+        }
+
+        with (
+            patch.object(
+                VERIFY_M3_RUNTIME,
+                "_request",
+                side_effect=[health, preview],
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "Canary produced no LLM query rewrites",
+            ) as raised,
+        ):
+            VERIFY_M3_RUNTIME.verify("http://127.0.0.1:8090")
+
+        message = str(raised.exception)
+        self.assertIn("observedRewrite=", message)
+        observed = json.loads(message.split(" observedRewrite=", 1)[1])
+        self.assertIsNone(observed["count"])
+
 
 if __name__ == "__main__":
     unittest.main()
