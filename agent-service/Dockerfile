@@ -8,7 +8,6 @@ RUN uv sync --frozen --no-dev
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
 COPY --chown=10001:10001 app ./app
-COPY --chown=10001:10001 evals ./evals
 RUN mkdir -p /data/runs && chown -R 10001:10001 /data/runs
 ENV PATH="/app/.venv/bin:${PATH}"
 USER 10001:10001

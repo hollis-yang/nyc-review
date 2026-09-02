@@ -579,7 +579,7 @@ async def test_visit_time_without_business_hours_fails_closed():
         ("Saturday at 9:30 PM", 6, "20:00", "23:30"),
     ],
 )
-def test_frozen_eval_visit_times_share_the_runtime_hours_contract(
+def test_weekday_visit_times_share_the_runtime_hours_contract(
     visit_time: str,
     day_of_week: int,
     opening: str,

@@ -175,7 +175,7 @@ class RerankTrace(_FrozenModel):
         return self
 
     def as_metadata(self) -> dict[str, str | int | float | bool | None]:
-        """Return the stable CandidateSet metadata names consumed by M4 Eval."""
+        """Return stable CandidateSet metadata for traces and diagnostics."""
 
         return {
             "rerankerStatus": self.status.value,

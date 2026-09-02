@@ -1,6 +1,0 @@
-"""Shared matching thresholds kept separate for tuning and evaluation."""
-
-ENTITY_MATCH_THRESHOLD = 0.76
-IMAGE_MATCH_THRESHOLD = 0.90
-MAX_ENTITY_DISTANCE_METERS = 1_000
-MAX_EXACT_COORDINATE_DISTANCE_METERS = 30

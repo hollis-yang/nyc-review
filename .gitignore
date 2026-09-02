@@ -64,6 +64,21 @@ __pycache__/
 .ruff_cache/
 .venv/
 agent-service/.local/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.pyright/
+.tox/
+.nox/
+.hypothesis/
+
+### Frontend tooling ###
+/nyc-review-web/coverage/
+/nyc-review-web/.nyc_output/
+
+### Local runtime assets ###
+/uploads/
 
 ### Local datasets, planning docs and generated reports ###
 /data/

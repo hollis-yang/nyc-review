@@ -1217,7 +1217,7 @@ def _fallback_metadata(
 def _structured_branch_external_ids(
     candidate_pool: CandidateSet | None,
 ) -> list[str | None]:
-    """Preserve the raw structured branch pool for reproducible Eval capture."""
+    """Preserve the raw structured branch pool for reproducible diagnostics."""
 
     if candidate_pool is None:
         return []

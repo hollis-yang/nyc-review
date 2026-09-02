@@ -1,9 +1,0 @@
-{
-  "minMeanRecallAt10": 0.85,
-  "minEvidenceCoverage": 0.95,
-  "minStructuredConstraintSatisfaction": 0.9,
-  "maxDuplicateMerchantRate": 0.0,
-  "maxSecurityLeakageCount": 0,
-  "maxVersionMismatchRate": 0.0,
-  "maxP95RetrievalLatencyMs": 7000
-}

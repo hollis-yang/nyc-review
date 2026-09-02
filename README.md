@@ -1,8 +1,8 @@
 # NYC Review
 
-NYC Review（纽约点评）是面向纽约本地生活的 AI 全栈项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent、Qdrant RAG、Trace 和 Eval。
+NYC Review（纽约点评）是面向纽约本地生活的 AI 全栈项目。Spring Boot、MySQL、Redis 与 RabbitMQ 承载传统业务和手动秒杀；React 提供 NYC 地图与 AI 工作台；独立的 FastAPI + LangGraph 服务负责多 Agent 编排、Qdrant RAG、Trace 与可观测性。
 
-仓库只保留可执行的业务代码、测试、数据流水线和部署配置。项目说明分别收敛在本 README、[Agent Service README](agent-service/README.md)、[脚本目录说明](scripts/README.md)、[数据生成器 README](scripts/mock-data-generator/README.md) 与 [生产部署 README](deploy/production/README.md)；阶段计划、生成数据和测试报告均为本地文件，不进入 Git。
+仓库只保留可执行的前端、后端、Agent、测试、必要的数据生成工具和部署配置。项目说明分别收敛在本 README、[Agent Service README](agent-service/README.md)、[脚本目录说明](scripts/README.md)、[数据生成器 README](scripts/mock-data-generator/README.md) 与 [生产部署 README](deploy/production/README.md)；阶段计划、生成数据和测试报告均为本地文件，不进入 Git。
 
 面向 4 GB AWS Lightsail 的单机生产部署使用预构建 GHCR 镜像、单 Agent、
 仅 80/443 公网入口和服务器外置 P13 数据包。完整步骤见
@@ -154,7 +154,7 @@ uv run uvicorn app.main:app --reload --port 8090
 
 P3 增加人工审批操作、幂等执行、MySQL 审计、收藏偏好、Run 历史与指标；React 默认英语，可在 `Profile → Edit Profile` 切换中文，DeepSeek 翻译入口只在中文模式显示。
 
-P4 将秒杀 MQ 从 Redis Stream 迁移到 RabbitMQ，并增加 Publisher Confirm、Redis 生产侧恢复记录、消费重试和错误队列；Profile 可查看收藏、行程、优惠券、提醒和可控 AI Memory；Agent 增加所有权隔离、Prompt Guard、限流、Trace、Token/延迟指标、超时恢复和自动质量门禁。
+P4 将秒杀 MQ 从 Redis Stream 迁移到 RabbitMQ，并增加 Publisher Confirm、Redis 生产侧恢复记录、消费重试和错误队列；Profile 可查看收藏、行程、优惠券、提醒和可控 AI Memory；Agent 增加所有权隔离、Prompt Guard、限流、Trace、Token/延迟指标和超时恢复。
 
 P5 在 Agent Service 的 `/mcp` 提供 Streamable HTTP MCP Server，复用 Spring Tool API、Qdrant RAG、路线估算与 Verifier，并且只暴露六个只读工具。收藏、保存、领券和秒杀不会通过 MCP 执行；协议验证命令位于 [Agent Service README](agent-service/README.md)。
 
@@ -221,7 +221,7 @@ npm run release:check
 再通过锁定的 `uv.lock` 执行 Agent 服务的 Ruff 与完整测试；生产镜像工作流也会在构建并推送
 固定 SHA 镜像前运行同一质量门。本地需要已安装 `uv`。
 
-安全的后端回归命令是 `mvn -Dtest='!NycReviewApplicationTests' test`。
+安全的后端回归命令是 `mvn -Dtest='*Test' test`。
 `NycReviewApplicationTests` 包含数据构造和 Redis 回填方法；在完成容器化隔离前，不要在承载有效数据的环境执行它。
 
 ## 安全说明

@@ -1,8 +1,6 @@
 # NYC Review Agent Service
 
-FastAPI + LangGraph 服务，负责单 Agent/多 Agent 编排、RAG、人工审批和 Eval。Spring Boot 仍是业务事实来源；本服务不得直连业务表执行任意查询或写入。
-
-RAG 的下一阶段实施计划见 [`RAG_OPTIMIZATION_ROADMAP.md`](./RAG_OPTIMIZATION_ROADMAP.md)，覆盖真实多语言 Embedding、全局 Hybrid 候选召回、受约束 Multi-Query、Cross-Encoder 重排、消融评测与生产回滚。
+FastAPI + LangGraph 服务，负责单 Agent/多 Agent 编排、RAG、人工审批和可观测性。Spring Boot 仍是业务事实来源；本服务不得直连业务表执行任意查询或写入。
 
 ## 本地运行
 
@@ -55,7 +53,7 @@ curl -H 'x-agent-session: 12345678-1234-4567-89ab-123456789abc' \
 curl /v1/agent/metrics
 ```
 
-前端产品入口只暴露 Multi Agent；Single Agent 继续保留在 Eval 中用于质量和延迟对照。
+前端产品入口只暴露 Multi Agent；Single Agent 继续保留，用于离线调试和行为对照。
 
 ## P4 Observability、恢复与安全
 
@@ -154,35 +152,3 @@ NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN=<current-user-token>
 Agent Service 同时在 `http://127.0.0.1:8090/mcp` 提供 Streamable HTTP MCP。它复用 AI Guide 的领域服务，只发布 `search_shops`、`get_shop_detail`、`get_shop_evidence`、`get_available_vouchers`、`calculate_route` 和 `validate_itinerary`。MCP Tool Catalog 不包含任何写操作。
 
 本地可设置 `NYC_REVIEW_AGENT_MCP_API_KEY`，客户端随后使用 `Authorization: Bearer <key>`。HTTP Adapter 访问 Spring 时仍使用独立的 `NYC_REVIEW_AGENT_BACKEND_AUTH_TOKEN`；不要把用户登录 token 当作 MCP 服务密钥。
-
-## Eval
-
-同一份用例对比 Single/Multi 的约束解析、合法商户 ID、引用覆盖率、Verifier、Trace 与延迟。Multi Agent 未达到 `evals/quality_gate.json` 时命令返回非零：
-
-```bash
-uv run python -m evals.run_eval
-uv run python -m evals.run_eval --output .local/p4-eval-report.json
-```
-
-P12 另有固定语料的检索质量门禁。72 条中英文用例直接测量混合检索与证据层，避免模型解析波动掩盖 RAG 回退：
-
-```bash
-uv run python -m evals.p12.run_retrieval_eval \
-  --qdrant-location ./.local/qdrant-p12 \
-  --output ./.local/p12-eval-report.json
-```
-
-质量门禁配置保存在 `evals/p12/cases.json` 与 `evals/p12/quality_gate.json`，生成的评测报告只保留在本地。
-
-RAG Eval v2 在保留 P12 回归的同时，增加 160 条冻结的英文、中文和中英混合查询，以及 0–3 级相关性、hard negatives、硬约束、安全/旧版本 fixture、nDCG/MRR 和分阶段延迟。默认只使用 dev split；仓库中的 test split 是 policy holdout，不是真正隐藏数据：
-
-```bash
-uv run python -m evals.rag_v2.run_eval \
-  --split dev \
-  --reuse-index \
-  --qdrant-location ./.local/qdrant-rag-v2-m0-final \
-  --collection hmdp_content_v2 \
-  --output ./.local/rag-v2-dev.json
-```
-
-完整的数据契约、指标公式、`building → complete` 可恢复索引 manifest、费用门禁、M1 三模型命令、冻结 Hash/64 基线和已知营业时间约束缺口见 [`evals/rag_v2/README.md`](./evals/rag_v2/README.md)。该 holdout 对 intent/query 隔离但不是 merchant-disjoint；语言分组也是 observational slice，简历或报告中不应扩写成 hidden、人工标注或受控双语对照集。

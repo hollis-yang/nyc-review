@@ -40,7 +40,7 @@ def parse_visit_time(
     *,
     timezone_name: str | None = None,
 ) -> LocalVisitTime | None:
-    """Parse the public ISO contract and the frozen Eval weekday/time form."""
+    """Parse the public ISO contract and the deterministic weekday/time form."""
 
     if not isinstance(value, str) or not value.strip():
         return None

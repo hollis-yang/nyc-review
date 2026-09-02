@@ -5,7 +5,7 @@
 ## Profile
 
 - `small`：36 家全 Mock 商户，用于单元测试和 Testcontainers。
-- `demo`：250 家全 Mock 商户，用于历史演示和 Agent Eval。
+- `demo`：250 家全 Mock 商户，用于历史演示和 Agent 回归测试。
 - `medium`：2,000 家全 Mock 商户、16,000 条评论，用于 P6 以前的规模测试。
 - `load`：20,000 家全 Mock 商户，用于按需压测。
 - `real-small`：12 家真实身份商户、60 条根评论，用于 P8 快速契约测试。
