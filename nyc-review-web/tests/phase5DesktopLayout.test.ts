@@ -158,6 +158,35 @@ test('AI workspace preserves run, evidence, history, and approval behavior', () 
   assert.match(page, /<FootBar activeBtn=\{5\}/);
 });
 
+test('AI workspace offers five readable bilingual RAG examples', () => {
+  const page = readSource('../src/pages/AiWorkspace/index.tsx');
+  const styles = readSource('../src/pages/AiWorkspace/AiWorkspace.module.css');
+  const english = JSON.parse(readSource('../src/i18n/locales/en.json')) as {
+    aiGuide: Record<string, string>;
+  };
+  const chinese = JSON.parse(readSource('../src/i18n/locales/zh-CN.json')) as {
+    aiGuide: Record<string, string>;
+  };
+  const keys = ['exampleOne', 'exampleTwo', 'exampleThree', 'exampleFour', 'exampleFive'];
+
+  for (const key of keys) {
+    assert.match(page, new RegExp(`t\\('aiGuide\\.${key}'\\)`));
+    assert.ok(english.aiGuide[key]?.trim(), `Missing English ${key}`);
+    assert.ok(chinese.aiGuide[key]?.trim(), `Missing Chinese ${key}`);
+  }
+  assert.match(english.aiGuide.exampleOne, /under \$120 total/);
+  assert.match(chinese.aiGuide.exampleOne, /总预算不超过 120 美元/);
+  assert.match(english.aiGuide.exampleFour, /wheelchair access is required/);
+  assert.match(chinese.aiGuide.exampleFour, /轮椅通行是硬性条件/);
+  assert.match(english.aiGuide.exampleFive, /Park Slope.*plant-based/);
+  assert.match(chinese.aiGuide.exampleFive, /Park Slope.*纯素选择/);
+  assert.match(page, /title=\{example\}/);
+  assert.match(page, /type="button"/);
+  assert.match(styles, /\.examples button\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*white-space:\s*normal;/s);
+  assert.match(styles, /\.idleWorkspace \.examples\s*\{\s*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/s);
+  assert.match(styles, /\.activeWorkspace \.examples\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\);/s);
+});
+
 test('AI collaboration separates Workflow and renders a responsive fork-join graph', () => {
   const page = readSource('../src/pages/AiWorkspace/index.tsx');
   const styles = readSource('../src/pages/AiWorkspace/AiWorkspace.module.css');

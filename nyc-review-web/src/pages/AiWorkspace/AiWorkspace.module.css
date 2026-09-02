@@ -205,15 +205,16 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid #eee;
-  border-radius: 999px;
-  padding: 6px 9px;
+  border-radius: 14px;
+  padding: 7px 10px;
   display: block;
   color: #777;
   background: #fff;
   font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .runButton {
@@ -1061,7 +1062,7 @@
   }
 
   .idleWorkspace .examples {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .activeWorkspace .examples {

@@ -128,6 +128,8 @@ export default function AiWorkspace() {
     t('aiGuide.exampleOne'),
     t('aiGuide.exampleTwo'),
     t('aiGuide.exampleThree'),
+    t('aiGuide.exampleFour'),
+    t('aiGuide.exampleFive'),
   ];
   const [query, setQuery] = useState(() => t('aiGuide.exampleOne'));
   const [running, setRunning] = useState(false);
@@ -660,7 +662,14 @@ export default function AiWorkspace() {
 
             <div className={styles.examples}>
               {examples.map((example) => (
-                <button key={example} onClick={() => setQuery(example)}>{example}</button>
+                <button
+                  key={example}
+                  onClick={() => setQuery(example)}
+                  title={example}
+                  type="button"
+                >
+                  {example}
+                </button>
               ))}
             </div>
 
